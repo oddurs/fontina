@@ -30,7 +30,7 @@ jobs:
           - { os: macos-latest,      target: x86_64-apple-darwin,       ext: tar.gz }
           - { os: windows-latest,    target: x86_64-pc-windows-msvc,    ext: zip }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -58,7 +58,7 @@ jobs:
           echo "archive=dist/$archive" >> "$GITHUB_OUTPUT"
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: ${{ steps.pkg.outputs.archive }}
 
@@ -72,7 +72,7 @@ jobs:
     name: sbom
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: anchore/sbom-action@v0
         with:
           path: .
