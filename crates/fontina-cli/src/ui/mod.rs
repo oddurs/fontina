@@ -22,6 +22,7 @@
 //! preview, so the screen looks native in any theme.
 
 mod controls;
+mod glyphs;
 mod preview;
 
 use anyhow::Result;
@@ -113,6 +114,8 @@ enum InputKind {
     Tag,
     Collection,
     Text,
+    /// A codepoint or a block name, in the glyph map.
+    Glyph,
 }
 
 struct Input {
@@ -146,6 +149,12 @@ pub struct App {
     /// Axis positions and feature toggles for the face on show. Rebuilt whenever the
     /// selection changes, because they describe that face and no other.
     controls: controls::Controls,
+    /// The glyph map, while it is open. It covers the whole screen, so it is a mode
+    /// rather than a pane: there is no room to browse and read coverage at once.
+    glyphs: Option<glyphs::Glyphs>,
+    /// Columns the glyph grid used when it was last drawn, so a PageDown moves by what
+    /// the reader can see rather than by a guess.
+    glyph_cols: usize,
     preview: preview::Cache,
 }
 
@@ -181,6 +190,8 @@ impl App {
             detail_id: None,
             detail_summary: None,
             controls: controls::Controls::default(),
+            glyphs: None,
+            glyph_cols: 16,
             preview: preview::Cache::default(),
         };
         app.reload()?;
@@ -387,6 +398,11 @@ impl App {
                 self.help = false;
                 continue;
             }
+            // Ctrl-C still quits from anywhere; the glyph map takes every other key.
+            if self.glyphs.is_some() && !(ctrl_c(&key)) {
+                self.handle_glyph_key(key.code)?;
+                continue;
+            }
             let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
             match key.code {
                 KeyCode::Char('q') => return Ok(()),
@@ -403,6 +419,7 @@ impl App {
                     }
                 }
                 KeyCode::Char('?') => self.help = true,
+                KeyCode::Char('m') => self.open_glyphs(),
                 KeyCode::Tab => {
                     self.focus = match self.focus {
                         Focus::Facets => Focus::List,
@@ -482,6 +499,54 @@ impl App {
         }
     }
 
+    /// Open the glyph map on the face on show. A face with no coverage at all — a
+    /// broken font, or one still being scanned — has nothing to map.
+    fn open_glyphs(&mut self) {
+        let Some(face) = &self.detail else {
+            self.status = "no face on show".into();
+            return;
+        };
+        let map = glyphs::Glyphs::for_face(face);
+        if map.is_empty() {
+            self.status = "this face maps no codepoints".into();
+            return;
+        }
+        self.status = format!(
+            "{} codepoints in {} block(s)   (fontina glyphs {})",
+            map.covered(),
+            map.blocks().len(),
+            self.detail_id.map(|id| id.to_string()).unwrap_or_default()
+        );
+        self.glyphs = Some(map);
+    }
+
+    /// Keys the glyph map owns while it is open. Returns whether it took the key.
+    fn handle_glyph_key(&mut self, code: KeyCode) -> Result<bool> {
+        // The grid is laid out at draw time; the columns used for scrolling are the
+        // ones the last frame used, which is what the reader is looking at.
+        let cols = self.glyph_cols.max(1);
+        let Some(map) = self.glyphs.as_mut() else {
+            return Ok(false);
+        };
+        match code {
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('m') => self.glyphs = None,
+            KeyCode::Down | KeyCode::Char('j') => map.scroll_by(1, cols),
+            KeyCode::Up | KeyCode::Char('k') => map.scroll_by(-1, cols),
+            KeyCode::PageDown => map.scroll_by(10, cols),
+            KeyCode::PageUp => map.scroll_by(-10, cols),
+            KeyCode::Right | KeyCode::Char('l') | KeyCode::Tab => map.select(1),
+            KeyCode::Left | KeyCode::Char('h') => map.select(-1),
+            KeyCode::Home | KeyCode::Char('g') => map.scroll_by(i32::MIN / 2, cols),
+            KeyCode::End | KeyCode::Char('G') => map.scroll_by(i32::MAX / 2, cols),
+            KeyCode::Char('/') => self.start_input(InputKind::Glyph, String::new()),
+            // Everything else is swallowed. The map covers the panes, so a key that
+            // activated a font or opened a family would leave it showing the coverage of
+            // a face that is no longer on show, with no way to tell.
+            _ => {}
+        }
+        Ok(true)
+    }
+
     fn start_input(&mut self, kind: InputKind, buf: String) {
         if matches!(kind, InputKind::Tag | InputKind::Collection)
             && self.current_face_ids().is_empty()
@@ -519,6 +584,21 @@ impl App {
                     }
                     InputKind::Text => {
                         self.preview_text = (!value.is_empty()).then_some(value);
+                    }
+                    InputKind::Glyph => {
+                        let cols = self.glyph_cols.max(1);
+                        if let Some(map) = self.glyphs.as_mut() {
+                            self.status = if map.find(&value, cols) {
+                                match map.found() {
+                                    Some(cp) => {
+                                        format!("U+{cp:04X} in {}", map.selected_map_name())
+                                    }
+                                    None => map.selected_map_name(),
+                                }
+                            } else {
+                                format!("nothing covered matches {value:?}")
+                            };
+                        }
                     }
                     InputKind::Tag => {
                         if !value.is_empty() {
@@ -821,9 +901,107 @@ impl App {
         self.draw_detail(f, columns[2]);
         self.draw_status(f, vertical[1]);
         self.draw_keys(f, vertical[2]);
+        if self.glyphs.is_some() {
+            self.draw_glyphs(f, vertical[0]);
+        }
         if self.help {
             self.draw_help(f, area);
         }
+    }
+
+    /// The glyph map: covered blocks down the left, the characters of the selected one
+    /// in a grid on the right. Full width, because a coverage grid needs the room.
+    fn draw_glyphs(&mut self, f: &mut ratatui::Frame, area: Rect) {
+        let Some(map) = &self.glyphs else { return };
+        f.render_widget(Clear, area);
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Cyan))
+            .title(" glyph map — / to search, m or Esc to close ");
+        let inner = block.inner(area);
+        f.render_widget(block, area);
+
+        let columns = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Length(34), Constraint::Min(20)])
+            .split(inner);
+
+        // Blocks, with the selected one marked and its coverage as a fraction.
+        let selected = map.selected_index();
+        let visible = columns[0].height as usize;
+        let offset = selected.saturating_sub(visible.saturating_sub(1));
+        let rows: Vec<Line> = map
+            .blocks()
+            .iter()
+            .enumerate()
+            .skip(offset)
+            .take(visible)
+            .map(|(i, b)| {
+                let style = if i == selected {
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default()
+                };
+                Line::from(Span::styled(
+                    format!(
+                        "{} {:<22} {:>4}/{}",
+                        if i == selected { ">" } else { " " },
+                        truncate(&b.block, 22),
+                        b.codepoints.len(),
+                        b.block_size
+                    ),
+                    style,
+                ))
+            })
+            .collect();
+        f.render_widget(Paragraph::new(rows), columns[0]);
+
+        let grid = columns[1];
+        // Every cell is two columns wide whatever it holds, so the grid lines up whether
+        // the block is Latin, CJK or combining marks. `LABEL` covers the widest possible
+        // codepoint label, `10FFFF`, plus its separating space.
+        const LABEL: usize = 7;
+        const CELL: usize = 2;
+        let cols = ((grid.width as usize).saturating_sub(LABEL) / CELL).max(1);
+        self.glyph_cols = cols;
+        // The pane may have been resized since the last scroll, so re-clamp against the
+        // width being drawn now; otherwise a scrolled block can render blank.
+        let Some(map) = self.glyphs.as_mut() else {
+            return;
+        };
+        map.clamp_scroll(cols);
+        let (start, found) = (map.scroll_row() * cols, map.found());
+        let Some(current) = map.selected() else {
+            return;
+        };
+        let mut lines: Vec<Line> = Vec::new();
+        for row in current.codepoints[start.min(current.codepoints.len())..]
+            .chunks(cols)
+            .take(grid.height as usize)
+        {
+            let mut spans = vec![Span::styled(
+                format!("{:<LABEL$}", format!("{:04X}", row[0])),
+                Style::default().fg(Color::DarkGray),
+            )];
+            for &cp in row {
+                let cell = fontina_core::unicode::cell_for(cp);
+                let style = if Some(cp) == found {
+                    Style::default().fg(Color::Black).bg(Color::Cyan)
+                } else {
+                    Style::default()
+                };
+                // Pad each cell out to CELL columns, so a double-width glyph takes the
+                // space of one cell rather than pushing the rest of the row along.
+                spans.push(Span::styled(
+                    format!("{}{}", cell.glyph, " ".repeat(CELL - cell.width)),
+                    style,
+                ));
+            }
+            lines.push(Line::from(spans));
+        }
+        f.render_widget(Paragraph::new(lines), grid);
     }
 
     fn border(&self, focused: bool) -> Style {
@@ -1180,6 +1358,7 @@ impl App {
                 InputKind::Tag => "tag",
                 InputKind::Collection => "collection",
                 InputKind::Text => "preview text",
+                InputKind::Glyph => "codepoint or block",
             };
             Line::from(vec![
                 Span::styled(format!(" {prompt}: "), Style::default().fg(Color::Cyan)),
@@ -1217,6 +1396,8 @@ impl App {
  Preview     e sets the sample text   + / - change the size
  Controls    h/l ←/→ move an axis (H/L by ten)   Space toggles a feature
              n/p step through named instances   0 resets everything
+ Glyphs      m opens the glyph map: h/l pick a block, j/k scroll, / finds a
+             codepoint (U+0041, 0x41, 41) or a block by name
  Index       R rescans every source (fontina scan --prune)
  Quit        q
 
@@ -1224,7 +1405,7 @@ impl App {
 
  any key to close";
         let w = 90.min(area.width);
-        let h = 20.min(area.height);
+        let h = 22.min(area.height);
         let rect = Rect::new(
             area.x + (area.width - w) / 2,
             area.y + (area.height - h) / 2,
@@ -1328,6 +1509,11 @@ fn facet_value_label(facet: Facet, value: &str) -> String {
             .unwrap_or_else(|| value.to_string()),
         _ => value.to_string(),
     }
+}
+
+/// The one key that quits from anywhere, including out of a full-screen mode.
+fn ctrl_c(key: &event::KeyEvent) -> bool {
+    key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL)
 }
 
 /// Axis values without trailing noise: `400`, not `400.0`; `87.5` kept as it is.
@@ -1542,6 +1728,74 @@ mod tests {
             .map(|a| a.tag.as_str())
             .collect();
         assert_eq!(&drawn[..axes.len()], &axes[..]);
+    }
+
+    #[test]
+    fn the_glyph_map_opens_on_the_face_on_show_and_closes_again() {
+        let mut app = app();
+        select_family(&mut app, "Amiri");
+        assert!(app.glyphs.is_none());
+        app.open_glyphs();
+        let map = app.glyphs.as_ref().expect("Amiri maps codepoints");
+        assert!(map.covered() > 0);
+        assert!(app.status.contains("fontina glyphs"), "{}", app.status);
+
+        // Every key it owns is taken from the panes underneath.
+        assert!(app.handle_glyph_key(KeyCode::Char('j')).unwrap());
+        assert!(app.handle_glyph_key(KeyCode::Char('l')).unwrap());
+        // A key it does not own is swallowed rather than passed to the panes beneath:
+        // activating a font from behind a full-screen map would leave the map describing
+        // a face that is no longer on show.
+        let id = app.detail_id;
+        assert!(app.handle_glyph_key(KeyCode::Char('a')).unwrap());
+        assert!(app.handle_glyph_key(KeyCode::Enter).unwrap());
+        assert_eq!(app.detail_id, id, "nothing underneath moved");
+        assert!(app.glyphs.is_some(), "and the map is still open");
+
+        assert!(app.handle_glyph_key(KeyCode::Esc).unwrap());
+        assert!(app.glyphs.is_none(), "Esc closes the map");
+    }
+
+    /// A pane that grew since the last keypress must not start past the end of the
+    /// block and draw nothing.
+    #[test]
+    fn a_resize_pulls_the_scroll_back_into_range() {
+        let mut app = app();
+        select_family(&mut app, "Amiri");
+        app.open_glyphs();
+        let map = app.glyphs.as_mut().unwrap();
+        // Scroll to the bottom of a narrow pane, then lay the same block out wide.
+        map.scroll_by(i32::MAX / 2, 4);
+        let narrow = map.scroll_row();
+        assert!(narrow > 0);
+        map.clamp_scroll(40);
+        let covered = map.selected().unwrap().codepoints.len();
+        assert!(
+            map.scroll_row() * 40 < covered,
+            "a widened pane still starts inside the block"
+        );
+    }
+
+    #[test]
+    fn searching_the_map_reports_what_it_found_or_did_not() {
+        let mut app = app();
+        select_family(&mut app, "Amiri");
+        app.open_glyphs();
+
+        app.start_input(InputKind::Glyph, String::new());
+        for c in "U+0041".chars() {
+            app.handle_input_key(KeyCode::Char(c)).unwrap();
+        }
+        app.handle_input_key(KeyCode::Enter).unwrap();
+        assert!(app.status.starts_with("U+0041 in "), "{}", app.status);
+        assert_eq!(app.glyphs.as_ref().unwrap().found(), Some(0x41));
+
+        app.start_input(InputKind::Glyph, String::new());
+        for c in "Tibetan".chars() {
+            app.handle_input_key(KeyCode::Char(c)).unwrap();
+        }
+        app.handle_input_key(KeyCode::Enter).unwrap();
+        assert!(app.status.contains("nothing covered"), "{}", app.status);
     }
 
     #[test]
