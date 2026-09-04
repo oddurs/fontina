@@ -21,6 +21,7 @@
 
 use crate::error::{Error, Result};
 use crate::model::FaceMetadata;
+use crate::typography;
 use base64::Engine;
 use std::fmt::Write;
 
@@ -32,135 +33,6 @@ pub struct SpecimenOptions {
     pub link: bool,
     pub title: Option<String>,
 }
-
-const DEFAULT_TEXT: &str = "Sphinx of black quartz, judge my vow. 0123456789";
-
-/// Script-specific sample paragraphs keyed by ISO 15924 code, with direction.
-const SAMPLES: &[(&str, &str, &str)] = &[
-    (
-        "Latn",
-        "ltr",
-        "The quick brown fox jumps over the lazy dog. Zwölf Boxkämpfer jagen Viktor quer über den großen Sylter Deich. Portez ce vieux whisky au juge blond qui fume. Árvíztűrő tükörfúrógép.",
-    ),
-    (
-        "Cyrl",
-        "ltr",
-        "Съешь же ещё этих мягких французских булок, да выпей чаю. Жебракують філософи при ґанку церкви в Гадячі, ще й шатро їхнє п'яне знаємо.",
-    ),
-    (
-        "Grek",
-        "ltr",
-        "Ξεσκεπάζω την ψυχοφθόρα βδελυγμία. Τάχιστη αλώπηξ βαφής ψημένη γη, δρασκελίζει υπέρ νωθρού κυνός.",
-    ),
-    (
-        "Arab",
-        "rtl",
-        "صِف خَلقَ خَودِ كَمِثلِ الشَمسِ إِذ بَزَغَت يَحظى الضَجيعُ بِها نَجلاءَ مِعطارِ. نص حكيم له سر قاطع وذو شأن عظيم مكتوب على ثوب أخضر ومغلف بجلد أزرق.",
-    ),
-    (
-        "Hebr",
-        "rtl",
-        "דג סקרן שט בים מאוכזב ולפתע מצא חברה. עטלף אבק נס דרך מזגן שהתפוצץ כי חם.",
-    ),
-    (
-        "Deva",
-        "ltr",
-        "ऋषियों को सताने वाले दुष्ट राक्षसों के राजा रावण का सर्वनाश करने वाले विष्णुवतार भगवान श्रीराम, अयोध्या के महाराज दशरथ के बड़े सपुत्र थे।",
-    ),
-    (
-        "Beng",
-        "ltr",
-        "আমি বাংলায় গান গাই, আমি বাংলার গান গাই। আমি আমার আমিকে চিরদিন এই বাংলায় খুঁজে পাই।",
-    ),
-    ("Taml", "ltr", "யாதும் ஊரே யாவரும் கேளிர் தீதும் நன்றும் பிறர்தர வாரா."),
-    (
-        "Thai",
-        "ltr",
-        "เป็นมนุษย์สุดประเสริฐเลิศคุณค่า กว่าบรรดาฝูงสัตว์เดรัจฉาน จงฝ่าฟันพัฒนาวิชาการ",
-    ),
-    (
-        "Hani",
-        "ltr",
-        "視野無限廣，窗外有藍天。天地玄黃，宇宙洪荒。日月盈昃，辰宿列張。",
-    ),
-    (
-        "Hira",
-        "ltr",
-        "いろはにほへと ちりぬるを わかよたれそ つねならむ うゐのおくやま けふこえて",
-    ),
-    (
-        "Kana",
-        "ltr",
-        "イロハニホヘト チリヌルヲ ワカヨタレソ ツネナラム",
-    ),
-    (
-        "Hang",
-        "ltr",
-        "키스의 고유조건은 입술끼리 만나야 하고 특별한 기술은 필요치 않다.",
-    ),
-    (
-        "Geor",
-        "ltr",
-        "გთხოვთ ახლავე გაიაროთ რეგისტრაცია უნიკოდის მეათე საერთაშორისო კონფერენციაზე.",
-    ),
-    (
-        "Armn",
-        "ltr",
-        "Բել դղյակի ձախ ժամն օֆ ազգությանը ցպահանջ չճշտած վնաս էր և փառք։",
-    ),
-    ("Ethi", "ltr", "ሰማይ አይታረስ ንጉሥ አይከሰስ። ብላ ካለኝ እንደአባቴ በቆመጠኝ።"),
-];
-
-/// Human labels for common OpenType features.
-const FEATURE_LABELS: &[(&str, &str)] = &[
-    ("liga", "Standard ligatures"),
-    ("dlig", "Discretionary ligatures"),
-    ("hlig", "Historical ligatures"),
-    ("clig", "Contextual ligatures"),
-    ("calt", "Contextual alternates"),
-    ("smcp", "Small capitals"),
-    ("c2sc", "Capitals to small caps"),
-    ("pcap", "Petite caps"),
-    ("swsh", "Swashes"),
-    ("salt", "Stylistic alternates"),
-    ("onum", "Oldstyle figures"),
-    ("lnum", "Lining figures"),
-    ("pnum", "Proportional figures"),
-    ("tnum", "Tabular figures"),
-    ("frac", "Fractions"),
-    ("ordn", "Ordinals"),
-    ("sups", "Superscript"),
-    ("subs", "Subscript"),
-    ("sinf", "Scientific inferiors"),
-    ("zero", "Slashed zero"),
-    ("case", "Case-sensitive forms"),
-    ("titl", "Titling"),
-    ("hist", "Historical forms"),
-    ("unic", "Unicase"),
-    ("ss01", "Stylistic set 1"),
-    ("ss02", "Stylistic set 2"),
-    ("ss03", "Stylistic set 3"),
-    ("ss04", "Stylistic set 4"),
-    ("ss05", "Stylistic set 5"),
-    ("ss06", "Stylistic set 6"),
-    ("ss07", "Stylistic set 7"),
-    ("ss08", "Stylistic set 8"),
-    ("ss09", "Stylistic set 9"),
-    ("ss10", "Stylistic set 10"),
-    ("cv01", "Character variant 1"),
-    ("cv02", "Character variant 2"),
-    ("cv03", "Character variant 3"),
-    ("kern", "Kerning"),
-    ("aalt", "All alternates"),
-];
-
-/// Features that are on by default or required for correct shaping; not offered as toggles.
-const HIDDEN_FEATURES: &[&str] = &[
-    "ccmp", "locl", "rlig", "rclt", "init", "medi", "fina", "isol", "mark", "mkmk", "curs", "abvm",
-    "blwm", "abvs", "blws", "pres", "psts", "pref", "half", "nukt", "akhn", "rphf", "vatu", "cjct",
-    "haln", "dist", "rvrn", "req", "dnom", "numr", "rtlm", "ltra", "ltrm", "rtla", "ordn", "aalt",
-    "vert", "vrt2",
-];
 
 fn esc(s: &str) -> String {
     s.replace('&', "&amp;")
@@ -212,7 +84,7 @@ pub fn render(faces: &[FaceMetadata], opts: &SpecimenOptions) -> Result<String> 
     let text = opts
         .text
         .clone()
-        .unwrap_or_else(|| DEFAULT_TEXT.to_string());
+        .unwrap_or_else(|| typography::DEFAULT_TEXT.to_string());
     let title = opts.title.clone().unwrap_or_else(|| {
         if faces.len() == 1 {
             format!("{} {}", faces[0].names.family, faces[0].names.subfamily)
@@ -295,7 +167,7 @@ pub fn render(faces: &[FaceMetadata], opts: &SpecimenOptions) -> Result<String> 
             h.push_str("<div class=\"controls axes\">");
             for a in &v.axes {
                 let label = a.name.clone().unwrap_or_else(|| a.tag.clone());
-                let step = if a.max - a.min > 50.0 { "1" } else { "0.1" };
+                let step = typography::axis_step(a);
                 write!(h, "<label><span>{} <code>{}</code></span><input type=\"range\" class=\"axis\" data-tag=\"{}\" min=\"{}\" max=\"{}\" step=\"{}\" value=\"{}\"><output>{}</output></label>", esc(&label), esc(&a.tag), esc(&a.tag), a.min, a.max, step, a.default, a.default).ok();
             }
             if !v.instances.is_empty() {
@@ -320,40 +192,32 @@ pub fn render(faces: &[FaceMetadata], opts: &SpecimenOptions) -> Result<String> 
             h.push_str("</div>\n");
         }
 
-        let toggles: Vec<&String> = f
-            .features
-            .gsub
-            .iter()
-            .filter(|t| !HIDDEN_FEATURES.contains(&t.as_str()))
-            .collect();
+        let toggles = typography::toggleable_features(&f.features);
         if !toggles.is_empty() {
             h.push_str("<div class=\"controls features\">");
             for t in toggles {
-                let label = FEATURE_LABELS
-                    .iter()
-                    .find(|(k, _)| k == t)
-                    .map(|(_, l)| *l)
-                    .unwrap_or("");
+                let label = typography::feature_label(t).unwrap_or("");
                 write!(h, "<label><input type=\"checkbox\" class=\"feat\" data-tag=\"{}\"><code>{}</code> {}</label>", esc(t), esc(t), esc(label)).ok();
             }
             h.push_str("</div>\n");
         }
 
         h.push_str("<div class=\"waterfall\">");
-        for size in [10, 12, 14, 18, 24, 32, 48, 72, 96] {
+        for size in typography::WATERFALL_SIZES {
             write!(h, "<div class=\"wf js-sample\" style=\"font-family:'uf{i}';font-size:{size}px\"><span class=\"pt\">{size}</span>{}</div>", esc(&text)).ok();
         }
         h.push_str("</div>\n");
 
         let mut shown = 0;
         for sc in &f.coverage.scripts {
-            if let Some((_, dir, sample)) = SAMPLES.iter().find(|(code, _, _)| *code == sc.script) {
+            if let Some((dir, sample)) = typography::script_sample(&sc.script) {
                 if sc.codepoints < 20 {
                     continue;
                 }
                 write!(
                     h,
-                    "<p class=\"para\" dir=\"{dir}\" style=\"font-family:'uf{i}'\">{}</p>",
+                    "<p class=\"para\" dir=\"{}\" style=\"font-family:'uf{i}'\">{}</p>",
+                    dir.as_str(),
                     esc(sample)
                 )
                 .ok();

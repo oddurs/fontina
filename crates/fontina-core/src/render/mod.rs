@@ -49,7 +49,7 @@ pub struct RenderOptions {
 impl Default for RenderOptions {
     fn default() -> Self {
         RenderOptions {
-            text: "Sphinx of black quartz, judge my vow".into(),
+            text: crate::typography::DEFAULT_TEXT.into(),
             size: 48.0,
             variations: Vec::new(),
             features: Vec::new(),

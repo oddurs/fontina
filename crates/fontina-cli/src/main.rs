@@ -2100,7 +2100,7 @@ fn run_preview(cli: &Cli, args: &PreviewArgs) -> Result<()> {
             .text
             .clone()
             .or_else(|| face.names.sample_text.clone())
-            .unwrap_or_else(|| "Sphinx of black quartz, judge my vow".into())
+            .unwrap_or_else(|| fontina_core::typography::DEFAULT_TEXT.into())
             .replace("\\n", "\n");
         let size = if protocol == "blocks" && args.size == 48.0 {
             24.0
