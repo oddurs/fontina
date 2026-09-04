@@ -3,6 +3,8 @@
 #
 #   scripts/wt new <branch> [base]   create .worktrees/<branch> on a new branch from base (default origin/main)
 #   scripts/wt ls                    list worktrees
+#   scripts/wt status                how far behind origin/main each worktree is, and whether it is dirty
+#   scripts/wt sync [branch]         fetch and rebase a worktree onto origin/main (default: this one)
 #   scripts/wt rm <branch>           remove the worktree (and the local branch if merged)
 #   scripts/wt prune                 drop worktrees whose directories are gone
 #
@@ -11,8 +13,32 @@
 # become dashes in directory names: feat/watch -> .worktrees/feat-watch.
 
 set -euo pipefail
-root=$(git rev-parse --show-toplevel)
+
+# The main checkout, not whichever worktree we happen to be standing in:
+# --show-toplevel returns the worktree, so `wt new` run from inside one would nest a
+# .worktrees/ under it. --git-common-dir always points at the shared .git.
+common=$(git rev-parse --git-common-dir)
+case "$common" in /*) ;; *) common="$PWD/$common" ;; esac
+root=$(cd "$(dirname "$common")" && pwd)
 dir_for() { echo "$root/.worktrees/${1//\//-}"; }
+
+# Worktree directories, one per line, including the main checkout.
+worktree_dirs() {
+  git -C "$root" worktree list --porcelain | sed -n 's/^worktree //p'
+}
+
+# Where a branch is actually checked out. Falls back to the conventional path, because a
+# worktree made by something other than `wt new` (an editor, an agent harness) is still
+# one we should be able to sync.
+dir_of_branch() {
+  git -C "$root" worktree list --porcelain \
+    | awk -v want="refs/heads/$1" '/^worktree /{d=$2} /^branch /{if ($2==want) {print d; exit}}' \
+    | grep . || dir_for "$1"
+}
+
+behind_count() { git -C "$1" rev-list --count HEAD..origin/main 2>/dev/null || echo 0; }
+branch_of() { git -C "$1" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "(detached)"; }
+is_dirty() { [ -n "$(git -C "$1" status --porcelain 2>/dev/null)" ]; }
 
 case "${1:-}" in
   new)
@@ -22,11 +48,54 @@ case "${1:-}" in
     echo "$(dir_for "$branch")"
     ;;
   ls) git -C "$root" worktree list ;;
+  status)
+    git -C "$root" fetch -q origin
+    while read -r dir; do
+      [ -d "$dir" ] || continue
+      behind=$(behind_count "$dir")
+      state="up to date"
+      [ "$behind" -gt 0 ] && state="$behind behind origin/main — run: scripts/wt sync"
+      is_dirty "$dir" && state="$state, dirty"
+      label=${dir#"$root"/}; [ "$dir" = "$root" ] && label="(main checkout)"
+      printf '%-28s %-34s %s\n' "$(branch_of "$dir")" "$label" "$state"
+    done < <(worktree_dirs)
+    ;;
+  sync)
+    # `main` moves under you constantly here, and a branch that has fallen behind far
+    # enough to conflict stops getting CI entirely: GitHub cannot build
+    # refs/pull/N/merge for a conflicting PR, so it creates no `pull_request` runs and
+    # the checks list shows only `enable`. Rebase before you wonder why CI is quiet.
+    dir=${2:+$(dir_of_branch "$2")}; dir=${dir:-$PWD}
+    [ -d "$dir" ] || { echo "no worktree at $dir" >&2; exit 1; }
+    if is_dirty "$dir"; then
+      echo "$dir has uncommitted changes; commit or stash them first" >&2
+      exit 1
+    fi
+    git -C "$dir" fetch -q origin
+    behind=$(behind_count "$dir")
+    if [ "$behind" -eq 0 ]; then
+      echo "$(branch_of "$dir") is already on top of origin/main"
+      exit 0
+    fi
+    echo "$(branch_of "$dir") is $behind commit(s) behind origin/main; rebasing"
+    if git -C "$dir" rebase origin/main; then
+      echo "rebased onto $(git -C "$dir" rev-parse --short origin/main); re-run the tests before pushing"
+    else
+      cat >&2 <<'EOF'
+
+Rebase stopped on a conflict. Resolve the files it lists, `git add` those paths, then
+`git rebase --continue` (or `git rebase --abort` to back out). Until this branch is on
+top of origin/main its pull request is conflicted, and a conflicted pull request gets no
+`ci` run at all — the checks list will show only `enable`.
+EOF
+      exit 1
+    fi
+    ;;
   rm)
     branch=${2:?branch name}
     git -C "$root" worktree remove "$(dir_for "$branch")"
     git -C "$root" branch -d "$branch" 2>/dev/null || echo "branch $branch kept (not merged)"
     ;;
   prune) git -C "$root" worktree prune -v ;;
-  *) sed -n '2,12p' "$0"; exit 1 ;;
+  *) sed -n '2,/^$/p' "$0"; exit 1 ;;
 esac
