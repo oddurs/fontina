@@ -67,6 +67,66 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Run health checks (fontbakery-lite) on faces. Exit code 1 if any check errors.
+    Check {
+        /// Face ids or font file paths.
+        targets: Vec<String>,
+        /// Also fail on warnings.
+        #[arg(long)]
+        strict: bool,
+        /// Hide findings below this level: info, warn or error.
+        #[arg(long, default_value = "info")]
+        min: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Find indexed faces whose character map covers every character of a text.
+    Covers {
+        text: String,
+        /// Only variable fonts.
+        #[arg(long)]
+        variable: bool,
+        #[arg(long)]
+        under: Option<String>,
+        #[arg(long, short = 'n')]
+        limit: Option<usize>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show a face's character coverage by Unicode block.
+    Glyphs {
+        target: String,
+        /// Print the characters of one block (case-insensitive substring of the block name).
+        #[arg(long)]
+        block: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// License and embedding report: SPDX identifier, embedding rights, reserved font names.
+    License {
+        /// Face ids or font file paths; every indexed face when omitted.
+        targets: Vec<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Write a self-contained HTML specimen: waterfall, script samples, axis sliders,
+    /// feature toggles, glyph map, and side-by-side comparison for several faces.
+    Specimen {
+        /// Face ids or font file paths.
+        targets: Vec<String>,
+        /// Output file; `-` for stdout.
+        #[arg(long, short = 'o', default_value = "-")]
+        output: PathBuf,
+        /// Sample text.
+        #[arg(long)]
+        text: Option<String>,
+        /// Reference font files by path instead of embedding them (smaller, but only
+        /// works when served over HTTP or in browsers that allow file:// font loads).
+        #[arg(long)]
+        link: bool,
+        #[arg(long)]
+        title: Option<String>,
+    },
     /// Print the JSON Schema for face metadata.
     Schema,
 }
@@ -287,6 +347,237 @@ fn run() -> Result<()> {
                 }
             }
         }
+        Command::Check {
+            targets,
+            strict,
+            min,
+            json,
+        } => {
+            if targets.is_empty() {
+                bail!("pass face ids or font file paths");
+            }
+            let min_sev = match min.as_str() {
+                "info" => unifont_core::Severity::Info,
+                "warn" | "warning" => unifont_core::Severity::Warn,
+                "error" => unifont_core::Severity::Error,
+                other => bail!("unknown level {other:?}; use info, warn or error"),
+            };
+            let mut reports = Vec::new();
+            for t in targets {
+                for face in resolve_faces(&cli, t)? {
+                    let mut r = unifont_core::check_face(&face);
+                    r.findings.retain(|f| f.severity >= min_sev);
+                    reports.push(r);
+                }
+            }
+            let failed = reports.iter().filter(|r| !r.passed(*strict)).count();
+            if *json {
+                println!("{}", serde_json::to_string_pretty(&reports)?);
+            } else {
+                for r in &reports {
+                    let status = if r.passed(*strict) { "PASS" } else { "FAIL" };
+                    println!(
+                        "{status}  {} {}  ({}#{})  {} error(s), {} warning(s)",
+                        r.family, r.subfamily, r.path, r.index, r.errors, r.warnings
+                    );
+                    for f in &r.findings {
+                        let tag = match f.severity {
+                            unifont_core::Severity::Error => "ERROR",
+                            unifont_core::Severity::Warn => "WARN ",
+                            unifont_core::Severity::Info => "info ",
+                        };
+                        println!("  {tag} {:<22} {}", f.id, f.message);
+                    }
+                }
+                println!("{} face(s) checked, {} failed", reports.len(), failed);
+            }
+            if failed > 0 {
+                std::process::exit(1);
+            }
+        }
+        Command::Covers {
+            text,
+            variable,
+            under,
+            limit,
+            json,
+        } => {
+            let index = open_index(&cli)?;
+            let filter = FaceFilter {
+                variable: if *variable { Some(true) } else { None },
+                path_prefix: under.clone(),
+                limit: *limit,
+                ..Default::default()
+            };
+            let faces = index.covering(text, &filter)?;
+            if *json {
+                println!("{}", serde_json::to_string_pretty(&faces)?);
+            } else {
+                let n = text
+                    .chars()
+                    .filter(|c| !c.is_whitespace() && !c.is_control())
+                    .collect::<std::collections::BTreeSet<_>>()
+                    .len();
+                println!("{} distinct character(s)", n);
+                print_table(&faces);
+            }
+        }
+        Command::Glyphs {
+            target,
+            block,
+            json,
+        } => {
+            let faces = resolve_faces(&cli, target)?;
+            for face in &faces {
+                let blocks = unifont_core::unicode::glyph_map(&face.coverage.ranges);
+                if let Some(name) = block {
+                    let needle = name.to_ascii_lowercase();
+                    let hits: Vec<_> = blocks
+                        .iter()
+                        .filter(|b| b.block.to_ascii_lowercase().contains(&needle))
+                        .collect();
+                    if hits.is_empty() {
+                        bail!("no covered block matches {name:?}");
+                    }
+                    if *json {
+                        println!("{}", serde_json::to_string_pretty(&hits)?);
+                    } else {
+                        for b in hits {
+                            println!(
+                                "{} (U+{:04X}–U+{:04X}): {} of {}",
+                                b.block,
+                                b.start,
+                                b.end,
+                                b.codepoints.len(),
+                                b.block_size
+                            );
+                            let chars: Vec<char> = b
+                                .codepoints
+                                .iter()
+                                .filter_map(|&c| char::from_u32(c))
+                                .map(|c| if c.is_control() { '\u{FFFD}' } else { c })
+                                .collect();
+                            for chunk in chars.chunks(64) {
+                                println!("  {}", chunk.iter().collect::<String>());
+                            }
+                        }
+                    }
+                } else if *json {
+                    println!("{}", serde_json::to_string_pretty(&blocks)?);
+                } else {
+                    println!(
+                        "{} {}: {} codepoints in {} blocks",
+                        face.names.family,
+                        face.names.subfamily,
+                        face.coverage.codepoints,
+                        blocks.len()
+                    );
+                    for b in &blocks {
+                        println!(
+                            "  {:<44} U+{:04X}–U+{:04X}  {:>5} / {:<5} {:>3}%",
+                            b.block,
+                            b.start,
+                            b.end,
+                            b.codepoints.len(),
+                            b.block_size,
+                            b.codepoints.len() * 100 / b.block_size as usize
+                        );
+                    }
+                }
+            }
+        }
+        Command::License { targets, json } => {
+            let faces: Vec<unifont_core::FaceMetadata> = if targets.is_empty() {
+                let index = open_index(&cli)?;
+                let mut out = Vec::new();
+                for s in index.list(&FaceFilter::default())? {
+                    if let Some(f) = index.get_face(s.id)? {
+                        out.push(f);
+                    }
+                }
+                out
+            } else {
+                let mut out = Vec::new();
+                for t in targets {
+                    out.extend(resolve_faces(&cli, t)?);
+                }
+                out
+            };
+            let rows: Vec<LicenseRow> = faces
+                .iter()
+                .map(|f| LicenseRow {
+                    family: &f.names.family,
+                    subfamily: &f.names.subfamily,
+                    path: &f.file.path,
+                    spdx: f.license.spdx.as_deref(),
+                    embedding: f.os2.as_ref().map(|o| &o.embedding),
+                    reserved_font_names: &f.license.reserved_font_names,
+                    url: f.license.url.as_deref(),
+                    copyright: f.names.copyright.as_deref(),
+                })
+                .collect();
+            if *json {
+                println!("{}", serde_json::to_string_pretty(&rows)?);
+            } else {
+                let mut by: std::collections::BTreeMap<String, Vec<&LicenseRow>> =
+                    Default::default();
+                for r in &rows {
+                    by.entry(r.spdx.unwrap_or("(none embedded)").to_string())
+                        .or_default()
+                        .push(r);
+                }
+                for (spdx, rs) in &by {
+                    println!("{spdx}  ({} face(s))", rs.len());
+                    for r in rs {
+                        let emb = r
+                            .embedding
+                            .map(|e| format!("{:?}", e.level))
+                            .unwrap_or_else(|| "-".into());
+                        let rfn = if r.reserved_font_names.is_empty() {
+                            String::new()
+                        } else {
+                            format!("  RFN: {}", r.reserved_font_names.join(", "))
+                        };
+                        println!("  {} {}  [{emb}]{rfn}  {}", r.family, r.subfamily, r.path);
+                    }
+                }
+            }
+        }
+        Command::Specimen {
+            targets,
+            output,
+            text,
+            link,
+            title,
+        } => {
+            if targets.is_empty() {
+                bail!("pass face ids or font file paths");
+            }
+            let mut faces = Vec::new();
+            for t in targets {
+                faces.extend(resolve_faces(&cli, t)?);
+            }
+            let html = unifont_core::specimen::render(
+                &faces,
+                &unifont_core::specimen::SpecimenOptions {
+                    text: text.clone(),
+                    link: *link,
+                    title: title.clone(),
+                },
+            )?;
+            if output.as_os_str() == "-" {
+                print!("{html}");
+            } else {
+                std::fs::write(output, &html)
+                    .with_context(|| format!("writing {}", output.display()))?;
+                eprintln!(
+                    "wrote {} ({} faces, {} KB)",
+                    output.display(),
+                    faces.len(),
+                    html.len() / 1024
+                );
+            }
+        }
         Command::Schema => {
             println!(
                 "{}",
@@ -295,6 +586,18 @@ fn run() -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[derive(serde::Serialize)]
+struct LicenseRow<'a> {
+    family: &'a str,
+    subfamily: &'a str,
+    path: &'a str,
+    spdx: Option<&'a str>,
+    embedding: Option<&'a unifont_core::model::EmbeddingRights>,
+    reserved_font_names: &'a [String],
+    url: Option<&'a str>,
+    copyright: Option<&'a str>,
 }
 
 /// A target is a face id when numeric and not an existing path; otherwise a file path,

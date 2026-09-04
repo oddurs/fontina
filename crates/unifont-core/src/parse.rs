@@ -361,6 +361,10 @@ fn parse_one(font: &FontRef, index: u32, file: &FileInfo) -> Result<FaceMetadata
     let license_url = english(font, StringId::LICENSE_URL);
     let license = LicenseInfo {
         spdx: spdx_from_names(license_description.as_deref(), license_url.as_deref()),
+        reserved_font_names: crate::license::reserved_font_names(&[
+            names.copyright.as_deref(),
+            license_description.as_deref(),
+        ]),
         description: license_description,
         url: license_url,
     };

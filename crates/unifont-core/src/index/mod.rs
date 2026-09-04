@@ -149,7 +149,7 @@ impl Index {
                     .collect::<Vec<_>>()
                     .join(",")
             );
-            stmt.execute(params![
+            let face_id = stmt.insert(params![
                 file_id,
                 face.index,
                 face.names.postscript_name,
@@ -170,6 +170,7 @@ impl Index {
                 scripts,
                 serde_json::to_string(face)?,
             ])?;
+            insert_ranges(tx, face_id, &face.coverage.ranges)?;
         }
         Ok(())
     }
@@ -308,6 +309,54 @@ impl Index {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
+    /// Faces whose cmap covers every character in `text` (whitespace and controls
+    /// ignored). At most 500 distinct characters.
+    pub fn covering(&self, text: &str, filter: &FaceFilter) -> Result<Vec<FaceSummary>> {
+        let mut cps: Vec<u32> = text
+            .chars()
+            .filter(|c| !c.is_whitespace() && !c.is_control())
+            .map(|c| c as u32)
+            .collect();
+        cps.sort_unstable();
+        cps.dedup();
+        if cps.is_empty() {
+            return Ok(Vec::new());
+        }
+        if cps.len() > 500 {
+            return Err(crate::Error::Other(
+                "text has more than 500 distinct characters".into(),
+            ));
+        }
+        let mut sql = String::from(Self::SUMMARY_SELECT);
+        sql.push_str(" WHERE 1=1");
+        let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        for cp in &cps {
+            sql.push_str(" AND EXISTS (SELECT 1 FROM face_ranges r WHERE r.face_id = f.id AND r.lo <= ? AND r.hi >= ?)");
+            args.push(Box::new(*cp as i64));
+            args.push(Box::new(*cp as i64));
+        }
+        if let Some(v) = filter.variable {
+            sql.push_str(" AND f.is_variable = ?");
+            args.push(Box::new(v));
+        }
+        if let Some(p) = &filter.path_prefix {
+            sql.push_str(" AND fi.path LIKE ?");
+            args.push(Box::new(format!("{}%", p)));
+        }
+        sql.push_str(
+            " ORDER BY f.family COLLATE NOCASE, f.weight, f.italic, fi.path, f.face_index",
+        );
+        if let Some(n) = filter.limit {
+            sql.push_str(&format!(" LIMIT {n}"));
+        }
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map(
+            rusqlite::params_from_iter(args.iter().map(|a| a.as_ref())),
+            Self::row_to_summary,
+        )?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
     pub fn get_face(&self, id: i64) -> Result<Option<FaceMetadata>> {
         let json: Option<String> = self
             .conn
@@ -407,6 +456,15 @@ impl Index {
         let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
+}
+
+pub(crate) fn insert_ranges(tx: &Transaction, face_id: i64, ranges: &[[u32; 2]]) -> Result<()> {
+    let mut stmt =
+        tx.prepare_cached("INSERT INTO face_ranges (face_id, lo, hi) VALUES (?1, ?2, ?3)")?;
+    for [lo, hi] in ranges {
+        stmt.execute(params![face_id, *lo as i64, *hi as i64])?;
+    }
+    Ok(())
 }
 
 /// Turn free text into an FTS5 prefix query: each term quoted and suffixed with `*`.

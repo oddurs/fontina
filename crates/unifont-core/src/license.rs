@@ -64,9 +64,71 @@ pub fn spdx_from_names(description: Option<&str>, url: Option<&str>) -> Option<S
     Some(id.to_string())
 }
 
+/// Extract OFL "Reserved Font Name" declarations from copyright/license text.
+/// Handles `Reserved Font Name "Foo"`, `Reserved Font Names "Foo" and "Bar"`,
+/// `Reserved Font Name Foo.` and comma lists.
+pub fn reserved_font_names(texts: &[Option<&str>]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for text in texts.iter().flatten() {
+        let lower = text.to_ascii_lowercase();
+        let mut from = 0;
+        while let Some(pos) = lower[from..].find("reserved font name") {
+            let start = from + pos + "reserved font name".len();
+            let rest = &text[start..];
+            let rest = rest.trim_start_matches(['s', 'S']);
+            let rest = rest.trim_start_matches(|c: char| c == ':' || c.is_whitespace());
+            // Take up to a sentence end or a line break.
+            let end = rest
+                .find(['.', '\n', '\r', ';'])
+                .map(|i| i.min(200))
+                .unwrap_or(rest.len().min(200));
+            let clause = &rest[..end];
+            let quoted: Vec<String> = clause
+                .split(['"', '\u{201C}', '\u{201D}', '\u{2018}', '\u{2019}', '\''])
+                .enumerate()
+                .filter(|(i, _)| i % 2 == 1)
+                .map(|(_, s)| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            let names: Vec<String> = if quoted.is_empty() {
+                clause
+                    .split([',', '&'])
+                    .flat_map(|part| part.split(" and "))
+                    .map(|s| {
+                        s.trim()
+                            .trim_matches(|c: char| c == '\'' || c == '"')
+                            .to_string()
+                    })
+                    .filter(|s| !s.is_empty() && s.len() < 60)
+                    .collect()
+            } else {
+                quoted
+            };
+            for n in names {
+                if !out.iter().any(|o| o.eq_ignore_ascii_case(&n)) {
+                    out.push(n);
+                }
+            }
+            from = start;
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extracts_reserved_font_names() {
+        let t = "Copyright 2010 The Amiri Project Authors, with Reserved Font Name \"Amiri\".";
+        assert_eq!(reserved_font_names(&[Some(t)]), vec!["Amiri"]);
+        let t = "Copyright (c) 2011, Foo Bar (foo@example.com), with Reserved Font Names \"Foo\" and \"Foo Sans\".";
+        assert_eq!(reserved_font_names(&[Some(t)]), vec!["Foo", "Foo Sans"]);
+        let t = "with Reserved Font Name Ubuntu.";
+        assert_eq!(reserved_font_names(&[Some(t)]), vec!["Ubuntu"]);
+        assert!(reserved_font_names(&[Some("no names here"), None]).is_empty());
+    }
 
     #[test]
     fn recognises_common_licenses() {

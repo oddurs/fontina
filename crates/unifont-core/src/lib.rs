@@ -11,6 +11,7 @@
 //! - [`scan`]: parallel directory scanning that feeds the index.
 //! - [`css`]: `@font-face` rule generation (CSS Fonts Level 4 is the style model).
 
+pub mod check;
 pub mod container;
 pub mod css;
 pub mod error;
@@ -19,8 +20,10 @@ pub mod license;
 pub mod model;
 pub mod parse;
 pub mod scan;
-mod unicode;
+pub mod specimen;
+pub mod unicode;
 
+pub use check::{CheckReport, Finding, Severity, check_face};
 pub use error::{Error, Result};
 pub use index::{DuplicateGroup, FaceFilter, FaceSummary, Index};
 pub use model::{Container, FaceMetadata, FileInfo};

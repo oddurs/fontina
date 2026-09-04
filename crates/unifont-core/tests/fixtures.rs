@@ -208,3 +208,138 @@ fn malformed_input_is_an_error_not_a_panic() {
     assert_eq!(index.stats().unwrap().failed_files, 2);
     std::fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn health_checks_pass_on_well_formed_fixtures() {
+    for name in [
+        "Amiri-Regular.ttf",
+        "BricolageGrotesque[opsz,wdth,wght].ttf",
+        "SourceSerif4-Regular.otf",
+    ] {
+        let (_, faces) = load_file(&fixture(name)).unwrap();
+        let r = unifont_core::check_face(&faces[0]);
+        assert_eq!(r.errors, 0, "{name}: {:?}", r.findings);
+        assert_eq!(r.warnings, 0, "{name}: {:?}", r.findings);
+        assert!(r.passed(true));
+    }
+}
+
+#[test]
+fn health_checks_flag_broken_metadata() {
+    let (_, mut faces) = load_file(&fixture("Amiri-Regular.ttf")).unwrap();
+    let f = &mut faces[0];
+    f.names.postscript_name = Some(
+        "Has Spaces And Is Far Too Long For A PostScript Name To Be Accepted By Anything".into(),
+    );
+    f.os2.as_mut().unwrap().weight_class = 1200;
+    f.features.scripts.clear(); // Arabic coverage without an arab script: shaping warning
+    f.license.spdx = None;
+    let r = unifont_core::check_face(f);
+    let ids: Vec<&str> = r.findings.iter().map(|x| x.id).collect();
+    assert!(ids.contains(&"name/postscript"), "{ids:?}");
+    assert!(ids.contains(&"os2/weight-class"), "{ids:?}");
+    assert!(ids.contains(&"layout/shaping"), "{ids:?}");
+    assert!(ids.contains(&"license/missing"), "{ids:?}");
+    assert!(r.errors >= 2);
+    assert!(!r.passed(false));
+    // Findings are ordered most severe first.
+    assert!(
+        r.findings
+            .windows(2)
+            .all(|w| w[0].severity >= w[1].severity)
+    );
+}
+
+#[test]
+fn glyph_map_groups_by_unicode_block() {
+    let (_, faces) = load_file(&fixture("Amiri-Regular.ttf")).unwrap();
+    let blocks = unifont_core::unicode::glyph_map(&faces[0].coverage.ranges);
+    let arabic = blocks
+        .iter()
+        .find(|b| b.block == "Arabic")
+        .expect("Arabic block");
+    assert_eq!(arabic.start, 0x0600);
+    assert_eq!(arabic.block_size, 256);
+    assert!(arabic.codepoints.len() > 200);
+    let total: usize = blocks.iter().map(|b| b.codepoints.len()).sum();
+    assert_eq!(total as u32, faces[0].coverage.codepoints);
+}
+
+#[test]
+fn covering_finds_faces_for_text_and_migrates_old_indexes() {
+    let mut index = Index::open_in_memory().unwrap();
+    unifont_core::scan::scan(&mut index, &[fixture("")], &ScanOptions::default()).unwrap();
+    let latin = index
+        .covering("Sphinx of black quartz", &FaceFilter::default())
+        .unwrap();
+    assert!(latin.len() >= 5, "{latin:?}");
+    let arabic = index.covering("صِف خَلقَ", &FaceFilter::default()).unwrap();
+    assert_eq!(arabic.len(), 1);
+    assert_eq!(arabic[0].family, "Amiri");
+    let none = index.covering("視野", &FaceFilter::default()).unwrap();
+    assert!(none.is_empty());
+    assert!(
+        index
+            .covering("   ", &FaceFilter::default())
+            .unwrap()
+            .is_empty()
+    );
+
+    // A v1 database (no face_ranges) is upgraded and backfilled on open.
+    let dir = std::env::temp_dir().join(format!("unifont-migrate-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let db = dir.join("v1.db");
+    {
+        let mut idx = Index::open(&db).unwrap();
+        unifont_core::scan::scan(
+            &mut idx,
+            &[fixture("Amiri-Regular.ttf")],
+            &ScanOptions::default(),
+        )
+        .unwrap();
+    }
+    {
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        conn.execute_batch("DROP TABLE face_ranges; PRAGMA user_version = 1;")
+            .unwrap();
+    }
+    let idx = Index::open(&db).unwrap();
+    let hits = idx.covering("صِف", &FaceFilter::default()).unwrap();
+    assert_eq!(hits.len(), 1);
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn specimen_is_self_contained_html() {
+    let (_, a) = load_file(&fixture("BricolageGrotesque[opsz,wdth,wght].ttf")).unwrap();
+    let (_, b) = load_file(&fixture("Amiri-Regular.ttf")).unwrap();
+    let faces = vec![a[0].clone(), b[0].clone()];
+    let html =
+        unifont_core::specimen::render(&faces, &unifont_core::specimen::SpecimenOptions::default())
+            .unwrap();
+    assert!(html.starts_with("<!doctype html>"));
+    assert_eq!(html.matches("@font-face").count(), 2);
+    assert!(html.contains("data:font/ttf;base64,"));
+    assert_eq!(
+        html.matches("class=\"axis\"").count(),
+        3,
+        "three axis sliders"
+    );
+    assert!(html.contains("dir=\"rtl\""), "Arabic sample paragraph");
+    assert!(
+        html.contains("<section class=\"compare\">"),
+        "compare section for two faces"
+    );
+    assert!(html.contains("font-weight:200 800"));
+    let linked = unifont_core::specimen::render(
+        &faces[..1],
+        &unifont_core::specimen::SpecimenOptions {
+            link: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert!(linked.contains("url(\"file://"));
+    assert!(!linked.contains("base64"));
+    assert!(!linked.contains("<section class=\"compare\">"));
+}

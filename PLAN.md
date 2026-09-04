@@ -169,6 +169,11 @@ unifont watch                    foreground watcher (for scripts / systemd user 
 - Packaging: `.dmg`, `.msi`/MSIX, AppImage + Flatpak manifest. Signed and notarised.
 
 ### M2 — Pro typography (weeks 10–16)
+
+*Delivered through core and CLI ahead of the shell (2026-09-04): `check`, `covers`,
+`glyphs`, `license` with reserved font names, and the HTML `specimen` with axis
+sliders, feature toggles, waterfall, glyph map and compare. The in-app versions reuse
+these modules.*
 - Variable axis sliders with named‑instance snapping; OpenType feature toggles with live preview.
 - Glyph map by Unicode block with codepoint search; "which fonts cover this text?".
 - Compare view (side‑by‑side and overlay), waterfall, paragraph/body test.

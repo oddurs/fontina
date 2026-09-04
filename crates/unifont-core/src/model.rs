@@ -355,6 +355,9 @@ pub struct LicenseInfo {
     pub description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+    /// OFL Reserved Font Names declared in the copyright or license text.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reserved_font_names: Vec<String>,
 }
 
 /// Everything unifont knows about one face.
