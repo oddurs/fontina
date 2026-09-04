@@ -1,3 +1,5 @@
+mod ui;
+
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
 use std::io::Write as _;
@@ -213,6 +215,8 @@ enum Command {
     /// Show faces as real, shaped glyphs in the terminal (kitty, iTerm2 or sixel
     /// images, or half-block text anywhere), or write a PNG.
     Preview(PreviewArgs),
+    /// Browse the index: facets, families, faces, details and previews, keyboard first.
+    Ui,
     /// Print a JSON Schema: `face` (default), `collection`, or `cli-output`.
     Schema {
         #[arg(default_value = "face")]
@@ -1049,6 +1053,10 @@ fn run() -> Result<()> {
             }
         }
         Command::Preview(args) => run_preview(&cli, args)?,
+        Command::Ui => {
+            let path = cli.db.clone().unwrap_or_else(Index::default_path);
+            ui::run(&path)?
+        }
         Command::Schema { which } => {
             let schema = match which.as_str() {
                 "face" => unifont_core::face_schema(),
@@ -1658,7 +1666,7 @@ fn system_roots() -> Vec<String> {
         .collect()
 }
 
-fn collect_conflicts(index: &Index, ids: &[i64]) -> Result<Vec<unifont_core::Conflict>> {
+pub(crate) fn collect_conflicts(index: &Index, ids: &[i64]) -> Result<Vec<unifont_core::Conflict>> {
     let roots = system_roots();
     let mut out: Vec<unifont_core::Conflict> = Vec::new();
     for id in ids {
@@ -1685,7 +1693,7 @@ fn print_conflicts(conflicts: &[unifont_core::Conflict]) {
 }
 
 /// The distinct files behind a set of face ids, each with every face id in that file.
-fn files_for(index: &Index, ids: &[i64]) -> Result<Vec<(PathBuf, Vec<i64>)>> {
+pub(crate) fn files_for(index: &Index, ids: &[i64]) -> Result<Vec<(PathBuf, Vec<i64>)>> {
     let mut out: Vec<(PathBuf, Vec<i64>)> = Vec::new();
     for s in index.summaries(ids)? {
         let path = PathBuf::from(&s.path);
@@ -2052,4 +2060,11 @@ unsafe fn libc_ioctl_winsize(ws: *mut u16) -> i32 {
     #[cfg(not(any(target_os = "macos", target_os = "freebsd", target_os = "openbsd")))]
     const TIOCGWINSZ: u64 = 0x5413;
     unsafe { ioctl(1, TIOCGWINSZ, ws) }
+}
+
+/// A stable key for a parsed face, for caches: the file's hash and the face index.
+pub(crate) fn face_key(face: &unifont_core::FaceMetadata) -> i64 {
+    let h = &face.file.blake3;
+    let n = i64::from_str_radix(&h[..15.min(h.len())], 16).unwrap_or(0);
+    n.wrapping_mul(31).wrapping_add(face.index as i64)
 }
