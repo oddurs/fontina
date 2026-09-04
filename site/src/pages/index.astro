@@ -3,96 +3,87 @@ import Base from '../layouts/Base.astro';
 import { getCollection } from 'astro:content';
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const u = (p: string) => `${base}${p}`;
-const news = (await getCollection('news')).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf()).slice(0, 5);
+const repo = 'https://github.com/oddurs/unifont';
+const news = (await getCollection('news')).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf()).slice(0, 10);
+const day = (d: Date) => d.toISOString().slice(0, 10);
+
+// Prose is written as HTML strings: Astro drops the whitespace between text and a
+// tag at a line break, which runs words into links.
+const intro = `
+<p>unifont finds the fonts on a machine and in a user's own folders, reads what they
+contain through <a href="https://github.com/googlefonts/fontations">fontations</a>,
+keeps it in a searchable <a href="${u('/docs/index-and-paths/')}">index</a>, and answers
+questions about it: which faces cover <a href="${u('/docs/getting-started/#looking')}">a
+script</a>, which are variable, which may be <a href="${u('/docs/cli/#checking')}">embedded</a>,
+which file is a duplicate of which. It exports what it knows as
+<a href="${u('/docs/specimen/')}">CSS and HTML specimens</a> and as JSON with a
+<a href="${u('/docs/json-and-schemas/')}">published schema</a>. It is a Rust library first,
+a <a href="${u('/docs/cli/')}">command line</a> second, and a desktop application third.
+unifont is <a href="${u('/license/')}">free software</a>, free in the sense that it makes
+no network connections, collects nothing, asks for no privileges, and leaves the system
+font directories alone.</p>
+
+<p>We strive to provide regular, verifiable <a href="${u('/releases/')}">releases</a> that
+work on GNU/Linux, macOS and Windows, and encourage everyone to
+<a href="${u('/contributing/')}">contribute</a> changes or help with
+<a href="${u('/bugs/')}">testing</a>. Our sources are readily and freely available via
+<a href="${repo}">Git</a>.</p>
+
+<p>Decisions about unifont are recorded as
+<a href="${u('/adr/')}">architecture decision records</a>, guided by the
+<a href="${u('/mission/')}">mission statement</a>.</p>
+`;
+
+const status = `
+<dl class="status">
+<dt><span class="version"><a href="${repo}/releases/tag/v0.0.1">unifont 0.0.1</a></span>
+  (<a href="${repo}/blob/main/CHANGELOG.md">changes</a>)</dt>
+<dd>Status: <a href="${u('/news/2026-09-03-project-started/')}">2026-09-03</a>
+  (pre-release; core library and command line).
+  <div class="regress">
+  <a href="${repo}/issues?q=is%3Aissue+is%3Aopen+label%3Abug">Open bugs</a>.
+  <a href="${repo}/issues?q=is%3Aissue+is%3Aopen+label%3Aregression">Regressions</a>.
+  </div></dd>
+<dt><span class="version">Development:</span>
+  unifont 0.1 (<a href="${u('/roadmap/')}">roadmap</a>, <a href="${repo}/commits/main">changes</a>)</dt>
+<dd>Status: activation, watching and the terminal interface (general development).
+  <div class="regress">
+  <a href="${repo}/actions/workflows/ci.yml?query=branch%3Amain">CI on main</a>.
+  <a href="${repo}/pulls">Open pull requests</a>.
+  </div></dd>
+</dl>
+
+<h2>Get our announcements</h2>
+<p class="smaller">Subscribe to the <a href="${u('/feed.xml')}">news feed</a>, or watch
+<a href="${repo}/releases">releases on GitHub</a>. There is no mailing list and nothing
+to sign up for.</p>
+
+<h2>Get unifont</h2>
+<p class="smaller"><a href="${u('/download/')}">Binaries</a> for each release, with
+checksums and provenance, or <a href="${u('/download/#building-from-source')}">from
+source</a> with Rust 1.88 or newer.</p>
+`;
 ---
-<Base title="unifont" description="A lightweight, cross-platform, free software font manager. Rust core, thin native shell, open standards end to end." source="site/src/pages/index.astro">
-  <h1>Introduction to unifont</h1>
-
-  <p>
-    unifont is a font manager. It finds the fonts on your machine and in your own
-    folders, reads what they contain, and answers questions about them: which faces
-    cover Arabic, which are variable, which you are licensed to embed, which file is a
-    duplicate of which. It exports what it knows as CSS, JSON and HTML specimens.
-  </p>
-  <p>
-    It is a Rust library first, a command-line program second, and a desktop
-    application third. The library and the command line exist today. The desktop
-    shell is <a href={u('/roadmap/')}>planned</a>.
-  </p>
-  <p>
-    It is free software, released under the MIT license or the Apache License 2.0 at
-    your option. It makes no network connections, collects no data, never asks for
-    elevated privileges, and never writes into a system font directory.
-  </p>
-
-  <h2>Current status</h2>
-  <p>
-    Version 0.0.1, pre-release. The core and the command line parse TTF, OTF, TTC, WOFF
-    and WOFF2; build a searchable SQLite index; group faces into families from the
-    typographic name records and the <code>STAT</code> table; run health checks; report
-    licenses as SPDX identifiers; tag faces, keep collections and register source
-    directories; and export <code>@font-face</code> rules and self-contained HTML
-    specimens. Font activation on Linux, macOS and Windows is the next milestone.
-  </p>
-  <p>
-    "unifont" is a working name. It collides with GNU Unifont, the bitmap font, and will
-    change before the first release.
-  </p>
-
-  <h2>Principles</h2>
-  <p>These are not aspirations. They are checked in continuous integration or refused in review.</p>
-  <dl>
-    <dt>Correct</dt>
-    <dd>Every byte of OpenType is parsed by <a href="https://github.com/googlefonts/fontations">fontations</a>,
-      the parser Chrome and Skia use. Families come from name IDs 16 and 17 and from
-      <code>STAT</code>, never from file names.</dd>
-    <dt>Standard</dt>
-    <dd>The style model is CSS Fonts Level 4. Licenses are SPDX. Paths follow the XDG
-      Base Directory specification. Every export is JSON with a published JSON Schema.
-      Configuration is TOML.</dd>
-    <dt>Light</dt>
-    <dd>Install size, start time and idle memory have hard budgets. A build that
-      exceeds them fails.</dd>
-    <dt>Private</dt>
-    <dd>No network calls in the core or the command line. No telemetry, ever. Catalog
-      features, when they come, are opt-in and live only in the desktop application.</dd>
-    <dt>Per-user</dt>
-    <dd>System font directories are never modified. Nothing requires elevation.</dd>
-    <dt>Reproducible</dt>
-    <dd>Releases carry SHA-256 checksums, SLSA build provenance attestations and an SPDX
-      software bill of materials.</dd>
-  </dl>
-
-  <h2>Getting it</h2>
-  <p>
-    See <a href={u('/download/')}>Download</a> for release binaries and how to verify
-    them, or build from source with a Rust toolchain of version 1.88 or newer:
-  </p>
-  <pre><code>cargo install --git https://github.com/oddurs/unifont unifont-cli</code></pre>
-
-  <h2>Documentation</h2>
-  <ul>
-    <li><a href={u('/docs/')}>The unifont manual</a>, including the
-      <a href={u('/docs/cli/')}>command reference</a> in the form of a man page.</li>
-    <li><a href={u('/faq/')}>Frequently asked questions</a>.</li>
-    <li><a href={u('/adr/')}>Architecture decision records</a>: why fontations, why SQLite, why a webview.</li>
-    <li><a href={u('/roadmap/')}>Roadmap</a>: what exists, what is next, what is out of scope.</li>
-  </ul>
-
-  <h2>Recent news</h2>
-  <ul>
-    {news.map((n) => (
-      <li>{n.data.date.toISOString().slice(0, 10)}: <a href={u(`/news/${n.id}/`)}>{n.data.title}</a></li>
-    ))}
-  </ul>
-  <p><a href={u('/news/')}>All news</a>, also as an <a href={u('/feed.xml')}>RSS feed</a>.</p>
-
-  <h2>Help wanted</h2>
-  <p>
-    unifont is developed in the open at
-    <a href="https://github.com/oddurs/unifont">github.com/oddurs/unifont</a>.
-    Bug reports, fixture fonts under an open license, and platform testing on Linux
-    desktops are the most useful contributions right now. Read
-    <a href={u('/contributing/')}>Contributing</a> first.
-  </p>
+<Base title="unifont" description="unifont is a free software font manager: a Rust library, a command line, and soon a desktop application. Open standards end to end." source="site/src/pages/index.astro">
+  <h1 class="no-margin-top">unifont, a font manager</h1>
+  <Fragment set:html={intro} />
+  <hr />
+  <div class="columns">
+    <section class="col news">
+      <h2 id="news"><a href="#news">News</a></h2>
+      <dl class="news">
+        {news.map((n) => (
+          <>
+            <dt><a href={u(`/news/${n.id}/`)}>{n.data.title}</a> <span class="date">[{day(n.data.date)}]</span></dt>
+            <dd></dd>
+          </>
+        ))}
+      </dl>
+      <div><a href={u('/news/')}>Older news</a> | <span class="smaller">Announcements are also an <a href={u('/feed.xml')}>RSS feed</a>.</span></div>
+    </section>
+    <section class="col status">
+      <h2>Supported releases</h2>
+      <Fragment set:html={status} />
+    </section>
+  </div>
 </Base>

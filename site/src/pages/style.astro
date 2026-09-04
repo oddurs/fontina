@@ -1,0 +1,86 @@
+---
+import Base from '../layouts/Base.astro';
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+<Base title="Web style" description="The design system these pages are built from: tokens and components, each shown once." source="site/DESIGN.md">
+  <h1>Web style</h1>
+  <p>
+    These pages are built from a small design system derived from the <a href="https://gcc.gnu.org/">GCC web site</a>. It is written down in <a href="https://github.com/oddurs/unifont/blob/main/site/DESIGN.md"><code>site/DESIGN.md</code></a> and implemented, section for section, by one stylesheet. This page shows each
+    piece once so that a change can be checked by eye. Light mode only, the browser's
+    serif, no script, no web fonts, no external requests.
+  </p>
+
+  <h2>Tokens</h2>
+  <table>
+    <tr><th>Token</th><th>Value</th><th>Use</th></tr>
+    <tr><td><code>--heading</code></td><td>darkslategray</td><td>headings, news titles, <span class="highlight">highlight</span></td></tr>
+    <tr><td><code>--link</code></td><td>#0066bb</td><td><a href="#">a link</a>; visited #003399; hover darkorange</td></tr>
+    <tr><td><code>--accent</code></td><td>#0066dd</td><td>nav item header background</td></tr>
+    <tr><td><code>--rule</code></td><td>#3366cc</td><td>thin borders</td></tr>
+    <tr><td><code>--panel</code></td><td>#f2f2f9</td><td>panel backgrounds</td></tr>
+    <tr><td><code>--border</code></td><td>gray</td><td>table borders</td></tr>
+  </table>
+
+  <h2>Type</h2>
+  <p>Body text at 100% in the browser's serif. <span class="small">Small is 90%.</span> <span class="smaller">Smaller is 80%.</span> <span class="highlight">Highlight</span> is bold in the heading colour. Links are not underlined.</p>
+  <h3>A third-level heading</h3>
+  <h4>A fourth-level heading</h4>
+
+  <h2>Nav item</h2>
+  <div style="max-width: 11em">
+    <div class="navitem">
+      <div class="navhead">Documentation</div>
+      <div class="navbody">
+        <a href={`${base}/docs/`}>Manual</a><br />
+        &middot;&nbsp;<a href={`${base}/docs/cli/`}>Command reference</a><br />
+        <a href={`${base}/faq/`}>FAQ</a><br />
+      </div>
+    </div>
+  </div>
+
+  <h2>Columns, news list, status list</h2>
+  <div class="columns">
+    <section class="col news">
+      <h2>News</h2>
+      <dl class="news">
+        <dt><a href="#">A thing happened</a> <span class="date">[2026-09-03]</span></dt>
+        <dd>One line of detail.</dd>
+        <dt><a href="#">Another thing</a> <span class="date">[2026-09-01]</span></dt>
+        <dd></dd>
+      </dl>
+    </section>
+    <section class="col status">
+      <h2>Supported releases</h2>
+      <dl class="status">
+        <dt><span class="version"><a href="#">unifont 0.0.1</a></span> (<a href="#">changes</a>)</dt>
+        <dd>Status: <a href="#">2026-09-03</a> (pre-release).
+          <div class="regress"><a href="#">Open bugs</a>. <a href="#">Regressions</a>.</div></dd>
+      </dl>
+    </section>
+  </div>
+
+  <h2>Node nav</h2>
+  <p class="node-nav">Next: <a href="#">Concepts</a>, &nbsp;Previous: <a href="#">Getting started</a>, &nbsp;Up: <a href="#">Manual</a></p>
+
+  <h2>Padded table</h2>
+  <table>
+    <tr><th>Id</th><th>Level</th><th>Finding</th></tr>
+    <tr><td><code>name/family</code></td><td>error</td><td>no family name</td></tr>
+    <tr><td><code>hinting/none</code></td><td>info</td><td>TrueType outlines without hinting programs</td></tr>
+  </table>
+
+  <h2>Example</h2>
+  <pre>$ unifont list --script Arab
+    id  family   style     wght  wdth  flags  license   path
+     1  Amiri    Regular    400   100  ----   OFL-1.1   /home/me/Fonts/Amiri-Regular.ttf</pre>
+  <p>Inline <code>code</code> shares the panel background.</p>
+
+  <h2>Definition list, quotation, rule</h2>
+  <dl>
+    <dt>Face</dt>
+    <dd>One font, in one file, at one index.</dd>
+  </dl>
+  <blockquote>Standards over invention.</blockquote>
+  <hr />
+  <p>The copyright box at the foot of every page is the last component.</p>
+</Base>

@@ -1,12 +1,13 @@
 ---
-// The one layout. Everything on the site is this: a masthead, a horizontal rule,
-// the content, a horizontal rule, a footer.
+// The one layout, in the shape of gcc.gnu.org: a main column, a nav column of boxed
+// link groups on the right, and a copyright box across the bottom. See DESIGN.md.
 import '../styles/site.css';
+import { execSync } from 'node:child_process';
 
 interface Props {
   title: string;
   description?: string;
-  /** Path of the source file in the repository, for the "page source" footer link. */
+  /** Path of the page's source in the repository, for the "last modified" line. */
   source?: string;
 }
 
@@ -14,22 +15,52 @@ const { title, description, source } = Astro.props;
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const u = (p: string) => `${base}${p}`;
 const repo = 'https://github.com/oddurs/unifont';
-const today = new Date().toISOString().slice(0, 10);
-const nav: [string, string][] = [
-  ['Home', '/'],
-  ['Download', '/download/'],
-  ['Manual', '/docs/'],
-  ['FAQ', '/faq/'],
-  ['News', '/news/'],
-  ['Decisions', '/adr/'],
-  ['Roadmap', '/roadmap/'],
-  ['Contributing', '/contributing/'],
-  ['Bugs', '/bugs/'],
-  ['Security', '/security/'],
-  ['License', '/license/'],
+const isHome = (Astro.url.pathname.replace(base, '') || '/') === '/';
+const fullTitle = isHome ? 'unifont, a font manager' : `${title} - unifont`;
+
+// Last modified: the commit date of the page source, else today.
+let modified = new Date().toISOString().slice(0, 10);
+if (source) {
+  try {
+    const d = execSync(`git log -1 --format=%cs -- "${source}"`, { cwd: '..', stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d)) modified = d;
+  } catch {}
+}
+
+const groups: [string, [string, string, boolean?][]][] = [
+  ['About unifont', [
+    ['Mission', u('/mission/')],
+    ['Releases', u('/releases/')],
+    ['News', u('/news/')],
+    ['Decisions', u('/adr/')],
+    ['Contributors', `${repo}/graphs/contributors`],
+  ]],
+  ['Documentation', [
+    ['Manual', u('/docs/')],
+    ['Command reference', u('/docs/cli/'), true],
+    ['FAQ', u('/faq/')],
+  ]],
+  ['Download', [
+    ['Binaries', u('/download/')],
+    ['Verifying', u('/download/#verifying-a-download'), true],
+    ['From source', u('/download/#building-from-source'), true],
+  ]],
+  ['Sources', [
+    ['Git', repo],
+    ['Changelog', `${repo}/blob/main/CHANGELOG.md`],
+    ['License', u('/license/')],
+  ]],
+  ['Development', [
+    ['Roadmap', u('/roadmap/')],
+    ['Contributing', u('/contributing/')],
+    ['Web style', u('/style/')],
+  ]],
+  ['Bugs', [
+    ['How to report', u('/bugs/')],
+    ['Bug tracker', `${repo}/issues`],
+    ['Security', u('/security/')],
+  ]],
 ];
-const current = Astro.url.pathname.replace(base, '') || '/';
-const fullTitle = current === '/' ? 'unifont' : `${title} - unifont`;
 ---
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -40,40 +71,32 @@ const fullTitle = current === '/' ? 'unifont' : `${title} - unifont`;
 <link rel="alternate" type="application/rss+xml" title="unifont news" href={u('/feed.xml')} />
 <link rel="sitemap" href={u('/sitemap-index.xml')} />
 
-<header>
-  <p class="masthead"><a href={u('/')}>unifont</a></p>
-  <p class="tagline">A lightweight, cross-platform, free software font manager.</p>
-  <nav aria-label="Site">
-    [ {nav.map(([label, href], i) => (
-      <>
-        {i > 0 && ' | '}
-        {href === current
-          ? <strong>{label}</strong>
-          : <a href={u(href)}>{label}</a>}
-      </>
-    ))} ]
+<div class="frame">
+  <main class="main">
+    <slot />
+  </main>
+  <nav class="navcol" aria-label="Site">
+    {!isHome && <p class="home"><a href={u('/')}>unifont</a></p>}
+    {groups.map(([head, links]) => (
+      <div class="navitem">
+        <div class="navhead">{head}</div>
+        <div class="navbody">
+          {links.map(([label, href, sub]) => (
+            <>{sub && <>&middot;&nbsp;</>}<a href={href}>{label}</a><br /></>
+          ))}
+        </div>
+      </div>
+    ))}
   </nav>
-</header>
-<hr />
-<main>
-  <slot />
-</main>
-<hr />
-<footer>
+</div>
+<div class="copyright">
+  <address set:html={`For questions about using unifont, please consult these pages and the <a href="${u('/docs/')}">manual</a>. If that fails, the <a href="${repo}/issues">bug tracker</a> is the place to ask. Comments on these pages are welcome as pull requests; every page links its source.`} />
   <p>
     Copyright &copy; 2026 Oddur Sigurdsson and the unifont contributors.
-    The software is free software, licensed <a href={u('/license/')}>MIT OR Apache-2.0</a>.
+    Verbatim copying and distribution of this entire article is permitted in any
+    medium, provided this notice is preserved.
   </p>
   <p>
-    Verbatim copying and distribution of this entire page are permitted in any medium,
-    provided this notice is preserved.
+    These pages are maintained in the <a href={repo}>unifont repository</a>{source && <> (<a href={`${repo}/blob/main/${source}`}>this page's source</a>)</>}. Last modified {modified}.
   </p>
-  <p class="nav">
-    Built {today}
-    &middot; <a href={repo}>Source repository</a>
-    {source && <> &middot; <a href={`${repo}/blob/main/${source}`}>Page source</a></>}
-    &middot; <a href={u('/feed.xml')}>RSS</a>
-    &middot; <a href={u('/sitemap-index.xml')}>Sitemap</a>
-    &middot; No JavaScript, no cookies, no tracking.
-  </p>
-</footer>
+</div>

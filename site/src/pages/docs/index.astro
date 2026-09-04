@@ -7,12 +7,12 @@ const docs = (await getCollection('docs')).sort((a, b) => a.data.order - b.data.
 ---
 <Base title="Manual" description="The unifont manual: installation, concepts, command reference, JSON output, health checks, specimens, platform notes." source="site/src/content/docs">
   <h1>The unifont manual</h1>
-  <p class="meta">For unifont 0.0.1. This manual is maintained in the repository under <code>site/src/content/docs</code>; corrections are pull requests.</p>
+  <p class="smaller">For unifont 0.0.1. This manual is maintained in the repository under <code>site/src/content/docs</code>; corrections are pull requests.</p>
   <p>
     This manual describes the <code>unifont</code> command line and the concepts behind
     it. It is written to be read in order once and consulted by chapter after that.
   </p>
-  <div class="toc">
+  <div>
     <h2>Table of contents</h2>
     <ol>
       {docs.map((d) => (
