@@ -10,7 +10,24 @@ readme.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+# Integration tests that register real fonts with the OS (session scope, per-user).
+platform-tests = []
+
 [dependencies]
 directories.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+blake3.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "0.10"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_UI_WindowsAndMessaging",
+  "Win32_System_Registry",
+  "Win32_Security",
+] }
