@@ -1,0 +1,192 @@
+---
+source: crates/unifont-core/tests/fixtures.rs
+expression: snapshot_view(f)
+---
+{
+  "capabilities": {
+    "bitmap_strikes": false,
+    "color": [],
+    "hinting": true,
+    "kern_table": false,
+    "math": false,
+    "outlines": "glyf"
+  },
+  "codepoints": 527,
+  "container": "ttf",
+  "designer": "Mathieu Triay",
+  "embedding": {
+    "bitmap_only": false,
+    "level": "installable",
+    "no_subsetting": false
+  },
+  "family": "Bricolage Grotesque",
+  "features": {
+    "gpos": [
+      "kern",
+      "mark",
+      "mkmk"
+    ],
+    "gsub": [
+      "aalt",
+      "case",
+      "ccmp",
+      "dnom",
+      "frac",
+      "lnum",
+      "locl",
+      "numr",
+      "onum",
+      "ordn",
+      "pnum",
+      "sinf",
+      "subs",
+      "sups",
+      "tnum"
+    ],
+    "scripts": [
+      {
+        "languages": [],
+        "tag": "DFLT"
+      },
+      {
+        "languages": [
+          "AZE ",
+          "CAT ",
+          "CRT ",
+          "KAZ ",
+          "MOL ",
+          "ROM ",
+          "TAT ",
+          "TRK "
+        ],
+        "tag": "latn"
+      }
+    ]
+  },
+  "glyph_count": 597,
+  "index": 0,
+  "license": "OFL-1.1",
+  "postscript_name": "BricolageGrotesque-96ptExtraBold",
+  "scripts": [
+    {
+      "codepoints": 327,
+      "script": "Latn"
+    },
+    {
+      "codepoints": 180,
+      "script": "Zyyy"
+    },
+    {
+      "codepoints": 18,
+      "script": "Zinh"
+    },
+    {
+      "codepoints": 2,
+      "script": "Grek"
+    }
+  ],
+  "style": {
+    "css": {
+      "family": "Bricolage Grotesque",
+      "format": "truetype",
+      "stretch": "75% 100%",
+      "style": "normal",
+      "weight": "200 800"
+    },
+    "slope": {
+      "kind": "normal"
+    },
+    "weight": 800.0,
+    "width": 100.0
+  },
+  "subfamily": "96pt ExtraBold",
+  "units_per_em": 1000,
+  "variable": {
+    "axes": [
+      {
+        "default": 96.0,
+        "hidden": false,
+        "max": 96.0,
+        "min": 12.0,
+        "name": "Optical size",
+        "tag": "opsz"
+      },
+      {
+        "default": 800.0,
+        "hidden": false,
+        "max": 800.0,
+        "min": 200.0,
+        "name": "Weight",
+        "tag": "wght"
+      },
+      {
+        "default": 100.0,
+        "hidden": false,
+        "max": 100.0,
+        "min": 75.0,
+        "name": "Width",
+        "tag": "wdth"
+      }
+    ],
+    "has_avar": false,
+    "has_stat": true,
+    "instances": [
+      {
+        "coordinates": [
+          14.0,
+          200.0,
+          100.0
+        ],
+        "name": "ExtraLight"
+      },
+      {
+        "coordinates": [
+          14.0,
+          300.0,
+          100.0
+        ],
+        "name": "Light"
+      },
+      {
+        "coordinates": [
+          14.0,
+          400.0,
+          100.0
+        ],
+        "name": "Regular"
+      },
+      {
+        "coordinates": [
+          14.0,
+          500.0,
+          100.0
+        ],
+        "name": "Medium"
+      },
+      {
+        "coordinates": [
+          14.0,
+          600.0,
+          100.0
+        ],
+        "name": "SemiBold"
+      },
+      {
+        "coordinates": [
+          14.0,
+          700.0,
+          100.0
+        ],
+        "name": "Bold"
+      },
+      {
+        "coordinates": [
+          14.0,
+          800.0,
+          100.0
+        ],
+        "name": "ExtraBold"
+      }
+    ]
+  }
+}
