@@ -1,0 +1,115 @@
+---
+source: crates/unifont-core/tests/fixtures.rs
+expression: snapshot_view(f)
+---
+{
+  "capabilities": {
+    "bitmap_strikes": false,
+    "color": [],
+    "hinting": true,
+    "kern_table": false,
+    "math": false,
+    "outlines": "glyf"
+  },
+  "codepoints": 1699,
+  "container": "ttf",
+  "designer": "Khaled Hosny",
+  "embedding": {
+    "bitmap_only": false,
+    "level": "installable",
+    "no_subsetting": false
+  },
+  "family": "Amiri",
+  "features": {
+    "gpos": [
+      "curs",
+      "kern",
+      "mark",
+      "mkmk",
+      "ss05"
+    ],
+    "gsub": [
+      "ccmp",
+      "dnom",
+      "fina",
+      "init",
+      "liga",
+      "locl",
+      "mark",
+      "medi",
+      "numr",
+      "pnum",
+      "rlig",
+      "rtlm",
+      "ss01",
+      "ss02",
+      "ss03",
+      "ss04",
+      "ss05",
+      "ss06",
+      "ss07",
+      "ss08"
+    ],
+    "scripts": [
+      {
+        "languages": [],
+        "tag": "DFLT"
+      },
+      {
+        "languages": [
+          "ARA ",
+          "KSH ",
+          "MLY ",
+          "SND ",
+          "URD "
+        ],
+        "tag": "arab"
+      },
+      {
+        "languages": [
+          "TRK "
+        ],
+        "tag": "latn"
+      }
+    ]
+  },
+  "glyph_count": 6710,
+  "index": 0,
+  "license": "OFL-1.1",
+  "postscript_name": "Amiri-Regular",
+  "scripts": [
+    {
+      "codepoints": 1217,
+      "script": "Arab"
+    },
+    {
+      "codepoints": 291,
+      "script": "Latn"
+    },
+    {
+      "codepoints": 160,
+      "script": "Zyyy"
+    },
+    {
+      "codepoints": 31,
+      "script": "Zinh"
+    }
+  ],
+  "style": {
+    "css": {
+      "family": "Amiri",
+      "format": "truetype",
+      "stretch": "100%",
+      "style": "normal",
+      "weight": "400"
+    },
+    "slope": {
+      "kind": "normal"
+    },
+    "weight": 400.0,
+    "width": 100.0
+  },
+  "subfamily": "Regular",
+  "units_per_em": 1000,
+  "variable": null
+}

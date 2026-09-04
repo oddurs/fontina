@@ -3,6 +3,12 @@ allow = ["MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause", 
 
 [advisories]
 yanked = "deny"
+ignore = [
+  # `paste` is unmaintained (informational, not a vulnerability). It is a proc-macro
+  # dependency of safer-bytes <- woff2-patched, our WOFF2 decoder (ADR 0005). Revisit
+  # when woff2-patched drops it or when we switch decoders.
+  "RUSTSEC-2024-0436",
+]
 
 [bans]
 multiple-versions = "warn"
