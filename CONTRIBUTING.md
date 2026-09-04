@@ -54,7 +54,8 @@ PRs are always merged by a person.
 
 [release-please](https://github.com/googleapis/release-please) reads the commit history
 on `main`, maintains `CHANGELOG.md`, and opens a release PR that bumps the workspace
-version. Merging that PR tags `vX.Y.Z`. A release workflow that builds signed binaries for the tag is planned for M1.
+version in `Cargo.toml`, the three crate entries in `Cargo.lock`, and `version.txt`
+(the marker file its simple strategy keeps; the crates inherit the workspace version). Merging that PR tags `vX.Y.Z`. A release workflow that builds signed binaries for the tag is planned for M1.
 Nothing is published by hand.
 
 ## Fixtures
