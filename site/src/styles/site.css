@@ -1,0 +1,140 @@
+/* unifont web site. One stylesheet, no script, no web fonts.
+   The look is deliberate: browser defaults with a few corrections, so the pages
+   read the same in 1999 and in a text browser. */
+
+:root { color-scheme: light dark; }
+
+html {
+  background: #ffffff;
+  color: #000000;
+}
+
+body {
+  font-family: serif;
+  font-size: 100%;
+  line-height: 1.45;
+  max-width: 46em;
+  margin: 1em auto 2em;
+  padding: 0 1em;
+}
+
+a { color: #0000ee; }
+a:visited { color: #551a8b; }
+a:active { color: #ff0000; }
+
+h1, h2, h3, h4 {
+  font-weight: bold;
+  line-height: 1.2;
+  margin: 1.4em 0 0.5em;
+}
+h1 {
+  font-size: 1.6em;
+  margin-top: 0.6em;
+  border-bottom: 1px solid #000;
+  padding-bottom: 0.15em;
+}
+h2 { font-size: 1.25em; }
+h3 { font-size: 1.05em; }
+h4 { font-size: 1em; font-style: italic; }
+
+p, ul, ol, dl, table, pre, blockquote { margin: 0 0 1em; }
+ul, ol { padding-left: 2em; }
+li { margin: 0.15em 0; }
+
+dt { font-weight: bold; margin-top: 0.6em; }
+dd { margin: 0 0 0.3em 2em; }
+
+pre, code, kbd, samp, tt {
+  font-family: monospace, monospace;
+  font-size: 0.95em;
+}
+pre {
+  background: #f4f4f4;
+  border: 1px solid #c8c8c8;
+  padding: 0.6em 0.8em;
+  overflow-x: auto;
+  line-height: 1.3;
+}
+pre code { font-size: 1em; background: none; padding: 0; }
+:not(pre) > code { background: #f4f4f4; padding: 0 0.2em; }
+/* Shiki inlines colours; we do not want them. Plain monospace is the house style. */
+pre.astro-code, pre.astro-code span { color: inherit !important; background-color: #f4f4f4 !important; }
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+th, td {
+  border: 1px solid #999;
+  padding: 0.2em 0.5em;
+  text-align: left;
+  vertical-align: top;
+}
+th { background: #eeeeee; }
+.wide { overflow-x: auto; }
+
+hr {
+  border: 0;
+  border-top: 1px solid #000;
+  margin: 1em 0;
+}
+
+blockquote {
+  border-left: 3px solid #999;
+  margin-left: 0;
+  padding-left: 1em;
+  color: #333;
+}
+
+img { max-width: 100%; }
+
+/* masthead */
+header .masthead {
+  font-size: 1.6em;
+  font-weight: bold;
+  margin: 0;
+}
+header .masthead a { color: inherit; text-decoration: none; }
+header .tagline { margin: 0 0 0.5em; font-style: italic; }
+header nav { margin: 0.4em 0 0; }
+header nav a { white-space: nowrap; }
+
+/* Texinfo-style node navigation inside the manual */
+.node-nav {
+  font-size: 0.9em;
+  background: #f4f4f4;
+  border: 1px solid #c8c8c8;
+  padding: 0.3em 0.6em;
+  margin: 0 0 1em;
+}
+.node-nav a { white-space: nowrap; }
+
+footer {
+  font-size: 0.9em;
+  color: #333;
+}
+footer p { margin: 0.4em 0; }
+
+.meta { color: #333; font-size: 0.9em; }
+.toc ol { list-style: decimal; }
+.toc ol ol { list-style: lower-alpha; }
+
+@media (prefers-color-scheme: dark) {
+  html { background: #111111; color: #dddddd; }
+  a { color: #8cb4ff; }
+  a:visited { color: #c9a0ff; }
+  h1 { border-color: #ddd; }
+  hr { border-color: #666; }
+  pre, :not(pre) > code, .node-nav { background: #1c1c1c; border-color: #444; }
+  pre.astro-code, pre.astro-code span { background-color: #1c1c1c !important; }
+  th { background: #222; }
+  th, td { border-color: #555; }
+  blockquote, footer, .meta { color: #aaa; }
+  blockquote { border-color: #666; }
+}
+
+@media print {
+  header nav, footer .nav, .node-nav { display: none; }
+  a { color: inherit; text-decoration: none; }
+  a[href^="http"]::after { content: " <" attr(href) ">"; font-size: 0.85em; }
+}

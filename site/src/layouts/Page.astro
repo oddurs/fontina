@@ -1,0 +1,9 @@
+---
+// Layout for Markdown pages under src/pages. Frontmatter: title, description, source.
+import Base from './Base.astro';
+const { frontmatter } = Astro.props;
+---
+<Base title={frontmatter.title} description={frontmatter.description} source={frontmatter.source}>
+  <h1>{frontmatter.title}</h1>
+  <slot />
+</Base>
