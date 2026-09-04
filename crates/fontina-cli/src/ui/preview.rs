@@ -22,14 +22,25 @@ use fontina_core::render::{Bitmap, RenderOptions, render_face};
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 
+/// A face, the exact options its lines were rendered from, and the pixel height they
+/// were laid out for. Keying on the options themselves means a new `RenderOptions` field
+/// cannot be left out of the key and silently stop a preview repainting.
+type Key = (i64, RenderOptions, u32);
+
+/// Renderings kept between frames.
+///
+/// The details pane needs one at a time, but a waterfall needs one per size and a
+/// comparison one per face, and re-rendering all of them on every keystroke would make
+/// scrolling crawl. Most recent first, and bounded: a cache that grows without limit
+/// while someone walks a library is a leak with a friendly name.
 #[derive(Default)]
 pub struct Cache {
-    /// The face and the exact options its lines were rendered from. Keying on the
-    /// options themselves means a new `RenderOptions` field cannot be left out of the
-    /// key and silently stop the preview repainting.
-    key: Option<(i64, RenderOptions, u32)>,
-    lines: Vec<Line<'static>>,
+    entries: Vec<(Key, Vec<Line<'static>>)>,
 }
+
+/// Enough for a full waterfall and a wide comparison at once, and small enough that the
+/// linear scan below stays cheaper than a hash.
+const CAPACITY: usize = 32;
 
 /// Sample text for a face: the shared default for Latin, so the pane and the HTML
 /// specimen agree, and the opening clause of its own script's paragraph otherwise.
@@ -39,8 +50,7 @@ pub fn sample_for(face: &FaceMetadata) -> String {
 
 impl Cache {
     pub fn clear(&mut self) {
-        self.key = None;
-        self.lines.clear();
+        self.entries.clear();
     }
 
     /// Lines for a preview of `face` under `opts`, fitting `px_rows` pixel rows (two per
@@ -52,8 +62,13 @@ impl Cache {
         px_rows: u32,
     ) -> Vec<Line<'static>> {
         let key = (crate::face_key(face), opts.clone(), px_rows);
-        if self.key.as_ref() == Some(&key) {
-            return self.lines.clone();
+        if let Some(i) = self.entries.iter().position(|(k, _)| *k == key) {
+            // Touch it, so a waterfall being scrolled keeps its own renderings and
+            // evicts whatever the reader has stopped looking at.
+            let entry = self.entries.remove(i);
+            let lines = entry.1.clone();
+            self.entries.insert(0, entry);
+            return lines;
         }
         let lines = match render_face(face, opts) {
             Ok(bitmap) => to_lines(&bitmap, px_rows),
@@ -62,9 +77,16 @@ impl Cache {
                 Style::default().fg(Color::Red),
             ))],
         };
-        self.key = Some(key);
-        self.lines = lines.clone();
+        self.entries.insert(0, (key, lines.clone()));
+        self.entries.truncate(CAPACITY);
         lines
+    }
+
+    /// How many renderings are held. Only the tests ask, but what they are asking is
+    /// whether a waterfall keeps a rendering per row rather than thrashing one slot.
+    #[cfg(test)]
+    pub fn len(&self) -> usize {
+        self.entries.len()
     }
 }
 
