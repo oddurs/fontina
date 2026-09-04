@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# Measure fontina against the performance budgets in PLAN.md §7 and fail if it misses one.
+#
+# The budgets are the promise "actually lightweight" is made of, so they are checked the
+# way a user would feel them: a corpus of real font files on disk, the real binary, no
+# harness in the middle. Each timing is the best of three runs, because the best run is
+# the machine's capability and the rest is noise from whatever else it is doing.
+#
+#   scripts/bench                          # build release, measure, report
+#   FONTINA=./fontina scripts/bench        # measure a binary you already have
+#   FILES=2000 scripts/bench               # a smaller corpus while iterating
+#   KEEP=1 scripts/bench                   # keep the corpus for a second run
+#
+# Two budgets are not measured here and say so in the report: idle memory of the browser
+# and its repaint time both need a terminal, and a number produced without one would be
+# a number about nothing.
+set -euo pipefail
+
+repo=$(cd "$(dirname "$0")/.." && pwd)
+files=${FILES:-10000}
+corpus=${CORPUS:-${TMPDIR:-/tmp}/fontina-bench-corpus-$files}
+fail=0
+
+if [ -z "${FONTINA:-}" ]; then
+    echo "==> building the release binary"
+    (cd "$repo" && cargo build --release --locked -q -p fontina-cli)
+    FONTINA=$repo/target/release/fontina
+fi
+"$FONTINA" --version >/dev/null
+
+work=$(mktemp -d)
+cleanup() {
+    rm -rf "$work"
+    [ -n "${KEEP:-}" ] || rm -rf "$corpus"
+}
+trap cleanup EXIT INT TERM
+export FONTINA_DB="$work/index.db"
+
+# A corpus shaped like a real library: mostly small faces, with a heavy one every tenth
+# file so the per-byte cost of parsing is in the measurement rather than assumed away.
+if [ ! -d "$corpus" ] || [ "$(find "$corpus" -name '*.*' | wc -l | tr -d ' ')" -lt "$files" ]; then
+    echo "==> building a corpus of $files files"
+    rm -rf "$corpus"
+    mkdir -p "$corpus"
+    small1=$repo/fixtures/inter-latin-400-normal.woff2
+    small2=$repo/fixtures/inter-latin-400-normal.woff
+    heavy=$repo/fixtures/SourceSerif4-Regular.otf
+    i=0
+    while [ "$i" -lt "$files" ]; do
+        case $((i % 10)) in
+        0) cp "$heavy" "$corpus/f$i.otf" ;;
+        1 | 3 | 5 | 7 | 9) cp "$small1" "$corpus/f$i.woff2" ;;
+        *) cp "$small2" "$corpus/f$i.woff" ;;
+        esac
+        i=$((i + 1))
+    done
+fi
+corpus_bytes=$(du -sk "$corpus" | cut -f1)
+
+# --- measuring ----------------------------------------------------------------------
+TIMEFORMAT=%3R
+ms() { # ms <runs> <command...> -> best wall time in milliseconds
+    local runs=$1 best= t
+    shift
+    while [ "$runs" -gt 0 ]; do
+        t=$( { time "$@" >/dev/null 2>&1; } 2>&1 )
+        t=$(awk -v s="$t" 'BEGIN { printf "%d", s * 1000 }')
+        [ -z "$best" ] || [ "$t" -lt "$best" ] && best=$t
+        runs=$((runs - 1))
+    done
+    echo "$best"
+}
+
+row() { # row <metric> <actual> <unit> <budget> ; budget of - means "not a hard limit"
+    local metric=$1 actual=$2 unit=$3 budget=$4 verdict
+    if [ "$budget" = "-" ]; then
+        verdict="       "
+    elif [ "$actual" -le "$budget" ]; then
+        verdict="ok     "
+    else
+        verdict="OVER   "
+        fail=$((fail + 1))
+    fi
+    printf '%-46s %8s %-3s %8s %s\n' "$metric" "$actual" "$unit" "$budget" "$verdict"
+}
+
+echo "==> measuring"
+size_kb=$(du -k "$FONTINA" | cut -f1)
+
+scan_ms=$(ms 1 "$FONTINA" scan "$corpus")
+faces=$("$FONTINA" list | tail -1 | tr -d '[:alpha:]() ')
+touch "$corpus/f1.woff2"
+rescan_ms=$(ms 3 "$FONTINA" scan "$corpus/f1.woff2" --force)
+list_ms=$(ms 3 "$FONTINA" list)
+# A screenful, which is what "keystroke to results" means: the unbounded form measures
+# the cost of printing ten thousand lines, not of finding them.
+search_ms=$(ms 3 "$FONTINA" list inter -n 50)
+preview_ms=$(ms 3 "$FONTINA" preview 1 -s 64 -t "Sphinx of black quartz, judge my vow" -p blocks)
+
+echo
+echo "fontina performance budgets"
+echo "  binary:  $FONTINA"
+echo "  version: $("$FONTINA" --version)"
+echo "  corpus:  $files files, $((corpus_bytes / 1024)) MB, $faces faces indexed"
+echo
+printf '%-46s %8s %-3s %8s %s\n' "metric" "actual" "" "budget" ""
+row "release binary, stripped" "$((size_kb / 1024))" MB 12
+row "initial index, $files files" "$scan_ms" ms 10000
+row "incremental rescan, 1 changed file" "$rescan_ms" ms 50
+row "list, cold start to output" "$list_ms" ms 50
+row "search, query to a screenful of results" "$search_ms" ms 30
+row "preview render, 64 px, 36 characters" "$preview_ms" ms 30
+echo
+echo "not measured here (both need a terminal):"
+echo "  idle RSS of the browser, TUI repaint"
+echo
+if [ "$fail" -gt 0 ]; then
+    echo "$fail budget(s) missed"
+    exit 1
+fi
+echo "every measured budget met"
