@@ -1,0 +1,912 @@
+{
+  "$defs": {
+    "AxisInfo": {
+      "properties": {
+        "default": {
+          "format": "float",
+          "type": "number"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "max": {
+          "format": "float",
+          "type": "number"
+        },
+        "min": {
+          "format": "float",
+          "type": "number"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tag": {
+          "description": "Four-character axis tag, e.g. `wght`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tag",
+        "min",
+        "default",
+        "max",
+        "hidden"
+      ],
+      "type": "object"
+    },
+    "Capabilities": {
+      "properties": {
+        "bitmap_strikes": {
+          "type": "boolean"
+        },
+        "color": {
+          "items": {
+            "$ref": "#/$defs/ColorFormat"
+          },
+          "type": "array"
+        },
+        "hinting": {
+          "description": "TrueType hinting programs present (`fpgm`/`prep`/`cvt `).",
+          "type": "boolean"
+        },
+        "kern_table": {
+          "type": "boolean"
+        },
+        "math": {
+          "type": "boolean"
+        },
+        "outlines": {
+          "$ref": "#/$defs/OutlineFormat"
+        }
+      },
+      "required": [
+        "outlines",
+        "color",
+        "hinting",
+        "bitmap_strikes",
+        "math",
+        "kern_table"
+      ],
+      "type": "object"
+    },
+    "ColorFormat": {
+      "enum": [
+        "colrv0",
+        "colrv1",
+        "svg",
+        "sbix",
+        "cbdt"
+      ],
+      "type": "string"
+    },
+    "Container": {
+      "description": "Font container format, detected from the file's magic bytes.",
+      "oneOf": [
+        {
+          "const": "ttf",
+          "description": "TrueType outlines in an sfnt wrapper (`00 01 00 00` or `true`).",
+          "type": "string"
+        },
+        {
+          "const": "otf",
+          "description": "CFF/CFF2 outlines in an sfnt wrapper (`OTTO`).",
+          "type": "string"
+        },
+        {
+          "const": "ttc",
+          "description": "TrueType/OpenType collection (`ttcf`).",
+          "type": "string"
+        },
+        {
+          "const": "woff",
+          "description": "WOFF 1.0.",
+          "type": "string"
+        },
+        {
+          "const": "woff2",
+          "description": "WOFF 2.0.",
+          "type": "string"
+        }
+      ]
+    },
+    "Coverage": {
+      "properties": {
+        "codepoints": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "ranges": {
+          "description": "Inclusive codepoint ranges, merged, suitable for `unicode-range`.",
+          "items": {
+            "items": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "scripts": {
+          "description": "Scripts sorted by codepoint count, descending.",
+          "items": {
+            "$ref": "#/$defs/ScriptCoverage"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "codepoints",
+        "scripts",
+        "ranges"
+      ],
+      "type": "object"
+    },
+    "CssDescriptor": {
+      "description": "The face expressed as CSS Fonts Level 4 descriptors.",
+      "properties": {
+        "family": {
+          "type": "string"
+        },
+        "format": {
+          "type": "string"
+        },
+        "stretch": {
+          "description": "`font-stretch` value or range, e.g. `100%` or `75% 125%`.",
+          "type": "string"
+        },
+        "style": {
+          "description": "`font-style`, e.g. `normal`, `italic`, `oblique 12deg`, `oblique -10deg 0deg`.",
+          "type": "string"
+        },
+        "weight": {
+          "description": "`font-weight` value or range, e.g. `400` or `100 900`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "family",
+        "weight",
+        "stretch",
+        "style",
+        "format"
+      ],
+      "type": "object"
+    },
+    "EmbeddingLevel": {
+      "enum": [
+        "installable",
+        "restricted_license",
+        "preview_and_print",
+        "editable"
+      ],
+      "type": "string"
+    },
+    "EmbeddingRights": {
+      "description": "Decoded `OS/2.fsType` embedding permissions.",
+      "properties": {
+        "bitmap_only": {
+          "type": "boolean"
+        },
+        "level": {
+          "$ref": "#/$defs/EmbeddingLevel"
+        },
+        "no_subsetting": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "level",
+        "no_subsetting",
+        "bitmap_only"
+      ],
+      "type": "object"
+    },
+    "Features": {
+      "properties": {
+        "gpos": {
+          "description": "Distinct GPOS feature tags, sorted.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "gsub": {
+          "description": "Distinct GSUB feature tags, sorted.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "scripts": {
+          "items": {
+            "$ref": "#/$defs/ScriptInfo"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "gsub",
+        "gpos",
+        "scripts"
+      ],
+      "type": "object"
+    },
+    "FileInfo": {
+      "properties": {
+        "blake3": {
+          "description": "BLAKE3 hash of the file bytes, hex.",
+          "type": "string"
+        },
+        "container": {
+          "$ref": "#/$defs/Container"
+        },
+        "face_count": {
+          "description": "Number of faces in the file (1 unless a collection).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mtime": {
+          "description": "Modification time, seconds since the Unix epoch.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "path": {
+          "description": "Absolute path as scanned.",
+          "type": "string"
+        },
+        "size": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "size",
+        "mtime",
+        "blake3",
+        "container",
+        "face_count"
+      ],
+      "type": "object"
+    },
+    "InstanceInfo": {
+      "properties": {
+        "coordinates": {
+          "description": "User-space coordinates, in axis order.",
+          "items": {
+            "format": "float",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "postscript_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "coordinates"
+      ],
+      "type": "object"
+    },
+    "LicenseInfo": {
+      "properties": {
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "spdx": {
+          "description": "SPDX identifier or expression when recognisable, e.g. `OFL-1.1`. `LicenseRef-Unknown`\nwhen license text exists but is not recognised. Absent when the font carries none.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "Metrics": {
+      "properties": {
+        "ascender": {
+          "format": "int16",
+          "maximum": 32767,
+          "minimum": -32768,
+          "type": "integer"
+        },
+        "cap_height": {
+          "format": "int16",
+          "maximum": 32767,
+          "minimum": -32768,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "created": {
+          "description": "`head.created` as RFC 3339, when set.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "descender": {
+          "format": "int16",
+          "maximum": 32767,
+          "minimum": -32768,
+          "type": "integer"
+        },
+        "is_fixed_pitch": {
+          "type": "boolean"
+        },
+        "italic_angle": {
+          "format": "float",
+          "type": "number"
+        },
+        "line_gap": {
+          "format": "int16",
+          "maximum": 32767,
+          "minimum": -32768,
+          "type": "integer"
+        },
+        "modified": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "revision": {
+          "description": "`head.fontRevision`.",
+          "format": "double",
+          "type": "number"
+        },
+        "units_per_em": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "x_height": {
+          "format": "int16",
+          "maximum": 32767,
+          "minimum": -32768,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "units_per_em",
+        "ascender",
+        "descender",
+        "line_gap",
+        "italic_angle",
+        "is_fixed_pitch",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "NameRecord": {
+      "description": "One record from the `name` table.",
+      "properties": {
+        "encoding_id": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "language": {
+          "description": "BCP 47 tag when the platform language id is recognised.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "language_id": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name_id": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "platform_id": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name_id",
+        "platform_id",
+        "encoding_id",
+        "language_id",
+        "value"
+      ],
+      "type": "object"
+    },
+    "Names": {
+      "description": "Resolved names. `family`/`subfamily` prefer the typographic names (IDs 16/17) over\nthe legacy ones (IDs 1/2), which is what groups a family correctly.",
+      "properties": {
+        "copyright": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "designer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "designer_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "family": {
+          "type": "string"
+        },
+        "full_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "legacy_family": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "legacy_subfamily": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "manufacturer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "postscript_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sample_text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "subfamily": {
+          "type": "string"
+        },
+        "trademark": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "unique_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "vendor_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "wws_family": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "wws_subfamily": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "family",
+        "subfamily"
+      ],
+      "type": "object"
+    },
+    "Os2Info": {
+      "properties": {
+        "codepage_ranges": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "embedding": {
+          "$ref": "#/$defs/EmbeddingRights"
+        },
+        "fs_selection": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "fs_type": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "typo_ascender": {
+          "format": "int16",
+          "maximum": 32767,
+          "minimum": -32768,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "typo_descender": {
+          "format": "int16",
+          "maximum": 32767,
+          "minimum": -32768,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "unicode_ranges": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "maxItems": 4,
+          "minItems": 4,
+          "type": "array"
+        },
+        "use_typo_metrics": {
+          "type": "boolean"
+        },
+        "vendor_id": {
+          "type": "string"
+        },
+        "version": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "weight_class": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "width_class": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "version",
+        "weight_class",
+        "width_class",
+        "fs_type",
+        "embedding",
+        "vendor_id",
+        "fs_selection",
+        "use_typo_metrics",
+        "unicode_ranges"
+      ],
+      "type": "object"
+    },
+    "OutlineFormat": {
+      "enum": [
+        "glyf",
+        "cff",
+        "cff2",
+        "none"
+      ],
+      "type": "string"
+    },
+    "ScriptCoverage": {
+      "properties": {
+        "codepoints": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "script": {
+          "description": "ISO 15924 code from Unicode script property, e.g. `Latn`, `Arab`, `Zyyy` (Common).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "script",
+        "codepoints"
+      ],
+      "type": "object"
+    },
+    "ScriptInfo": {
+      "properties": {
+        "languages": {
+          "description": "OpenType language system tags declared under the script.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "tag": {
+          "description": "OpenType script tag, e.g. `latn`, `arab`, `DFLT`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tag",
+        "languages"
+      ],
+      "type": "object"
+    },
+    "Slope": {
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "normal",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "italic",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "angle": {
+              "format": "float",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "kind": {
+              "const": "oblique",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Style": {
+      "properties": {
+        "css": {
+          "$ref": "#/$defs/CssDescriptor"
+        },
+        "slope": {
+          "$ref": "#/$defs/Slope"
+        },
+        "weight": {
+          "description": "Weight on the CSS 1–1000 scale (from `OS/2.usWeightClass` or the `wght` default).",
+          "format": "float",
+          "type": "number"
+        },
+        "width": {
+          "description": "Width as a percentage where 100 is normal (from `usWidthClass` or the `wdth` default).",
+          "format": "float",
+          "type": "number"
+        }
+      },
+      "required": [
+        "weight",
+        "width",
+        "slope",
+        "css"
+      ],
+      "type": "object"
+    },
+    "VariableInfo": {
+      "properties": {
+        "axes": {
+          "items": {
+            "$ref": "#/$defs/AxisInfo"
+          },
+          "type": "array"
+        },
+        "has_avar": {
+          "type": "boolean"
+        },
+        "has_stat": {
+          "type": "boolean"
+        },
+        "instances": {
+          "items": {
+            "$ref": "#/$defs/InstanceInfo"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "axes",
+        "instances",
+        "has_avar",
+        "has_stat"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Everything unifont knows about one face.",
+  "properties": {
+    "capabilities": {
+      "$ref": "#/$defs/Capabilities"
+    },
+    "coverage": {
+      "$ref": "#/$defs/Coverage"
+    },
+    "features": {
+      "$ref": "#/$defs/Features"
+    },
+    "file": {
+      "$ref": "#/$defs/FileInfo"
+    },
+    "glyph_count": {
+      "format": "uint16",
+      "maximum": 65535,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "identity_hash": {
+      "description": "BLAKE3 over the `name` table and outline tables: identifies the same face across\ncontainers (TTF vs WOFF2 of one font hash the same).",
+      "type": "string"
+    },
+    "index": {
+      "description": "Index of the face within its file (0 unless a collection).",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "license": {
+      "$ref": "#/$defs/LicenseInfo"
+    },
+    "metrics": {
+      "$ref": "#/$defs/Metrics"
+    },
+    "name_records": {
+      "items": {
+        "$ref": "#/$defs/NameRecord"
+      },
+      "type": "array"
+    },
+    "names": {
+      "$ref": "#/$defs/Names"
+    },
+    "os2": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Os2Info"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "schema_version": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "style": {
+      "$ref": "#/$defs/Style"
+    },
+    "variable": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/VariableInfo"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "file",
+    "index",
+    "names",
+    "name_records",
+    "style",
+    "metrics",
+    "features",
+    "coverage",
+    "capabilities",
+    "license",
+    "glyph_count",
+    "identity_hash"
+  ],
+  "title": "FaceMetadata",
+  "type": "object"
+}

@@ -97,18 +97,18 @@ pub fn scan(index: &mut Index, roots: &[PathBuf], opts: &ScanOptions) -> Result<
 
     let mut to_parse = Vec::new();
     for path in &candidates {
-        if !opts.force {
-            if let Ok(meta) = std::fs::metadata(path) {
-                let mtime = meta
-                    .modified()
-                    .ok()
-                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map(|d| d.as_secs() as i64)
-                    .unwrap_or(0);
-                if index.file_is_unchanged(&path.to_string_lossy(), meta.len(), mtime)? {
-                    report.unchanged += 1;
-                    continue;
-                }
+        if !opts.force
+            && let Ok(meta) = std::fs::metadata(path)
+        {
+            let mtime = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            if index.file_is_unchanged(&path.to_string_lossy(), meta.len(), mtime)? {
+                report.unchanged += 1;
+                continue;
             }
         }
         to_parse.push(path.clone());
