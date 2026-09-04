@@ -5,8 +5,35 @@ description: "How to get fontina today, what a release archive contains, and how
 source: site/src/pages/download.md
 ---
 
-There is no tagged release yet; see [Releases](../releases/). Until there is, build
-from source. It takes one command and a Rust toolchain.
+The current release is [fontina 0.1.0](https://github.com/oddurs/fontina/releases/tag/v0.1.0);
+see [Releases](../releases/) for the policy. Get a release archive below and verify
+it, or build from source, which takes one command and a Rust toolchain.
+
+## Release archives
+
+Every release on the [GitHub releases page](https://github.com/oddurs/fontina/releases)
+carries one archive per platform:
+
+| Target | Archive |
+|---|---|
+| Linux x86_64 (glibc) | `fontina-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz` |
+| Linux aarch64 (glibc) | `fontina-vX.Y.Z-aarch64-unknown-linux-gnu.tar.gz` |
+| macOS Apple silicon | `fontina-vX.Y.Z-aarch64-apple-darwin.tar.gz` |
+| macOS Intel | `fontina-vX.Y.Z-x86_64-apple-darwin.tar.gz` |
+| Windows x86_64 | `fontina-vX.Y.Z-x86_64-pc-windows-msvc.zip` |
+
+Each archive holds the `fontina` binary (or `fontina.exe`), `COPYING`, the manual
+source, a `completions/` directory with bash, zsh, fish and PowerShell completions,
+and a `man/` directory with one page per command. Put the binary on your `PATH`;
+there is no installer.
+
+Linux also gets `.deb` and `.rpm` packages built from the same binary, with the
+completions and man pages in their proper places:
+
+```
+sudo dpkg -i fontina_X.Y.Z-1_amd64.deb
+sudo rpm -i fontina-X.Y.Z-1.x86_64.rpm
+```
 
 ## Building from source
 
@@ -39,26 +66,6 @@ Completions and man pages come from the binary, so they always match it:
 fontina completions zsh > ~/.zfunc/_fontina
 fontina man --out-dir ~/.local/share/man/man1
 ```
-
-## Release archives
-
-When a release is tagged, the release workflow builds these and attaches them to
-the [GitHub release](https://github.com/oddurs/fontina/releases):
-
-| Target | Archive |
-|---|---|
-| Linux x86_64 (glibc) | `fontina-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz` |
-| Linux aarch64 (glibc) | `fontina-vX.Y.Z-aarch64-unknown-linux-gnu.tar.gz` |
-| macOS Apple silicon | `fontina-vX.Y.Z-aarch64-apple-darwin.tar.gz` |
-| macOS Intel | `fontina-vX.Y.Z-x86_64-apple-darwin.tar.gz` |
-| Windows x86_64 | `fontina-vX.Y.Z-x86_64-pc-windows-msvc.zip` |
-
-Each archive holds the `fontina` binary (or `fontina.exe`), a `completions/`
-directory with bash, zsh, fish and PowerShell completions, and a `man/` directory
-with one page per command. Put the binary on your `PATH`; there is no installer.
-
-Linux also gets `.deb` and `.rpm` packages built from the same binary, with the
-completions and man pages in their proper places.
 
 ## Verifying a download
 

@@ -5,11 +5,14 @@ description: "Release policy, what a release contains, and the timeline."
 source: site/src/pages/releases.md
 ---
 
-## Status
+## Current
 
-There is no tagged release yet. `main` is at version 0.0.x and is usable; the
-[download](../download/) page says how to build it. The first tagged release will be
-cut by the release process below and will carry binaries for every platform.
+The current release is
+[fontina 0.1.0](https://github.com/oddurs/fontina/releases/tag/v0.1.0), 2026-09-04.
+It is the first tagged release: the core library and the command line with
+organising, activation, watching, previews and the terminal browser. Pre-1.0,
+so command output, schemas and check identifiers may still change; every such
+change is called out in the changelog.
 
 ## What a release contains
 
@@ -41,5 +44,5 @@ Security fixes are announced in the release notes and, for anything serious, on 
 
 <table>
 <tr><th>Release</th><th>Date</th><th>Notes</th></tr>
-<tr><td>none yet</td><td></td><td>The first release will be 0.0.2 or later, pending the project rename.</td></tr>
+<tr><td><a href="https://github.com/oddurs/fontina/releases/tag/v0.1.0">fontina 0.1.0</a></td><td>September 4, 2026</td><td>First release. Renamed from unifont and relicensed under GPL-3.0-or-later in the same release.</td></tr>
 </table>
