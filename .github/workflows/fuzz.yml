@@ -1,0 +1,97 @@
+# Fuzz the font import path. The input to this program is untrusted binary data from
+# other people's computers, so the parser is the only place where a bug is also a
+# vulnerability. `scan::parse_paths` wraps parsing in catch_unwind, which catches a panic
+# and nothing else: the hang fixed in #33 walked straight past it. Every run here passes
+# -timeout and -rss_limit_mb so a hang or a runaway allocation fails the job too.
+#
+# cargo-fuzz needs a nightly toolchain, which is why this is a workflow of its own rather
+# than a job in ci.yml: the required checks must not depend on nightly staying green.
+# What runs on every relevant pull request is short — about a minute a target, enough to
+# catch a regression against the seeded corpus. The real fuzzing is the weekly run.
+name: fuzz
+
+on:
+  pull_request:
+    paths:
+      - 'crates/**'
+      - 'fuzz/**'
+      - 'fixtures/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'scripts/fuzz'
+      - '.github/workflows/fuzz.yml'
+  schedule:
+    # Sundays at 05:17 UTC. Off the hour, because everyone else picks the hour.
+    - cron: '17 5 * * 0'
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: 'Seconds to fuzz each target'
+        required: false
+        default: '600'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fuzz:
+    name: ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # parse: arbitrary bytes into the import wrapper, so mostly container detection
+        #        and the WOFF/WOFF2 decoders.
+        # sfnt:  bytes straight into parse_sfnt, so the budget reaches the table readers
+        #        instead of dying on a magic number.
+        target: [parse, sfnt]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+
+      - name: install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      # Seeding from fixtures/ rather than from checked-in corpus binaries: a real font
+      # is the best starting point a mutator can have, and the repository already ships
+      # six of them. fuzz/regressions/ goes in as well, so a past finding keeps steering
+      # the search instead of having to be rediscovered.
+      - name: seed the corpus
+        run: scripts/fuzz seed
+
+      - name: build the targets
+        run: scripts/fuzz build
+
+      # A minute on a pull request, ten on the weekly run, or whatever a manual dispatch
+      # asks for. Long enough to catch a regression; short enough that nobody starts
+      # resenting it.
+      - name: fuzz
+        run: |
+          case "${{ github.event_name }}" in
+            pull_request) seconds=60 ;;
+            schedule)     seconds=1800 ;;
+            *)            seconds="${{ inputs.seconds || '600' }}" ;;
+          esac
+          scripts/fuzz ${{ matrix.target }} "$seconds"
+
+      # A crash is only useful if the bytes that caused it survive the runner.
+      - name: upload the crashing input
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}-${{ github.run_id }}
+          path: |
+            fuzz/artifacts/
+          if-no-files-found: ignore
+          retention-days: 30

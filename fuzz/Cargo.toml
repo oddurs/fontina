@@ -1,0 +1,46 @@
+# The fuzz crate is deliberately its own workspace: cargo-fuzz needs a nightly toolchain
+# and a sanitizer runtime, and its dependencies (libfuzzer-sys and the libFuzzer runtime
+# it links) must never reach the shipped binary or the workspace lockfile. The
+# `exclude = ["fuzz"]` in the root manifest is the other half of that arrangement, and is
+# what keeps `cargo test --workspace`, `cargo clippy --workspace`, the MSRV `cargo check`
+# and `cargo deny` from ever seeing this crate.
+# An empty [workspace] table makes this its own workspace root, which is what actually
+# detaches it; the exclude above is the root manifest saying so too.
+[workspace]
+
+[package]
+name = "fontina-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+license = "GPL-3.0-or-later"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+fontina-core = { path = "../crates/fontina-core" }
+
+[[bin]]
+name = "parse"
+path = "fuzz_targets/parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "sfnt"
+path = "fuzz_targets/sfnt.rs"
+test = false
+doc = false
+bench = false
+
+# cargo-fuzz builds the release profile. Debug assertions and overflow checks stay on so
+# that an arithmetic overflow is a crash the fuzzer reports and minimises, rather than a
+# silent wrap that turns into a hang somewhere further down (which is exactly how the
+# WOFF header loop in #33 behaved).
+[profile.release]
+debug = true
+debug-assertions = true
+overflow-checks = true

@@ -5,6 +5,9 @@ members = [
   "crates/fontina-platform",
   "crates/fontina-cli",
 ]
+# The fuzz crate is its own workspace: it needs nightly and a sanitizer runtime, and
+# nothing it depends on may reach the shipped binary. See fuzz/Cargo.toml.
+exclude = ["fuzz"]
 
 [workspace.package]
 version = "0.1.0"
