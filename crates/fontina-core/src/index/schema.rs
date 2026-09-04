@@ -146,7 +146,9 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
         )));
     }
     for (i, sql) in MIGRATIONS.iter().enumerate().skip(current as usize) {
-        let tx = conn.transaction()?;
+        // Immediate, so two processes opening a fresh index at once queue rather than
+        // one of them failing on the upgrade from a read lock.
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         tx.execute_batch(sql)?;
         if i == 1 {
             backfill_ranges(&tx)?;
