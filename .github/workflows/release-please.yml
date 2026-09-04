@@ -38,7 +38,11 @@ jobs:
         name: Build the release artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh workflow run release.yml --ref main -f tag="${{ steps.rp.outputs.tag_name }}"
+        # --repo, because nothing is checked out at this point in the job and `gh`
+        # otherwise looks for a git remote and fails with "not a git repository".
+        run: |
+          gh workflow run release.yml --repo "${{ github.repository }}" \
+            --ref main -f tag="${{ steps.rp.outputs.tag_name }}"
 
       # release-please bumps Cargo.toml but cannot rewrite the workspace entries in
       # Cargo.lock, and the CI runs GitHub creates for a bot-authored PR wait for
@@ -75,9 +79,11 @@ jobs:
             git push origin "HEAD:$RELEASE_BRANCH"
           fi
           sha=$(git rev-parse HEAD)
-          # The pull_request run for the new head can take a moment to appear.
+          # Every workflow, not only ci.yml: linux, perf and fuzz are held the same way
+          # on a bot-authored pull request, and a release branch that never runs them is
+          # a release nobody measured. The pull_request runs take a moment to appear.
           for attempt in $(seq 1 12); do
-            ids=$(gh run list --branch "$RELEASE_BRANCH" --workflow ci.yml --event pull_request \
+            ids=$(gh run list --branch "$RELEASE_BRANCH" --event pull_request \
               --json databaseId,headSha,conclusion \
               --jq ".[] | select(.headSha==\"$sha\" and .conclusion==\"action_required\") | .databaseId")
             if [ -n "$ids" ]; then
