@@ -3,6 +3,9 @@ name: release-please
 on:
   push:
     branches: [main]
+  # Merges made by the automerge workflow use GITHUB_TOKEN, whose pushes do not
+  # trigger push workflows; the automerge job dispatches this one explicitly.
+  workflow_dispatch:
 
 concurrency:
   group: release-please
@@ -18,6 +21,5 @@ jobs:
     steps:
       - uses: googleapis/release-please-action@v5
         with:
-          release-type: rust
           config-file: .release-please-config.json
           manifest-file: .release-please-manifest.json
