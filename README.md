@@ -39,6 +39,12 @@ unifont list --script Arab       # faces that cover Arabic
 unifont list --variable bold     # variable faces matching "bold"
 unifont list --license OFL       # by SPDX identifier
 unifont info 42                  # everything about a face
+unifont families --script Cyrl   # grouped by typographic family
+unifont facets --tag serif       # counts per weight, width, script, license, vendor, ...
+unifont tag add serif family:Amiri 42
+unifont collection add Editorial family:Amiri 42
+unifont collection export Editorial > editorial.json   # schemas/collection.json
+unifont source add ~/Fonts       # scan now, follow with `watch` later
 unifont dupes                    # same font in several files
 unifont css 42 --url-prefix /fonts/ > fonts.css
 unifont covers "Þórður át 12 blóðbergsbrauð"   # faces that can set this text
@@ -49,8 +55,10 @@ unifont specimen 42 43 -o specimen.html   # waterfall, axis sliders, feature tog
 unifont schema                   # JSON Schema for the metadata
 ```
 
-Every command takes `--json`. Set `UNIFONT_DB` to choose the index location. The
-index is a single SQLite file in the platform data directory.
+Every command takes `--json`; the output types are published in
+`schemas/cli-output.json`. A face target is an index id, a file path, or `family:<name>`.
+Set `UNIFONT_DB` to choose the index location. The index is a single SQLite file in the
+platform data directory.
 
 ## Why
 

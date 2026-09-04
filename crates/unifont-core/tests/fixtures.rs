@@ -300,8 +300,15 @@ fn covering_finds_faces_for_text_and_migrates_old_indexes() {
     }
     {
         let conn = rusqlite::Connection::open(&db).unwrap();
-        conn.execute_batch("DROP TABLE face_ranges; PRAGMA user_version = 1;")
-            .unwrap();
+        // Undo migrations 2 and 3 so the file looks like a v1 index.
+        conn.execute_batch(
+            "DROP TABLE face_ranges;
+             ALTER TABLE activations DROP COLUMN installed_path;
+             ALTER TABLE sources DROP COLUMN kind;
+             DROP INDEX faces_vendor; DROP INDEX face_tags_tag; DROP INDEX collection_faces_face;
+             PRAGMA user_version = 1;",
+        )
+        .unwrap();
     }
     let idx = Index::open(&db).unwrap();
     let hits = idx.covering("صِف", &FaceFilter::default()).unwrap();

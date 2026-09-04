@@ -1,0 +1,19 @@
+---
+import Base from '../../layouts/Base.astro';
+import { getCollection, render } from 'astro:content';
+
+export async function getStaticPaths() {
+  const news = await getCollection('news');
+  return news.map((entry) => ({ params: { id: entry.id }, props: { entry } }));
+}
+
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+<Base title={entry.data.title} source={`site/src/content/news/${entry.id}.md`}>
+  <p class="node-nav">Up: <a href={`${base}/news/`}>News</a></p>
+  <h1>{entry.data.title}</h1>
+  <p class="meta">{entry.data.date.toISOString().slice(0, 10)}</p>
+  <Content />
+</Base>

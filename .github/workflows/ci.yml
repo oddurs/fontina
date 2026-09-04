@@ -75,4 +75,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo run -q -p unifont-cli -- schema > /tmp/face.json && diff -u schemas/face.json /tmp/face.json
+      - run: |
+          for s in face collection cli-output; do
+            cargo run -q -p unifont-cli -- schema $s > /tmp/$s.json && diff -u schemas/$s.json /tmp/$s.json
+          done

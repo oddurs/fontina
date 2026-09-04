@@ -4,7 +4,7 @@
 use crate::model::*;
 use serde::Serialize;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
     Info,
@@ -12,7 +12,7 @@ pub enum Severity {
     Error,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct Finding {
     /// Stable identifier, `area/check`.
     pub id: &'static str,
@@ -20,7 +20,7 @@ pub struct Finding {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct CheckReport {
     pub path: String,
     pub index: u32,

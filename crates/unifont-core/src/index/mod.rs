@@ -1,12 +1,28 @@
 //! SQLite index. One file, WAL mode, FTS5 for names. The full `FaceMetadata` JSON is
 //! stored per face so `info` round-trips without re-parsing the font.
+//!
+//! - this module: open, scan bookkeeping, listing and filtering, duplicates, stats
+//! - [`library`]: tags, collections (with JSON export/import), sources, activation state,
+//!   conflicts
+//! - [`facets`]: facet counts and family grouping over a filter
 
+mod facets;
+mod library;
 mod schema;
+
+pub use facets::{
+    FacetCount, Facets, Family, weight_bucket, weight_name, width_bucket, width_name,
+};
+pub use library::{
+    ActivationRecord, ActivationState, CollectionExport, CollectionFace, CollectionInfo, Conflict,
+    ImportReport, Source, SourceKind, TagInfo,
+};
 
 use crate::FileInfo;
 use crate::error::Result;
 use crate::model::FaceMetadata;
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -15,7 +31,7 @@ pub struct Index {
 }
 
 /// Compact per-face row used by listings.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct FaceSummary {
     pub id: i64,
     pub path: String,
@@ -34,6 +50,15 @@ pub struct FaceSummary {
     pub license: Option<String>,
     pub scripts: Vec<String>,
     pub container: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vendor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub designer: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+    /// Activation state recorded by unifont, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activation: Option<ActivationState>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -50,18 +75,34 @@ pub struct FaceFilter {
     /// SPDX identifier prefix match, e.g. `OFL`.
     pub license: Option<String>,
     pub weight: Option<(u16, u16)>,
+    /// Width range in percent, e.g. `(75, 100)`.
+    pub width: Option<(u16, u16)>,
+    /// Exact (case-insensitive) `OS/2` vendor id.
+    pub vendor: Option<String>,
+    /// Faces carrying this tag.
+    pub tag: Option<String>,
+    /// Faces in this collection (by name).
+    pub collection: Option<String>,
+    /// `Some(true)`: only faces with an activation record; `Some(false)`: only without.
+    pub active: Option<bool>,
+    /// Only faces in exactly this activation state.
+    pub activation: Option<ActivationState>,
+    /// Container as in `FaceSummary::container`, e.g. `woff2`.
+    pub container: Option<String>,
     pub path_prefix: Option<String>,
+    /// Restrict to these face ids.
+    pub ids: Option<Vec<i64>>,
     pub limit: Option<usize>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct DuplicateGroup {
     pub reason: String,
     pub key: String,
     pub faces: Vec<FaceSummary>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct Stats {
     pub files: i64,
     pub faces: i64,
@@ -69,7 +110,30 @@ pub struct Stats {
     pub variable_faces: i64,
     pub color_faces: i64,
     pub failed_files: i64,
+    pub tags: i64,
+    pub collections: i64,
+    pub sources: i64,
+    pub activations: i64,
     pub db_path: String,
+}
+
+/// The `WHERE` clauses and their bound values for a filter.
+struct Where {
+    clauses: Vec<String>,
+    args: Vec<Box<dyn rusqlite::ToSql>>,
+}
+
+impl Where {
+    fn sql(&self) -> String {
+        if self.clauses.is_empty() {
+            String::new()
+        } else {
+            format!(" WHERE {}", self.clauses.join(" AND "))
+        }
+    }
+    fn params(&self) -> impl Iterator<Item = &dyn rusqlite::ToSql> {
+        self.args.iter().map(|a| a.as_ref())
+    }
 }
 
 impl Index {
@@ -121,11 +185,14 @@ impl Index {
         Ok(matches!(row, Some((s, m, None)) if s == size as i64 && m == mtime))
     }
 
+    /// Replace a file and its faces. Tags, collection memberships and activation state
+    /// of the previous faces carry over by (path, face index).
     pub(crate) fn upsert_file_tx(
         tx: &Transaction,
         file: &FileInfo,
         faces: &[FaceMetadata],
     ) -> Result<()> {
+        let carried = library::carry_over_take(tx, &file.path)?;
         tx.execute("DELETE FROM files WHERE path = ?1", params![file.path])?;
         tx.execute(
             "INSERT INTO files (path, size, mtime, blake3, container, face_count, scanned_at, error)
@@ -171,6 +238,7 @@ impl Index {
                 serde_json::to_string(face)?,
             ])?;
             insert_ranges(tx, face_id, &face.coverage.ranges)?;
+            library::carry_over_apply(tx, face_id, face.index, &carried)?;
         }
         Ok(())
     }
@@ -187,23 +255,12 @@ impl Index {
 
     /// Remove files under `root` that no longer exist on disk. Returns the count removed.
     pub fn prune_missing(&mut self, root: &str) -> Result<usize> {
-        let prefix = format!(
-            "{}{}",
-            root.trim_end_matches(std::path::MAIN_SEPARATOR),
-            std::path::MAIN_SEPARATOR
-        );
         let paths: Vec<String> = {
             let mut stmt = self
                 .conn
                 .prepare("SELECT path FROM files WHERE path = ?1 OR path LIKE ?2 ESCAPE '\\'")?;
-            let like = format!(
-                "{}%",
-                prefix
-                    .replace('\\', "\\\\")
-                    .replace('%', "\\%")
-                    .replace('_', "\\_")
-            );
-            let rows = stmt.query_map(params![root, like], |r| r.get::<_, String>(0))?;
+            let rows =
+                stmt.query_map(params![root, like_prefix(root)], |r| r.get::<_, String>(0))?;
             rows.filter_map(|r| r.ok()).collect()
         };
         let missing: Vec<&String> = paths.iter().filter(|p| !Path::new(p).exists()).collect();
@@ -215,8 +272,18 @@ impl Index {
         Ok(missing.len())
     }
 
+    /// Remove every file under `root` from the index, present on disk or not.
+    pub fn remove_under(&mut self, root: &str) -> Result<usize> {
+        Ok(self.conn.execute(
+            "DELETE FROM files WHERE path = ?1 OR path LIKE ?2 ESCAPE '\\'",
+            params![root, like_prefix(root)],
+        )?)
+    }
+
     fn row_to_summary(r: &rusqlite::Row) -> rusqlite::Result<FaceSummary> {
         let scripts: String = r.get("scripts")?;
+        let tags: Option<String> = r.get("tags")?;
+        let activation: Option<String> = r.get("activation")?;
         Ok(FaceSummary {
             id: r.get("id")?,
             path: r.get("path")?,
@@ -237,75 +304,164 @@ impl Index {
                 .map(String::from)
                 .collect(),
             container: r.get("container")?,
+            vendor: r.get("vendor")?,
+            designer: r.get("designer")?,
+            tags: tags
+                .map(|t| t.split('\u{1f}').map(String::from).collect())
+                .unwrap_or_default(),
+            activation: activation.and_then(|a| a.parse().ok()),
         })
     }
 
     const SUMMARY_SELECT: &'static str = "SELECT f.id, fi.path, f.face_index, f.family, f.subfamily, f.postscript_name,
-        f.weight, f.width, f.italic, f.is_variable, f.is_color, f.glyph_count, f.license_spdx, f.scripts, fi.container
-        FROM faces f JOIN files fi ON fi.id = f.file_id";
+        f.weight, f.width, f.italic, f.is_variable, f.is_color, f.glyph_count, f.license_spdx, f.scripts, fi.container,
+        f.vendor, f.designer,
+        (SELECT group_concat(name, char(31)) FROM (SELECT t.name FROM face_tags ft JOIN tags t ON t.id = ft.tag_id
+            WHERE ft.face_id = f.id ORDER BY t.name COLLATE NOCASE)) AS tags,
+        a.scope AS activation
+        FROM faces f JOIN files fi ON fi.id = f.file_id LEFT JOIN activations a ON a.face_id = f.id";
 
-    pub fn list(&self, filter: &FaceFilter) -> Result<Vec<FaceSummary>> {
-        let mut sql = String::from(Self::SUMMARY_SELECT);
-        let mut clauses: Vec<String> = Vec::new();
-        let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    const SUMMARY_ORDER: &'static str =
+        " ORDER BY f.family COLLATE NOCASE, f.weight, f.italic, f.width, fi.path, f.face_index";
 
+    fn where_for(filter: &FaceFilter) -> Where {
+        let mut w = Where {
+            clauses: Vec::new(),
+            args: Vec::new(),
+        };
         if let Some(q) = filter
             .query
             .as_deref()
             .map(str::trim)
             .filter(|q| !q.is_empty())
         {
-            clauses.push("f.id IN (SELECT rowid FROM faces_fts WHERE faces_fts MATCH ?)".into());
-            args.push(Box::new(fts_query(q)));
+            w.clauses
+                .push("f.id IN (SELECT rowid FROM faces_fts WHERE faces_fts MATCH ?)".into());
+            w.args.push(Box::new(fts_query(q)));
         }
         if let Some(fam) = &filter.family {
-            clauses.push("f.family = ? COLLATE NOCASE".into());
-            args.push(Box::new(fam.clone()));
+            w.clauses.push("f.family = ? COLLATE NOCASE".into());
+            w.args.push(Box::new(fam.clone()));
         }
         if let Some(v) = filter.variable {
-            clauses.push("f.is_variable = ?".into());
-            args.push(Box::new(v));
+            w.clauses.push("f.is_variable = ?".into());
+            w.args.push(Box::new(v));
         }
         if let Some(v) = filter.color {
-            clauses.push("f.is_color = ?".into());
-            args.push(Box::new(v));
+            w.clauses.push("f.is_color = ?".into());
+            w.args.push(Box::new(v));
         }
         if let Some(v) = filter.italic {
-            clauses.push("f.italic = ?".into());
-            args.push(Box::new(v));
+            w.clauses.push("f.italic = ?".into());
+            w.args.push(Box::new(v));
         }
         if let Some(s) = &filter.script {
-            clauses.push("f.scripts LIKE ?".into());
-            args.push(Box::new(format!("%,{},%", s)));
+            w.clauses.push("f.scripts LIKE ?".into());
+            w.args.push(Box::new(format!("%,{},%", s)));
         }
         if let Some(l) = &filter.license {
-            clauses.push("f.license_spdx LIKE ?".into());
-            args.push(Box::new(format!("{}%", l)));
+            w.clauses.push("f.license_spdx LIKE ?".into());
+            w.args.push(Box::new(format!("{}%", l)));
         }
         if let Some((lo, hi)) = filter.weight {
-            clauses.push("f.weight BETWEEN ? AND ?".into());
-            args.push(Box::new(lo));
-            args.push(Box::new(hi));
+            w.clauses.push("f.weight BETWEEN ? AND ?".into());
+            w.args.push(Box::new(lo));
+            w.args.push(Box::new(hi));
+        }
+        if let Some((lo, hi)) = filter.width {
+            w.clauses.push("f.width BETWEEN ? AND ?".into());
+            w.args.push(Box::new(lo));
+            w.args.push(Box::new(hi));
+        }
+        if let Some(v) = &filter.vendor {
+            w.clauses.push("f.vendor = ? COLLATE NOCASE".into());
+            w.args.push(Box::new(v.clone()));
+        }
+        if let Some(t) = &filter.tag {
+            w.clauses.push(
+                "f.id IN (SELECT ft.face_id FROM face_tags ft JOIN tags t ON t.id = ft.tag_id WHERE t.name = ? COLLATE NOCASE)"
+                    .into(),
+            );
+            w.args.push(Box::new(t.clone()));
+        }
+        if let Some(c) = &filter.collection {
+            w.clauses.push(
+                "f.id IN (SELECT cf.face_id FROM collection_faces cf JOIN collections c ON c.id = cf.collection_id WHERE c.name = ? COLLATE NOCASE)"
+                    .into(),
+            );
+            w.args.push(Box::new(c.clone()));
+        }
+        if let Some(active) = filter.active {
+            w.clauses.push(if active {
+                "a.face_id IS NOT NULL".into()
+            } else {
+                "a.face_id IS NULL".into()
+            });
+        }
+        if let Some(state) = filter.activation {
+            w.clauses.push("a.scope = ?".into());
+            w.args.push(Box::new(state.as_str()));
+        }
+        if let Some(c) = &filter.container {
+            w.clauses.push("fi.container = ?".into());
+            w.args.push(Box::new(c.to_ascii_lowercase()));
         }
         if let Some(p) = &filter.path_prefix {
-            clauses.push("fi.path LIKE ?".into());
-            args.push(Box::new(format!("{}%", p)));
+            w.clauses.push("fi.path LIKE ? ESCAPE '\\'".into());
+            w.args.push(Box::new(like_prefix(p)));
         }
-        if !clauses.is_empty() {
-            sql.push_str(" WHERE ");
-            sql.push_str(&clauses.join(" AND "));
+        if let Some(ids) = &filter.ids {
+            let list = ids
+                .iter()
+                .map(|i| i.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            w.clauses.push(format!("f.id IN ({list})"));
         }
-        sql.push_str(
-            " ORDER BY f.family COLLATE NOCASE, f.weight, f.italic, f.width, fi.path, f.face_index",
-        );
+        w
+    }
+
+    fn query_summaries(&self, sql: &str, w: &Where) -> Result<Vec<FaceSummary>> {
+        let mut stmt = self.conn.prepare(sql)?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(w.params()), Self::row_to_summary)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn list(&self, filter: &FaceFilter) -> Result<Vec<FaceSummary>> {
+        let w = Self::where_for(filter);
+        let mut sql = format!("{}{}{}", Self::SUMMARY_SELECT, w.sql(), Self::SUMMARY_ORDER);
         if let Some(n) = filter.limit {
             sql.push_str(&format!(" LIMIT {n}"));
         }
-        let mut stmt = self.conn.prepare(&sql)?;
-        let rows = stmt.query_map(
-            rusqlite::params_from_iter(args.iter().map(|a| a.as_ref())),
-            Self::row_to_summary,
+        self.query_summaries(&sql, &w)
+    }
+
+    /// Summaries for specific ids, in the usual listing order.
+    pub fn summaries(&self, ids: &[i64]) -> Result<Vec<FaceSummary>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        self.list(&FaceFilter {
+            ids: Some(ids.to_vec()),
+            ..Default::default()
+        })
+    }
+
+    /// Face ids stored for a file path, in face order.
+    pub fn ids_for_path(&self, path: &str) -> Result<Vec<i64>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT f.id FROM faces f JOIN files fi ON fi.id = f.file_id WHERE fi.path = ?1 ORDER BY f.face_index",
         )?;
+        let rows = stmt.query_map(params![path], |r| r.get::<_, i64>(0))?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// Ids of every face in the same file as `face_id` (itself included).
+    pub fn file_faces(&self, face_id: i64) -> Result<Vec<i64>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id FROM faces WHERE file_id = (SELECT file_id FROM faces WHERE id = ?1) ORDER BY face_index",
+        )?;
+        let rows = stmt.query_map(params![face_id], |r| r.get::<_, i64>(0))?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
@@ -327,34 +483,20 @@ impl Index {
                 "text has more than 500 distinct characters".into(),
             ));
         }
-        let mut sql = String::from(Self::SUMMARY_SELECT);
-        sql.push_str(" WHERE 1=1");
-        let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        let mut w = Self::where_for(filter);
         for cp in &cps {
-            sql.push_str(" AND EXISTS (SELECT 1 FROM face_ranges r WHERE r.face_id = f.id AND r.lo <= ? AND r.hi >= ?)");
-            args.push(Box::new(*cp as i64));
-            args.push(Box::new(*cp as i64));
+            w.clauses.push(
+                "EXISTS (SELECT 1 FROM face_ranges r WHERE r.face_id = f.id AND r.lo <= ? AND r.hi >= ?)"
+                    .into(),
+            );
+            w.args.push(Box::new(*cp as i64));
+            w.args.push(Box::new(*cp as i64));
         }
-        if let Some(v) = filter.variable {
-            sql.push_str(" AND f.is_variable = ?");
-            args.push(Box::new(v));
-        }
-        if let Some(p) = &filter.path_prefix {
-            sql.push_str(" AND fi.path LIKE ?");
-            args.push(Box::new(format!("{}%", p)));
-        }
-        sql.push_str(
-            " ORDER BY f.family COLLATE NOCASE, f.weight, f.italic, fi.path, f.face_index",
-        );
+        let mut sql = format!("{}{}{}", Self::SUMMARY_SELECT, w.sql(), Self::SUMMARY_ORDER);
         if let Some(n) = filter.limit {
             sql.push_str(&format!(" LIMIT {n}"));
         }
-        let mut stmt = self.conn.prepare(&sql)?;
-        let rows = stmt.query_map(
-            rusqlite::params_from_iter(args.iter().map(|a| a.as_ref())),
-            Self::row_to_summary,
-        )?;
-        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+        self.query_summaries(&sql, &w)
     }
 
     pub fn get_face(&self, id: i64) -> Result<Option<FaceMetadata>> {
@@ -445,6 +587,10 @@ impl Index {
             variable_faces: q("SELECT COUNT(*) FROM faces WHERE is_variable")?,
             color_faces: q("SELECT COUNT(*) FROM faces WHERE is_color")?,
             failed_files: q("SELECT COUNT(*) FROM files WHERE error IS NOT NULL")?,
+            tags: q("SELECT COUNT(*) FROM tags")?,
+            collections: q("SELECT COUNT(*) FROM collections")?,
+            sources: q("SELECT COUNT(*) FROM sources")?,
+            activations: q("SELECT COUNT(*) FROM activations")?,
             db_path: self.path(),
         })
     }
@@ -465,6 +611,21 @@ pub(crate) fn insert_ranges(tx: &Transaction, face_id: i64, ranges: &[[u32; 2]])
         stmt.execute(params![face_id, *lo as i64, *hi as i64])?;
     }
     Ok(())
+}
+
+/// `LIKE` pattern (with `ESCAPE '\\'`) matching anything below `root`, wildcards and
+/// backslashes escaped. The separator is appended before escaping so a Windows `\`
+/// does not swallow the `%`.
+fn like_prefix(root: &str) -> String {
+    let mut prefix = root.to_string();
+    if !(prefix.ends_with(std::path::MAIN_SEPARATOR) || prefix.ends_with('/')) {
+        prefix.push(std::path::MAIN_SEPARATOR);
+    }
+    let escaped = prefix
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_");
+    format!("{escaped}%")
 }
 
 /// Turn free text into an FTS5 prefix query: each term quoted and suffixed with `*`.

@@ -1,0 +1,80 @@
+{
+  "$defs": {
+    "CollectionFace": {
+      "description": "One face in an exported collection. On import, faces are matched by identity hash,\nthen PostScript name, then path and index, so a collection survives re-encoding the\nfont (TTF to WOFF2) or moving it.",
+      "properties": {
+        "blake3": {
+          "type": "string"
+        },
+        "family": {
+          "type": "string"
+        },
+        "identity_hash": {
+          "type": "string"
+        },
+        "index": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "path": {
+          "type": "string"
+        },
+        "postscript_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "subfamily": {
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "family",
+        "subfamily",
+        "identity_hash",
+        "blake3",
+        "path"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A collection as written by `collection export`; `schemas/collection.json`.",
+  "properties": {
+    "exported_at": {
+      "description": "RFC 3339.",
+      "type": "string"
+    },
+    "faces": {
+      "items": {
+        "$ref": "#/$defs/CollectionFace"
+      },
+      "type": "array"
+    },
+    "name": {
+      "type": "string"
+    },
+    "schema_version": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "name",
+    "exported_at",
+    "faces"
+  ],
+  "title": "CollectionExport",
+  "type": "object"
+}
