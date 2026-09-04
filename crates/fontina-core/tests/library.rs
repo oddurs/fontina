@@ -279,6 +279,139 @@ fn activation_state_filters_and_survives_rescan() {
 }
 
 #[test]
+fn a_parse_failure_keeps_the_user_s_curation() {
+    // A font rewritten in place, a truncated download, a file caught mid-copy by the
+    // watcher: the parse fails, and the tags, collections and activation the user built
+    // by hand must still be there when it parses again.
+    let dir = std::env::temp_dir().join(format!("fontina-fail-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    // scan canonicalises its roots, and on macOS the temp dir is a symlink.
+    let dir = std::fs::canonicalize(&dir).unwrap();
+    let font = dir.join("Amiri-Regular.ttf");
+    std::fs::copy(fixtures().join("Amiri-Regular.ttf"), &font).unwrap();
+    let mut index = Index::open_in_memory().unwrap();
+    fontina_core::scan::scan(
+        &mut index,
+        std::slice::from_ref(&dir),
+        &ScanOptions::default(),
+    )
+    .unwrap();
+    let id = id_of(&index, "Amiri");
+    index.tag(&[id], "editorial").unwrap();
+    index.add_to_collection("Books", &[id]).unwrap();
+    index
+        .set_activation(&[id], ActivationState::Session, None)
+        .unwrap();
+
+    // The file is replaced by something unparseable and rescanned.
+    std::fs::write(&font, b"not a font at all").unwrap();
+    let report = fontina_core::scan::scan(
+        &mut index,
+        std::slice::from_ref(&dir),
+        &ScanOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(report.failed.len(), 1, "{report:?}");
+    let stats = index.stats().unwrap();
+    assert_eq!(stats.failed_files, 1);
+    let s = index.summaries(&[id]).unwrap().remove(0);
+    assert_eq!(s.tags, ["editorial"]);
+    assert_eq!(s.activation, Some(ActivationState::Session));
+    assert_eq!(index.collection_faces("Books").unwrap()[0].id, id);
+    assert_eq!(index.activations().unwrap().len(), 1);
+
+    // And when it parses again, the curation is still attached to the new rows.
+    std::fs::copy(fixtures().join("Amiri-Regular.ttf"), &font).unwrap();
+    fontina_core::scan::scan(
+        &mut index,
+        std::slice::from_ref(&dir),
+        &ScanOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(index.stats().unwrap().failed_files, 0);
+    let id2 = id_of(&index, "Amiri");
+    let s = index.summaries(&[id2]).unwrap().remove(0);
+    assert_eq!(s.tags, ["editorial"]);
+    assert_eq!(s.activation, Some(ActivationState::Session));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn pruning_only_forgets_files_that_are_really_gone() {
+    let dir = std::env::temp_dir().join(format!("fontina-prune-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    // scan canonicalises its roots, and on macOS the temp dir is a symlink.
+    let dir = std::fs::canonicalize(&dir).unwrap();
+    for name in ["Amiri-Regular.ttf", "SourceSerif4-Regular.otf"] {
+        std::fs::copy(fixtures().join(name), dir.join(name)).unwrap();
+    }
+    let mut index = Index::open_in_memory().unwrap();
+    fontina_core::scan::scan(
+        &mut index,
+        std::slice::from_ref(&dir),
+        &ScanOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(index.stats().unwrap().faces, 2);
+
+    // One file really deleted, with a sibling left: pruned.
+    std::fs::remove_file(dir.join("Amiri-Regular.ttf")).unwrap();
+    assert_eq!(index.prune_missing(&dir.to_string_lossy()).unwrap(), 1);
+    assert_eq!(index.stats().unwrap().faces, 1);
+
+    // A root we cannot read is not a root whose files are gone.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&dir).unwrap().permissions();
+        perms.set_mode(0o000);
+        std::fs::set_permissions(&dir, perms).unwrap();
+        let pruned = index.prune_missing(&dir.to_string_lossy()).unwrap();
+        let mut perms = std::fs::metadata(&dir).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&dir, perms).unwrap();
+        assert_eq!(pruned, 0, "an unreadable root must prune nothing");
+        assert_eq!(index.stats().unwrap().faces, 1);
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn an_unavailable_directory_is_not_an_empty_one() {
+    // An unmounted share leaves the mount point behind as an empty directory, which looks
+    // exactly like a directory whose fonts were deleted. Pruning every last file under a
+    // root is refused; `remove_under` is how you say you meant it.
+    let dir = std::env::temp_dir().join(format!("fontina-unmount-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    // scan canonicalises its roots, and on macOS the temp dir is a symlink.
+    let dir = std::fs::canonicalize(&dir).unwrap();
+    for name in ["Amiri-Regular.ttf", "SourceSerif4-Regular.otf"] {
+        std::fs::copy(fixtures().join(name), dir.join(name)).unwrap();
+    }
+    let mut index = Index::open_in_memory().unwrap();
+    fontina_core::scan::scan(
+        &mut index,
+        std::slice::from_ref(&dir),
+        &ScanOptions::default(),
+    )
+    .unwrap();
+    let id = id_of(&index, "Amiri");
+    index.tag(&[id], "kept").unwrap();
+
+    for name in ["Amiri-Regular.ttf", "SourceSerif4-Regular.otf"] {
+        std::fs::remove_file(dir.join(name)).unwrap();
+    }
+    assert_eq!(index.prune_missing(&dir.to_string_lossy()).unwrap(), 0);
+    assert_eq!(index.stats().unwrap().faces, 2, "nothing was forgotten");
+    assert_eq!(index.remove_under(&dir.to_string_lossy()).unwrap(), 2);
+    assert_eq!(index.stats().unwrap().faces, 0);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn conflicts_see_active_and_system_faces_only() {
     let mut index = indexed();
     let woff = index

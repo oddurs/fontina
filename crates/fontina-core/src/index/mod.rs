@@ -265,18 +265,48 @@ impl Index {
         Ok(())
     }
 
+    /// Record that a file could not be parsed.
+    ///
+    /// A file that parsed before keeps its row, and so keeps its faces and everything
+    /// hanging off them: tags, collection memberships and activation state. Deleting the
+    /// row would cascade all of that away (`PRAGMA foreign_keys` is on), and a failure is
+    /// usually transient: a font being rewritten in place, a truncated download, a
+    /// half-copied file caught by the watcher. Curation the user built by hand must not
+    /// depend on a parse succeeding on every pass. What the file last parsed as stays
+    /// visible, flagged by `files.error` and reported in `stats`, until it parses again.
     pub(crate) fn record_failure_tx(tx: &Transaction, path: &str, error: &str) -> Result<()> {
-        tx.execute("DELETE FROM files WHERE path = ?1", params![path])?;
-        tx.execute(
-            "INSERT INTO files (path, size, mtime, blake3, container, face_count, scanned_at, error)
-             VALUES (?1, 0, 0, '', '', 0, unixepoch(), ?2)",
+        let updated = tx.execute(
+            "UPDATE files SET error = ?2, scanned_at = unixepoch() WHERE path = ?1",
             params![path, error],
         )?;
+        if updated == 0 {
+            tx.execute(
+                "INSERT INTO files (path, size, mtime, blake3, container, face_count, scanned_at, error)
+                 VALUES (?1, 0, 0, '', '', 0, unixepoch(), ?2)",
+                params![path, error],
+            )?;
+        }
         Ok(())
     }
 
     /// Remove files under `root` that no longer exist on disk. Returns the count removed.
+    ///
+    /// "Gone" means the path's own metadata reports `NotFound`. An unreadable file, or one
+    /// under a directory we may not traverse, is kept: `Path::exists` cannot tell those
+    /// apart from a deleted file, and pruning cascades the user's tags, collections and
+    /// activation records away with the row.
+    ///
+    /// Two directory-level guards, because losing a whole library is not a recoverable
+    /// mistake. Nothing is pruned when `root` itself is unreadable, and nothing is pruned
+    /// when *every* indexed file under it has vanished at once: an unmounted share is
+    /// indistinguishable from a deleted one, and the empty mount point is the common case.
+    /// [`Index::remove_under`] is the explicit way to forget a directory on purpose.
     pub fn prune_missing(&mut self, root: &str) -> Result<usize> {
+        match std::fs::metadata(Path::new(root)) {
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return Ok(0),
+        }
         let paths: Vec<String> = {
             let mut stmt = self
                 .conn
@@ -285,7 +315,10 @@ impl Index {
                 stmt.query_map(params![root, like_prefix(root)], |r| r.get::<_, String>(0))?;
             rows.filter_map(|r| r.ok()).collect()
         };
-        let missing: Vec<&String> = paths.iter().filter(|p| !Path::new(p).exists()).collect();
+        let missing: Vec<&String> = paths.iter().filter(|p| is_gone(p)).collect();
+        if missing.len() == paths.len() && paths.len() > 1 {
+            return Ok(0);
+        }
         let tx = self.conn.transaction()?;
         for p in &missing {
             tx.execute("DELETE FROM files WHERE path = ?1", params![p])?;
@@ -668,6 +701,13 @@ fn freedom_clause(want: Freedom) -> String {
         Freedom::Nonfree => format!("(NOT {unstated} AND {nonfree})"),
         Freedom::Unknown => format!("(NOT {unstated} AND NOT {free} AND NOT {nonfree})"),
     }
+}
+
+/// Whether a path is really gone, as opposed to merely unreadable. A dangling symlink
+/// counts as gone: `metadata` follows the link, and the font it named is what matters.
+fn is_gone(path: &str) -> bool {
+    matches!(std::fs::metadata(Path::new(path)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound)
 }
 
 fn like_prefix(root: &str) -> String {
