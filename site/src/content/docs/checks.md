@@ -1,7 +1,7 @@
 ---
 title: Health checks
 description: "what `fontina check` looks for, every check identifier, and the exit status rules."
-order: 5
+order: 7
 ---
 
 `fontina check` is a small, fast subset of what

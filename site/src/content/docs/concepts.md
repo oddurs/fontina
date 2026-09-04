@@ -63,8 +63,8 @@ container is recorded on the face and is a filter (`--container woff2`).
 ## Sources
 
 A *source* is a directory the index was built from. `scan` records the directories it
-was given; `source add` registers one explicitly and scans it. Sources are what a
-future `watch` command will follow for changes. A source can be forgotten with
+was given; `source add` registers one explicitly and scans it. Watched sources are
+what `fontina watch` follows for changes. A source can be forgotten with
 `source remove`, optionally dropping its faces from the index with `--purge`.
 
 ## Tags
@@ -94,10 +94,19 @@ $ fontina collection import editorial.json
 
 ## Activation state
 
-Each face carries an activation state: `none`, `session`, `user` or `installed`. The
-index records it; the platform backends that change it are the next milestone. The
-state is already a filter (`--active`, `--activation user`) and a facet, so scripts
-written against it today keep working.
+Each face carries an activation state: `none`, `session`, `user` or `installed`,
+set by `activate`, `activate --session` and `install`, and cleared by their inverses.
+The index records it together with when it happened, so `restore` can re-apply it
+after a reboot. The state is a filter (`--active`, `--activation user`), a facet, and
+the `A` flag in `list`. See [Activation and installation](../activation/).
+
+## Conflicts
+
+Two active fonts with the same PostScript name, or the same family and style,
+compete for the same slot in every application. fontina checks for that before
+activating and refuses with exit status 2 unless told to `--replace`. Duplicates
+across containers (the same face as TTF and WOFF2) are not conflicts; activating
+one is enough.
 
 ## Health checks
 

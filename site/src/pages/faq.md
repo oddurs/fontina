@@ -5,7 +5,7 @@ description: "Answers to common questions about fontina."
 source: site/src/pages/faq.md
 ---
 
-1. [Is this GNU Unifont?](#is-this-gnu-fontina)
+1. [Is this related to GNU Unifont?](#is-this-related-to-gnu-unifont)
 2. [What does it do that `fc-list` does not?](#what-does-it-do-that-fc-list-does-not)
 3. [Does it need root, or write to `/usr/share/fonts`?](#does-it-need-root-or-write-to-usrsharefonts)
 4. [Does it phone home?](#does-it-phone-home)
@@ -14,18 +14,22 @@ source: site/src/pages/faq.md
 7. [Why a webview for the desktop app instead of a native toolkit?](#why-a-webview-for-the-desktop-app-instead-of-a-native-toolkit)
 8. [Why Rust?](#why-rust)
 9. [Why is the license MIT OR Apache-2.0 and not the GPL?](#why-is-the-license-mit-or-apache-20-and-not-the-gpl)
-10. [Which fonts ship with it?](#which-fonts-ship-with-it)
-11. [The variable font's style shows as "96pt ExtraBold". Is that right?](#the-variable-fonts-style-shows-as-96pt-extrabold-is-that-right)
-12. [A WOFF2 file fails with an `hmtx` transform error.](#a-woff2-file-fails-with-an-hmtx-transform-error)
-13. [How do I report a bug?](#how-do-i-report-a-bug)
+10. [How can a terminal show a font?](#how-can-a-terminal-show-a-font)
+11. [Which fonts ship with it?](#which-fonts-ship-with-it)
+12. [The variable font's style shows as "96pt ExtraBold". Is that right?](#the-variable-fonts-style-shows-as-96pt-extrabold-is-that-right)
+13. [A WOFF2 file fails with an `hmtx` transform error.](#a-woff2-file-fails-with-an-hmtx-transform-error)
+14. [How do I report a bug?](#how-do-i-report-a-bug)
 
 ---
 
-### Is this GNU Unifont?
 
-No. GNU Unifont is a bitmap font covering the Basic Multilingual Plane. This is a font
-manager that happens to have picked the same word as a working name. The name will
-change before the first release. We apologise for the confusion in the meantime.
+
+### Is this related to GNU Unifont?
+
+No. GNU Unifont is a bitmap font covering the Basic Multilingual Plane. This project
+was called "unifont" as a working name until 2026-09-04, which collided with it, and is
+now fontina: one letter from the thing it manages. Old links and the old crate names
+redirect.
 
 ### What does it do that `fc-list` does not?
 
@@ -39,8 +43,10 @@ as one. Then it answers queries against that, exports it, and checks it.
 ### Does it need root, or write to `/usr/share/fonts`?
 
 Never. Everything is per-user. On Linux the index lives under
-`$XDG_DATA_HOME/fontina` and activation, when it lands, will use
-`$XDG_DATA_HOME/fonts` and a fontconfig fragment in `~/.config/fontconfig/conf.d`.
+`$XDG_DATA_HOME/fontina`, and activation is a symlink under `$XDG_DATA_HOME/fonts`
+plus a fontconfig fragment in `~/.config/fontconfig/conf.d`. On macOS it is a Core
+Text user-scope registration; on Windows a per-user registry value. See
+[Platform notes](../docs/platforms/).
 
 ### Does it phone home?
 
@@ -81,6 +87,14 @@ It is the Rust ecosystem convention, it lets the core crate be used by anyone, a
 Apache-2.0 carries an explicit patent grant. See
 [ADR 0004](../adr/0004-license-mit-or-apache/). The project is free software either way,
 and contributions are accepted under the same terms.
+
+### How can a terminal show a font?
+
+`preview` shapes the text with HarfBuzz's Rust port, rasterises the outlines, and
+sends the bitmap with whatever image protocol the terminal speaks: kitty graphics,
+iTerm2 inline images or sixel. Where there is none, it draws half-block characters
+in 24-bit colour, which is coarse but honest and works in a CI log. See
+[Watching, previews and the browser](../docs/terminal/).
 
 ### Which fonts ship with it?
 

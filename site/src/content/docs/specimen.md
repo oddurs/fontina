@@ -1,7 +1,7 @@
 ---
 title: Specimens and CSS
 description: "the self-contained HTML specimen and the `@font-face` export."
-order: 6
+order: 8
 ---
 
 ## The HTML specimen

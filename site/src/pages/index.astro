@@ -10,15 +10,20 @@ const day = (d: Date) => d.toISOString().slice(0, 10);
 // Prose is written as HTML strings: Astro drops the whitespace between text and a
 // tag at a line break, which runs words into links.
 const intro = `
-<p>fontina finds the fonts on a machine and in a user's own folders, reads what they
-contain through <a href="https://github.com/googlefonts/fontations">fontations</a>,
-keeps it in a searchable <a href="${u('/docs/index-and-paths/')}">index</a>, and answers
-questions about it: which faces cover <a href="${u('/docs/getting-started/#looking')}">a
+<p>fontina is a font manager for the terminal. It finds the fonts on a machine and in
+a user's own folders, reads what they contain through
+<a href="https://github.com/googlefonts/fontations">fontations</a>, and keeps it in a
+searchable <a href="${u('/docs/index-and-paths/')}">index</a>. It
+<a href="${u('/docs/activation/')}">activates</a> a font for every application, per user
+and in place, on Linux, macOS and Windows; <a href="${u('/docs/terminal/#previews')}">previews</a>
+it as real shaped glyphs in the terminal; <a href="${u('/docs/terminal/#watching')}">watches</a>
+your folders; answers which faces cover <a href="${u('/docs/getting-started/#looking')}">a
 script</a>, which are variable, which may be <a href="${u('/docs/cli/#checking')}">embedded</a>,
-which file is a duplicate of which. It exports what it knows as
+which file is a duplicate of which; and exports what it knows as
 <a href="${u('/docs/specimen/')}">CSS and HTML specimens</a> and as JSON with a
-<a href="${u('/docs/json-and-schemas/')}">published schema</a>. It is a Rust library first,
-a <a href="${u('/docs/cli/')}">command line</a> second, and a desktop application third.
+<a href="${u('/docs/json-and-schemas/')}">published schema</a>. The
+<a href="${u('/docs/cli/')}">command line</a> is the product; <code>fontina ui</code> is a
+keyboard-first <a href="${u('/docs/terminal/#the-browser')}">browser</a> over the same core.
 fontina is <a href="${u('/license/')}">free software</a>, free in the sense that it makes
 no network connections, collects nothing, asks for no privileges, and leaves the system
 font directories alone.</p>
@@ -36,19 +41,19 @@ work on GNU/Linux, macOS and Windows, and encourage everyone to
 
 const status = `
 <dl class="status">
-<dt><span class="version"><a href="${repo}/releases/tag/v0.0.1">fontina 0.0.1</a></span>
-  (<a href="${repo}/blob/main/CHANGELOG.md">changes</a>)</dt>
-<dd>Status: <a href="${u('/news/2026-09-03-project-started/')}">2026-09-03</a>
-  (pre-release; core library and command line).
-  <div class="regress">
-  <a href="${repo}/issues?q=is%3Aissue+is%3Aopen+label%3Abug">Open bugs</a>.
-  <a href="${repo}/issues?q=is%3Aissue+is%3Aopen+label%3Aregression">Regressions</a>.
-  </div></dd>
+<dt><span class="version">Released:</span> nothing yet</dt>
+<dd>The first tagged release will carry binaries, completions, man pages and Linux
+  packages; see <a href="${u('/releases/')}">Releases</a>. Until then,
+  <a href="${u('/download/')}">build from source</a>.</dd>
 <dt><span class="version">Development:</span>
-  fontina 0.1 (<a href="${u('/roadmap/')}">roadmap</a>, <a href="${repo}/commits/main">changes</a>)</dt>
-<dd>Status: activation, watching and the terminal interface (general development).
+  <a href="${repo}/commits/main">main</a>, 0.0.x
+  (<a href="${u('/roadmap/')}">roadmap</a>, <a href="${repo}/blob/main/CHANGELOG.md">changes</a>)</dt>
+<dd>Status: <a href="${u('/news/2026-09-04-manage-in-the-terminal/')}">2026-09-04</a>,
+  milestone M1 delivered: organise, activate, watch, preview, browse. Next is M2,
+  typography in the browser.
   <div class="regress">
   <a href="${repo}/actions/workflows/ci.yml?query=branch%3Amain">CI on main</a>.
+  <a href="${repo}/issues?q=is%3Aissue+is%3Aopen+label%3Abug">Open bugs</a>.
   <a href="${repo}/pulls">Open pull requests</a>.
   </div></dd>
 </dl>
