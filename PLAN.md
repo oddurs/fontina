@@ -249,22 +249,23 @@ path, or `family:<name>`.
   `glyphs`, `license`, `specimen`, `schema`.
 - ADRs for fontations, SQLite, Tauri (deferred, see ADR 0006), license, WOFF decoding.
 
-### M1 — Manage (the font manager, in the terminal)
+### M1 — Manage (the font manager, in the terminal) — delivered 2026-09-04
 Re-scoped on 2026-09-03 from a desktop app to CLI + TUI (ADR 0006).
-1. **Organise.** Tags, collections, JSON export/import against `schemas/collection.json`,
-   sources, family grouping, facet counts, richer filters. `families`, `facets`, `tag`,
-   `collection`, `source`.
-2. **Activate.** Native `activate`/`deactivate`/`install`/`uninstall` on Linux, macOS and
-   Windows; conflict detection with `--replace`; activation state in the index;
-   `restore` for login agents.
-3. **Watch.** `source add` scans immediately; `watch` follows every watched source with
-   debounced incremental rescans.
-4. **Preview.** Shaped, rasterised previews in the terminal (kitty, iTerm2, sixel,
+1. **Organise** (#14). Tags, collections, JSON export/import against
+   `schemas/collection.json`, sources, family grouping, facet counts, richer filters.
+   `families`, `facets`, `tag`, `collection`, `source`.
+2. **Activate** (#16). Native `activate`/`deactivate`/`install`/`uninstall` on Linux,
+   macOS and Windows; conflict detection with `--replace`; activation state in the
+   index; `restore` for login agents.
+3. **Watch** (#19). `source add` scans immediately; `watch` follows every watched source
+   with debounced incremental rescans.
+4. **Preview** (#21). Shaped, rasterised previews in the terminal (kitty, iTerm2, sixel,
    half-block fallback), with axis coordinates and feature toggles.
 5. **Browse.** `unifont ui`: search, facets, families and faces, details, previews, tag
    and activate from the keyboard.
-6. **Ship.** Completions and man pages in archives; `.deb`/`.rpm`; Homebrew formula,
-   winget and Scoop manifests, AUR `PKGBUILD`; rename before 1.0.
+6. **Ship.** Completions and man pages in archives; `.deb`/`.rpm` from the release
+   workflow. Still to do before 1.0: Homebrew formula, winget and Scoop manifests, AUR
+   `PKGBUILD`, and the rename.
 
 ### M2 — Typography
 - In the TUI: axis sliders with named-instance snapping, feature toggles, glyph map by
@@ -334,15 +335,19 @@ cloud sync, accounts, telemetry, an Electron shell.
 
 ## 9. M1, concretely
 
-Each item is one pull request against `main`, in this order.
+Each item was one pull request against `main`, in this order.
 
-1. `feat(core)`: tags, collections, sources and activation state APIs; facets and
+1. `feat(core)` #14: tags, collections, sources and activation state APIs; facets and
    families; new filters; `schemas/collection.json` and `schemas/cli-output.json`;
    `unifont tag|collection|source|families|facets`.
-2. `feat(platform)`: Linux, macOS and Windows activation backends; core conflict query;
-   `unifont activate|deactivate|install|uninstall|conflicts|restore`.
-3. `feat(core)`: `notify`-based watcher; `unifont watch`; `source add` scans.
-4. `feat(core)`: `render` module (harfrust + skrifa + rasteriser), PNG encoder on
+2. `feat(platform)` #16: Linux, macOS and Windows activation backends; core conflict
+   query; `unifont activate|deactivate|install|uninstall|conflicts|restore`.
+3. `feat(core)` #19: `notify`-based watcher; `unifont watch`; `source add` scans.
+4. `feat(core)` #21: `render` module (harfrust + skrifa + rasteriser), PNG encoder on
    `flate2`; `unifont preview` with kitty/iTerm2/sixel/half-block output.
 5. `feat(cli)`: `unifont ui` (ratatui).
-6. `chore(release)`: completions, man pages, `.deb`/`.rpm`, package manifests; README.
+6. `chore(release)`: completions, man pages, `.deb`/`.rpm` in the release workflow.
+
+What M2 starts from: the TUI has the plumbing for axis sliders and feature toggles
+(`render::RenderOptions`), `check` has stable ids, and `restore` is ready for a login
+agent. Package-manager manifests and the rename are the remaining "Ship" items.

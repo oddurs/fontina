@@ -39,6 +39,20 @@ jobs:
           key: ${{ matrix.target }}
       - run: cargo build --release --locked -p unifont-cli --target ${{ matrix.target }}
 
+      # Completions and man pages come from the binary itself, so they always match it.
+      # Cross-built binaries cannot run here; the host build generates them instead.
+      - name: Generate completions and man pages
+        shell: bash
+        run: |
+          cargo build --release --locked -p unifont-cli
+          gen=target/release/unifont; [ "${{ runner.os }}" = "Windows" ] && gen=target/release/unifont.exe
+          mkdir -p target/pkg/completions target/pkg/man
+          "$gen" completions bash > target/pkg/completions/unifont.bash
+          "$gen" completions zsh  > target/pkg/completions/_unifont
+          "$gen" completions fish > target/pkg/completions/unifont.fish
+          "$gen" completions powershell > target/pkg/completions/_unifont.ps1
+          "$gen" man --out-dir target/pkg/man
+
       - name: Package
         id: pkg
         shell: bash
@@ -47,6 +61,7 @@ jobs:
           mkdir -p "dist/$name"
           bin=unifont; [ "${{ runner.os }}" = "Windows" ] && bin=unifont.exe
           cp "target/${{ matrix.target }}/release/$bin" README.md LICENSE-MIT LICENSE-APACHE "dist/$name/"
+          cp -r target/pkg/completions target/pkg/man "dist/$name/"
           cd dist
           if [ "${{ matrix.ext }}" = "zip" ]; then
             7z a -tzip "$name.zip" "$name" >/dev/null
@@ -67,6 +82,26 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "${{ github.event.release.tag_name }}" ${{ steps.pkg.outputs.archive }} ${{ steps.pkg.outputs.archive }}.sha256 --clobber
+
+      # Distro packages for Linux, from the same binary, with the completions and man
+      # pages in their conventional places.
+      - name: Build .deb and .rpm
+        if: runner.os == 'Linux'
+        run: |
+          cargo install --locked cargo-deb cargo-generate-rpm
+          cargo deb --no-build --no-strip -p unifont-cli --target ${{ matrix.target }} -o dist/
+          cargo generate-rpm -p crates/unifont-cli --target ${{ matrix.target }} -o dist/
+          ls -la dist/*.deb dist/*.rpm
+      - name: Upload the packages
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for f in dist/*.deb dist/*.rpm; do
+            sha256sum "$f" > "$f.sha256"
+            gh release upload "${{ github.event.release.tag_name }}" "$f" "$f.sha256" --clobber
+          done
 
   sbom:
     name: sbom
