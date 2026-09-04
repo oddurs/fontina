@@ -72,7 +72,7 @@ h2 + h3, h3 + h4 { margin-top: 0.6em; }
 }
 .navcol .home { margin: 0 0 var(--pad-2); font-weight: bold; }
 @media (max-width: 50em) {
-  .frame { flex-direction: column; gap: 1.5em; }
+  .frame { flex-direction: column; align-items: stretch; gap: 1.5em; }
   .navcol { flex-basis: auto; width: 100%; position: static; max-height: none; }
 }
 
@@ -103,7 +103,7 @@ h2 + h3, h3 + h4 { margin-top: 0.6em; }
 .col.news { padding-right: 16px; }
 .col.status { padding-left: 16px; border-left: 1px solid var(--rule); }
 @media (max-width: 50em) {
-  .columns { flex-direction: column; }
+  .columns { flex-direction: column; align-items: stretch; }
   .col.news { padding-right: 0; }
   .col.status { padding-left: 0; border-left: 0; margin-top: 1.5em; }
 }

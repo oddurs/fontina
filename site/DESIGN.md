@@ -72,7 +72,7 @@ Each one is a class (or element) in the stylesheet, with the markup it expects.
 Two columns: main content and a nav column on the right, separated by `--gap`, at
 most `--measure` wide, centred. The nav column is sticky, so on a long manual
 chapter it stays in reach; it scrolls inside itself if it is taller than the window.
-Under 50em the nav column drops below the content and stops being sticky. The
+Under 50em the columns stack, stretched to the full width (a column flex with `align-items: flex-start` would shrink them to their content), and the nav column stops being sticky. The
 copyright box spans both columns.
 
 ### Nav item
