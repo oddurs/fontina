@@ -12,8 +12,10 @@ open standards end to end.
 
 **Status:** core library and CLI. They parse TTF, OTF, TTC, WOFF and WOFF2, build a
 searchable SQLite index, run health checks, answer "which fonts cover this text",
-export `@font-face` CSS and interactive HTML specimens. The desktop app and native
-activation backends are next; see [`PLAN.md`](PLAN.md) for the roadmap.
+export `@font-face` CSS and interactive HTML specimens. Next (M1): tags and
+collections, native activation on all three desktops, watched folders, shaped glyph
+previews in the terminal, and a TUI. See [`PLAN.md`](PLAN.md) for the roadmap and
+principles.
 
 ## Install
 
@@ -53,15 +55,18 @@ index is a single SQLite file in the platform data directory.
 ## Why
 
 Existing managers are Electron-heavy, single-platform, closed, or all three. unifont is
-a reusable Rust crate first, a CLI second, and a desktop app third.
+a reusable Rust crate first, a CLI second, and a terminal UI third. The font manager for
+the people: one small binary, your data in plain files, nothing leaves the machine.
 
 - **Correct.** Parsing by Google's [fontations](https://github.com/googlefonts/fontations),
   the code Chrome and Skia use. Families come from the typographic name IDs and `STAT`.
 - **Standards.** CSS Fonts Level 4 style model, SPDX license identifiers, XDG paths,
   fontconfig integration, JSON Schema for every export, TOML config.
 - **Light.** Hard budgets on install size, start time and idle memory, enforced in CI.
-- **Private.** No network calls, no telemetry, no elevation, no writes to system font
-  directories.
+- **Private.** No network calls, no telemetry, no accounts, no elevation, no writes to
+  system font directories.
+- **Durable.** Append-only migrations, stable output, few audited dependencies. A script
+  written today keeps working.
 
 ## Contributing
 

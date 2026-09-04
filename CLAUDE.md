@@ -10,8 +10,7 @@ milestones; this file is the operating manual.
 crates/unifont-core       parsing (fontations), metadata model, SQLite index, scan, CSS export,
                           health checks (check.rs), HTML specimen (specimen.rs)
 crates/unifont-platform   per-OS font directories and the FontActivator trait
-crates/unifont-cli        the `unifont` binary
-apps/desktop              Tauri 2 + Svelte 5 app (M1, not yet present)
+crates/unifont-cli        the `unifont` binary; `src/ui/` is the ratatui TUI (M1)
 schemas/                  JSON Schema for the metadata model; regenerate with `unifont schema`
 fixtures/                 OFL-licensed test fonts; keep total size small
 docs/adr/                 architecture decision records, one file per decision
