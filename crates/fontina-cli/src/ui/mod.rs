@@ -685,7 +685,7 @@ impl App {
             let record = self.index.activation(faces[0])?;
             let result = if uninstall {
                 match record.and_then(|r| r.installed_path) {
-                    Some(p) => activator.uninstall(Path::new(&p)),
+                    Some(p) => activator.uninstall(Path::new(&p)).map(|()| true),
                     None => continue,
                 }
             } else {
@@ -695,7 +695,7 @@ impl App {
                 activator.deactivate(&path)
             };
             match result {
-                Ok(()) => {
+                Ok(_) => {
                     self.index.clear_activation(&faces)?;
                     n += faces.len();
                 }

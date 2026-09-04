@@ -1838,10 +1838,15 @@ fn run_activate(
                     eprintln!("uninstalled {} {}", c.face.family, c.face.subfamily);
                 }
                 Some(_) => {
-                    activator.deactivate(std::path::Path::new(&c.face.path))?;
+                    let removed = activator.deactivate(std::path::Path::new(&c.face.path))?;
                     let faces = index.file_faces(c.face.id)?;
                     index.clear_activation(&faces)?;
-                    eprintln!("deactivated {} {}", c.face.family, c.face.subfamily);
+                    let note = if removed {
+                        ""
+                    } else {
+                        " (nothing was registered; cleared the record)"
+                    };
+                    eprintln!("deactivated {} {}{note}", c.face.family, c.face.subfamily);
                 }
                 None => eprintln!(
                     "warning: {} {} is a system font at {}; it cannot be replaced, the OS decides which wins",
@@ -1915,10 +1920,13 @@ fn run_deactivate(cli: &Cli, targets: &[String], uninstall: bool, json: bool) ->
             activator
                 .uninstall(std::path::Path::new(&installed))
                 .with_context(|| format!("uninstalling {installed}"))?;
-        } else {
-            activator
-                .deactivate(&path)
-                .with_context(|| format!("deactivating {}", path.display()))?;
+        } else if !activator
+            .deactivate(&path)
+            .with_context(|| format!("deactivating {}", path.display()))?
+        {
+            // Nothing was registered under that path: the record is stale, so clearing it
+            // is all there is to do, and saying so beats reporting a removal that was not.
+            eprintln!("{}: nothing was active; cleared the record", path.display());
         }
         index.clear_activation(&faces)?;
         done.push(path);

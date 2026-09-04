@@ -18,7 +18,10 @@
 //! persists across logins without copying; `session` ends at logout. Persistent install
 //! copies into `~/Library/Fonts`, which fontd watches.
 
-use super::{FontActivator, PlatformError, Result, Scope, io, is_under, regular_file, slot_name};
+use super::{
+    FontActivator, PlatformError, Result, Scope, copy_slot, io, is_copy_slot, is_under,
+    present_by_hand, regular_file,
+};
 use core_foundation::base::TCFType;
 use core_foundation::error::{CFError, CFErrorRef};
 use core_foundation::url::{CFURL, CFURLRef};
@@ -105,20 +108,20 @@ impl FontActivator for CoreText {
         let file = regular_file(file)?;
         let dir = user_fonts_dir()?;
         std::fs::create_dir_all(&dir).map_err(io(&dir))?;
-        let same_bytes = |p: &Path| {
-            std::fs::read(p).ok().map(|b| blake3::hash(&b))
-                == std::fs::read(&file).ok().map(|b| blake3::hash(&b))
-        };
-        let slot = slot_name(&dir, &file, same_bytes);
-        if !slot.exists() {
-            std::fs::copy(&file, &slot).map_err(io(&slot))?;
+        let slot = copy_slot(&dir, &file);
+        if slot.exists() {
+            return Ok(slot);
         }
+        if let Some(theirs) = present_by_hand(&dir, &file) {
+            return Err(PlatformError::AlreadyPresent(theirs));
+        }
+        std::fs::copy(&file, &slot).map_err(io(&slot))?;
         Ok(slot)
     }
 
     fn uninstall(&self, installed: &Path) -> Result<()> {
         let dir = user_fonts_dir()?;
-        if !is_under(installed, &dir) {
+        if !is_under(installed, &dir) || !is_copy_slot(installed) {
             return Err(PlatformError::NotManaged(installed.to_path_buf(), dir));
         }
         match std::fs::remove_file(installed) {
@@ -136,19 +139,23 @@ impl FontActivator for CoreText {
         }
     }
 
-    fn deactivate(&self, file: &Path) -> Result<()> {
+    fn deactivate(&self, file: &Path) -> Result<bool> {
         let file = std::fs::canonicalize(file).unwrap_or_else(|_| file.to_path_buf());
+        // Both scopes, always. A font activated for the session and then for the user is
+        // registered twice; stopping at the first success would leave the other
+        // registration behind, surviving a logout, with nothing left to point at it.
         let mut last = None;
+        let mut removed = false;
         for scope in [SCOPE_SESSION, SCOPE_USER] {
             match ct_call(&file, CTFontManagerUnregisterFontsForURL, scope)? {
-                None => return Ok(()),
+                None => removed = true,
                 Some(ERR_NOT_REGISTERED) => {}
                 Some(code) => last = Some(code),
             }
         }
         match last {
-            Some(code) => Err(describe(&file, code)),
-            None => Ok(()),
+            Some(code) if !removed => Err(describe(&file, code)),
+            _ => Ok(removed),
         }
     }
 }
@@ -156,6 +163,11 @@ impl FontActivator for CoreText {
 #[cfg(all(test, feature = "platform-tests"))]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // CoreText registration is process-global, and so is ~/Library/Fonts; serialise the
+    // tests that touch either.
+    static SYSTEM: Mutex<()> = Mutex::new(());
 
     fn fixture() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/Amiri-Regular.ttf")
@@ -163,6 +175,7 @@ mod tests {
 
     #[test]
     fn session_activation_round_trips() {
+        let _guard = SYSTEM.lock().unwrap_or_else(|e| e.into_inner());
         let a = CoreText;
         a.activate(&fixture(), Scope::Session).unwrap();
         a.activate(&fixture(), Scope::Session).unwrap(); // already registered: fine
@@ -176,10 +189,16 @@ mod tests {
 
     #[test]
     fn install_copies_into_user_fonts() {
+        let _guard = SYSTEM.lock().unwrap_or_else(|e| e.into_inner());
         let a = CoreText;
         let installed = a.install(&fixture()).unwrap();
         assert!(installed.starts_with(user_fonts_dir().unwrap()));
         assert!(installed.exists());
+        assert!(
+            super::super::is_copy_slot(&installed),
+            "the slot name proves fontina wrote it: {}",
+            installed.display()
+        );
         assert_eq!(a.install(&fixture()).unwrap(), installed, "idempotent");
         a.uninstall(&installed).unwrap();
         assert!(!installed.exists());
@@ -187,5 +206,57 @@ mod tests {
             a.uninstall(&fixture()),
             Err(PlatformError::NotManaged(..))
         ));
+    }
+
+    #[test]
+    fn a_font_the_user_installed_by_hand_is_left_alone() {
+        let _guard = SYSTEM.lock().unwrap_or_else(|e| e.into_inner());
+        // The user drops a font into ~/Library/Fonts themselves, then installs the same
+        // file from somewhere else. Adopting their copy as our slot would mean deleting
+        // their file on uninstall, so we refuse and say why.
+        let a = CoreText;
+        let dir = user_fonts_dir().unwrap();
+        std::fs::create_dir_all(&dir).unwrap();
+        let source =
+            std::env::temp_dir().join(format!("fontina-byhand-{}.ttf", std::process::id()));
+        std::fs::copy(fixture(), &source).unwrap();
+        let theirs = dir.join(source.file_name().unwrap());
+        std::fs::copy(&source, &theirs).unwrap();
+
+        let err = a.install(&source).expect_err("must not adopt their file");
+        assert!(
+            matches!(err, PlatformError::AlreadyPresent(ref p) if *p == theirs),
+            "{err}"
+        );
+        assert!(theirs.exists(), "their file is untouched");
+
+        // And uninstall refuses to delete it even when handed the path directly, because
+        // the name is not one fontina would have chosen.
+        assert!(matches!(
+            a.uninstall(&theirs),
+            Err(PlatformError::NotManaged(..))
+        ));
+        assert!(theirs.exists());
+        std::fs::remove_file(&theirs).unwrap();
+        std::fs::remove_file(&source).unwrap();
+    }
+
+    #[test]
+    fn deactivate_clears_both_scopes_and_reports_what_it_did() {
+        let _guard = SYSTEM.lock().unwrap_or_else(|e| e.into_inner());
+        let a = CoreText;
+        assert!(
+            !a.deactivate(&fixture()).unwrap(),
+            "nothing was registered yet"
+        );
+        a.activate(&fixture(), Scope::Session).unwrap();
+        a.activate(&fixture(), Scope::User).unwrap();
+        assert!(a.deactivate(&fixture()).unwrap());
+        // Stopping at the first scope would have left the user-scope registration behind,
+        // surviving a logout with nothing left pointing at it.
+        assert!(
+            !a.deactivate(&fixture()).unwrap(),
+            "both scopes were cleared"
+        );
     }
 }

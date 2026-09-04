@@ -120,7 +120,11 @@ fn find_link(dir: &Path, file: &Path) -> Result<Option<PathBuf>> {
     };
     for entry in entries.flatten() {
         let p = entry.path();
-        if link_target(&p).as_deref() == Some(file) {
+        let Some(target) = link_target(&p) else {
+            continue;
+        };
+        let resolved = std::fs::canonicalize(&target).unwrap_or_else(|_| target.clone());
+        if target == file || resolved == file {
             return Ok(Some(p));
         }
     }
@@ -128,15 +132,22 @@ fn find_link(dir: &Path, file: &Path) -> Result<Option<PathBuf>> {
 }
 
 fn unlink_from(dir: &Path, file: &Path) -> Result<bool> {
-    let file = std::fs::canonicalize(file).unwrap_or_else(|_| file.to_path_buf());
-    match find_link(dir, &file)? {
-        Some(link) => {
+    // Match on the literal path as well as the canonical one. `canonicalize` fails once
+    // the font has been moved or deleted, or its drive unmounted, and then the literal
+    // path is all we have; the link itself still reads back fine, dangling or not.
+    let literal = file.to_path_buf();
+    let canonical = std::fs::canonicalize(file).unwrap_or_else(|_| literal.clone());
+    let mut removed = false;
+    for candidate in [canonical.as_path(), literal.as_path()] {
+        if let Some(link) = find_link(dir, candidate)? {
             std::fs::remove_file(&link).map_err(io(&link))?;
-            refresh(dir);
-            Ok(true)
+            removed = true;
         }
-        None => Ok(false),
     }
+    if removed {
+        refresh(dir);
+    }
+    Ok(removed)
 }
 
 impl FontActivator for Fontconfig {
@@ -169,8 +180,8 @@ impl FontActivator for Fontconfig {
         ensure_snippet()
     }
 
-    fn deactivate(&self, file: &Path) -> Result<()> {
-        unlink_from(&active_dir()?, file).map(|_| ())
+    fn deactivate(&self, file: &Path) -> Result<bool> {
+        unlink_from(&active_dir()?, file)
     }
 }
 
@@ -262,12 +273,42 @@ mod tests {
         assert_eq!(std::fs::read_dir(&active).unwrap().count(), 1);
         a.activate(&fixture(), Scope::User).unwrap();
         assert_eq!(std::fs::read_dir(&active).unwrap().count(), 1, "idempotent");
-        a.deactivate(&fixture()).unwrap();
+        assert!(a.deactivate(&fixture()).unwrap(), "a link was removed");
         assert_eq!(std::fs::read_dir(&active).unwrap().count(), 0);
-        a.deactivate(&fixture()).unwrap(); // nothing active: fine
+        assert!(
+            !a.deactivate(&fixture()).unwrap(),
+            "nothing active: not an error, but nothing was removed either"
+        );
         assert!(matches!(
             a.activate(Path::new("/nonexistent/font.ttf"), Scope::Session),
             Err(PlatformError::Io(..))
         ));
+    }
+
+    #[test]
+    fn deactivating_a_font_that_has_since_vanished_still_removes_its_link() {
+        // The source font is moved away or its drive unmounted while it is active.
+        // `canonicalize` then fails, and matching only the canonical path would leave a
+        // dangling link in the active directory that fontconfig still reads and that
+        // nothing could ever remove, while the caller was told deactivation succeeded.
+        let _g = ENV.lock().unwrap();
+        let (data, config) = sandbox("vanished");
+        unsafe {
+            std::env::set_var("XDG_DATA_HOME", &data);
+            std::env::set_var("XDG_CONFIG_HOME", &config);
+        }
+        let source = data.join("Amiri-Regular.ttf");
+        std::fs::copy(fixture(), &source).unwrap();
+        let a = Fontconfig;
+        a.activate(&source, Scope::Session).unwrap();
+        let active = data.join("fonts/fontina-active");
+        assert_eq!(std::fs::read_dir(&active).unwrap().count(), 1);
+
+        std::fs::remove_file(&source).unwrap();
+        assert!(
+            a.deactivate(&source).unwrap(),
+            "the stale link must still be found and removed"
+        );
+        assert_eq!(std::fs::read_dir(&active).unwrap().count(), 0);
     }
 }
