@@ -16,6 +16,7 @@ permissions:
   contents: write
   pull-requests: write
   checks: read
+  actions: write
 
 concurrency:
   group: automerge-${{ github.event.pull_request.number }}
@@ -70,6 +71,10 @@ jobs:
             if [ "$total" -gt 0 ] && [ "$pending" -eq 0 ]; then
               # REST merge needs no local checkout; the repo deletes head branches on merge.
               gh api -X PUT "repos/$REPO/pulls/$PR/merge" -f merge_method=squash --jq '.message'
+              # A merge made with GITHUB_TOKEN does not trigger push workflows on main;
+              # workflow_dispatch is the documented exception, so trigger them here.
+              gh workflow run release-please.yml --ref main
+              gh workflow run ci.yml --ref main
               exit 0
             fi
             sleep 30

@@ -3,6 +3,9 @@ name: release-please
 on:
   push:
     branches: [main]
+  # Merges made by the automerge workflow use GITHUB_TOKEN, whose pushes do not
+  # trigger push workflows; the automerge job dispatches this one explicitly.
+  workflow_dispatch:
 
 concurrency:
   group: release-please
