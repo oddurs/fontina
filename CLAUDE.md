@@ -69,14 +69,28 @@ Set `UNIFONT_DB` to keep an index out of the platform data directory while devel
 
 ## Git workflow
 
-`main` is protected and always releasable. All work goes through pull requests. See
-`CONTRIBUTING.md` for the branch naming, commit format and review checklist. In short:
+`main` is protected: every change is a pull request, and GitHub merges it once the
+seven CI checks pass. The whole loop is:
 
-1. Branch from `main`: `feat/<topic>`, `fix/<topic>`, `chore/<topic>`, `docs/<topic>`.
-2. Conventional Commits (`feat(core): parse STAT axis values`). Scope is the crate or area.
-3. Open a PR early; CI must be green (fmt, clippy, tests on Linux, macOS, Windows, deny).
-4. Squash-merge. The PR title becomes the commit subject, so keep it in Conventional
-   Commits form. release-please turns those into the changelog and version bumps.
+```
+git checkout -b feat/<topic> main
+# ...make the change, run cargo test and clippy...
+git commit -m "feat(core): <what and why>"
+gh pr create --fill
+gh pr merge --auto --squash --delete-branch
+```
+
+That last command enables GitHub's native auto-merge; nothing else to do. Details:
+
+- Branch prefixes: `feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `ci/`.
+- Conventional Commits, scope is the crate or area. The PR title becomes the squash
+  commit subject, so keep it in that form too.
+- If a check fails, push a fix to the same branch; auto-merge stays armed.
+- Dependabot minor/patch PRs auto-merge on their own. Major bumps wait for a person.
+- release-please opens a `chore(main): release x.y.z` PR with the changelog and version
+  bump. Merging it (same `gh pr merge --squash`) tags the release and builds binaries.
+
+See `CONTRIBUTING.md` for the longer form.
 
 ## When working as an agent
 

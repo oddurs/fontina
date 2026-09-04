@@ -43,12 +43,17 @@ No `Co-Authored-By`, `Signed-off-by` or tool-session trailers.
 - Self-review the diff before requesting review.
 - Squash-merge only. Delete the branch after merge (automatic).
 
-## Automated merges
+## Merging
 
-The `automerge` workflow squash-merges a PR once every other check on its head
-commit has passed. It applies to Dependabot minor and patch updates automatically
-and to any PR a maintainer labels `automerge`. Major dependency updates and release
-PRs are always merged by a person.
+`main` requires the seven CI checks, linear history and resolved conversations. After
+opening a PR, enable auto-merge and walk away:
+
+```
+gh pr merge --auto --squash --delete-branch
+```
+
+Adding the `automerge` label does the same thing through a workflow. Dependabot minor
+and patch updates are auto-merged automatically; major updates wait for a person.
 
 ## Releases
 
