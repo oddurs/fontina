@@ -513,8 +513,12 @@ fn watch_applies_file_and_directory_changes() {
                 ..Default::default()
             },
             |ev| {
-                tx.send(ev.report.parsed).unwrap();
-                false
+                // FSEvents on macOS can replay events from just before the stream
+                // started, so earlier batches may carry nothing new; keep going until
+                // the copied file has been parsed.
+                let parsed = ev.report.parsed;
+                tx.send(parsed).unwrap();
+                parsed == 0
             },
         )
         .unwrap();
@@ -525,10 +529,15 @@ fn watch_applies_file_and_directory_changes() {
         roots[0].join("Nabla.ttf"),
     )
     .unwrap();
-    let parsed = rx
-        .recv_timeout(std::time::Duration::from_secs(15))
-        .expect("watcher reported the new file");
-    assert_eq!(parsed, 1);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    loop {
+        let parsed = rx
+            .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+            .expect("watcher reported the new file");
+        if parsed >= 1 {
+            break;
+        }
+    }
     handle.join().unwrap();
     let _ = std::fs::remove_dir_all(&dir);
 }
