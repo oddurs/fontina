@@ -31,9 +31,19 @@ cargo clippy --all-targets -- -D warnings
 cargo fmt --all
 cargo deny check                  # licenses and advisories (needs cargo-deny)
 ./target/debug/fontina scan fixtures --db /tmp/u.db && ./target/debug/fontina list --db /tmp/u.db
+
+FONTINA=./target/debug/fontina scripts/acceptance    # end-to-end, on this machine
+scripts/test-distros                                 # the same, inside six distributions
 ```
 
 Set `FONTINA_DB` to keep an index out of the platform data directory while developing.
+
+`scripts/acceptance` is the test that answers the only question that matters for a font
+manager: after `activate`, can another program see the font? On GNU/Linux `fc-list` and
+`fc-match` are that other program. `scripts/test-distros` runs it in Debian, Ubuntu,
+Fedora, Arch, Alpine and a Debian with no fontconfig installed, using a container
+runtime (OrbStack, Podman or Docker); `.github/workflows/linux.yml` runs the same script
+on every pull request that touches the crates.
 
 ## Rules that are not negotiable
 

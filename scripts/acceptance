@@ -1,0 +1,213 @@
+#!/bin/sh
+# Acceptance test for a built `fontina`: does it actually manage fonts on this system?
+#
+# Everything here is what a user would do, checked the way a user would check it: after
+# activating a font, some *other* program has to be able to see it. On GNU/Linux that
+# other program is fontconfig, so `fc-list` and `fc-match` are the assertions that matter.
+# The unit tests can only prove fontina wrote the symlink it meant to write.
+#
+# Runs against an installed binary on a real desktop, or inside a container (see
+# scripts/test-distros). POSIX sh, because Alpine has no bash.
+#
+#   FONTINA=./target/release/fontina scripts/acceptance
+#
+# Every path it touches is under one temporary directory, which it removes on the way
+# out: no system font directory, no elevation, nothing left behind.
+
+set -eu
+
+fontina=${FONTINA:-fontina}
+fixtures=${FIXTURES:-fixtures}
+fail=0
+pass=0
+
+say() { printf '%s\n' "$*"; }
+ok() { pass=$((pass + 1)); printf '  ok    %s\n' "$*"; }
+no() { fail=$((fail + 1)); printf '  FAIL  %s\n' "$*"; }
+check() { # check <description> <command...>
+    description=$1
+    shift
+    if "$@" >/dev/null 2>&1; then ok "$description"; else no "$description"; fi
+}
+
+root=$(mktemp -d)
+cleanup() {
+    # Never leave a font registered with the system, however the run ended.
+    "$fontina" uninstall family:Amiri >/dev/null 2>&1 || true
+    "$fontina" deactivate family:Amiri >/dev/null 2>&1 || true
+    rm -rf "$root"
+}
+trap cleanup EXIT INT TERM
+
+# A whole XDG world of our own, so the real one is never touched and the test is
+# repeatable on a developer's own machine.
+XDG_DATA_HOME="$root/data"
+XDG_CONFIG_HOME="$root/config"
+XDG_CACHE_HOME="$root/cache"
+FONTINA_DB="$root/index.db"
+export XDG_DATA_HOME XDG_CONFIG_HOME XDG_CACHE_HOME FONTINA_DB
+mkdir -p "$XDG_DATA_HOME" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME"
+
+os=$(uname -s)
+have_fc=no
+# fontconfig is the font system on GNU/Linux and the BSDs. macOS has CoreText and
+# Windows has GDI/DirectWrite, where a `fc-list` from Homebrew says nothing about
+# whether the desktop can see the font, so it is only consulted where it is the truth.
+case "$os" in
+Linux | *BSD | DragonFly)
+    if command -v fc-list >/dev/null 2>&1; then have_fc=yes; fi
+    ;;
+esac
+
+say "fontina acceptance"
+say "  binary:     $fontina"
+say "  version:    $("$fontina" --version 2>&1 || echo '(failed to run)')"
+say "  fixtures:   $fixtures"
+say "  system:     $os"
+say "  fontconfig: $have_fc"
+say "  sandbox:    $root"
+say ""
+
+# --- it runs at all, which is not a given for a binary built elsewhere --------------
+say "runs"
+check "--version" "$fontina" --version
+check "--help" "$fontina" --help
+check "dirs finds the per-user font directory" "$fontina" dirs
+
+# --- indexing -----------------------------------------------------------------------
+say "indexes"
+if "$fontina" scan "$fixtures" >"$root/scan.out" 2>&1; then
+    ok "scan $fixtures"
+else
+    no "scan $fixtures"
+    cat "$root/scan.out"
+fi
+if "$fontina" list | grep -q "face(s)"; then ok "list prints faces"; else no "list prints faces"; fi
+if "$fontina" list --json | grep -q '"family"'; then ok "list --json"; else no "list --json"; fi
+if "$fontina" list --script Arab | grep -qi amiri; then ok "list --script Arab finds Amiri"; else no "list --script Arab finds Amiri"; fi
+check "facets" "$fontina" facets
+check "families" "$fontina" families
+check "stats" "$fontina" stats
+check "check on a fixture" "$fontina" check "$fixtures/Amiri-Regular.ttf"
+check "license report" "$fontina" license
+check "covers" "$fontina" covers "Amiri"
+
+# --- the point of the whole program: another program can see the font ---------------
+say "activates"
+# Is the family visible to the rest of the system right now? Only fontconfig can answer
+# that from a shell; on the other systems the equivalent needs a CoreText or DirectWrite
+# call, so there the harness falls back to what fontina itself reports and the platform
+# integration tests carry the weight.
+seen() {
+    [ "$have_fc" = yes ] || return 1
+    fc-list 2>/dev/null | grep -qi "$1"
+}
+if [ "$have_fc" = yes ] && seen Amiri; then
+    no "Amiri must not be visible before activation (a dirty sandbox?)"
+elif [ "$have_fc" = yes ]; then
+    ok "Amiri is not visible before activation"
+fi
+
+if "$fontina" activate family:Amiri >"$root/activate.out" 2>&1; then
+    ok "activate family:Amiri"
+else
+    no "activate family:Amiri"
+    cat "$root/activate.out"
+fi
+if [ "$have_fc" = yes ]; then
+    if seen Amiri; then
+        ok "fc-list sees Amiri: another program can use it"
+    else
+        no "fc-list does not see Amiri after activation"
+    fi
+    if fc-match Amiri 2>/dev/null | grep -qi amiri; then
+        ok "fc-match resolves Amiri to the activated face"
+    else
+        no "fc-match does not resolve Amiri"
+    fi
+else
+    say "  skip  fontconfig assertions (fc-list is not installed)"
+fi
+if "$fontina" activations | grep -qi amiri; then ok "activations lists it"; else no "activations lists it"; fi
+if [ "$have_fc" = yes ] || [ "$os" = Linux ]; then
+    if [ -f "$XDG_CONFIG_HOME/fontconfig/conf.d/50-fontina.conf" ]; then
+        ok "the fontconfig snippet is written"
+    else
+        no "the fontconfig snippet is missing"
+    fi
+fi
+
+say "deactivates"
+check "deactivate family:Amiri" "$fontina" deactivate family:Amiri
+if [ "$have_fc" = yes ]; then
+    if seen Amiri; then no "fc-list still sees Amiri after deactivation"; else ok "fc-list no longer sees Amiri"; fi
+fi
+if "$fontina" activations | grep -qi amiri; then no "activations still lists it"; else ok "activations no longer lists it"; fi
+
+say "installs"
+if "$fontina" install family:Amiri >"$root/install.out" 2>&1; then
+    ok "install family:Amiri"
+else
+    no "install family:Amiri"
+    cat "$root/install.out"
+fi
+if [ "$have_fc" = yes ]; then
+    if seen Amiri; then ok "fc-list sees the installed copy"; else no "fc-list does not see the installed copy"; fi
+fi
+# The copy has to land in this system's own per-user font directory, whichever that is;
+# `fontina dirs` is the program's own answer and the acceptance test holds it to it.
+# `fontina dirs` marks the install target; the human-readable form is one line per
+# directory and needs no JSON parser, which matters in a busybox container.
+user_dir=$("$fontina" dirs 2>/dev/null | grep 'install target' | head -1 | sed 's/  *[a-z].*$//; s/ *$//')
+[ -n "$user_dir" ] || user_dir="$XDG_DATA_HOME/fonts"
+if find "$user_dir" -name '*Amiri*' 2>/dev/null | grep -q .; then
+    ok "the file landed in the per-user font directory ($user_dir)"
+else
+    no "nothing landed in the per-user font directory ($user_dir)"
+fi
+check "uninstall family:Amiri" "$fontina" uninstall family:Amiri
+if [ "$have_fc" = yes ]; then
+    if seen Amiri; then no "fc-list still sees Amiri after uninstall"; else ok "fc-list no longer sees Amiri"; fi
+fi
+if find "$user_dir" -name '*Amiri*' 2>/dev/null | grep -q .; then
+    no "the copy survived uninstall in $user_dir"
+else
+    ok "the copy is gone from the per-user font directory"
+fi
+
+# --- nothing outside the sandbox ----------------------------------------------------
+say "leaves no trace"
+# On GNU/Linux the sandbox is complete, because everything follows XDG. Elsewhere the
+# per-user font directory is fixed by the OS, so the test asserts it emptied up after
+# itself rather than that it never went there.
+if [ "$os" = Linux ] && [ -n "${HOME:-}" ] && [ -d "$HOME/.local/share/fonts/fontina" ]; then
+    no "$HOME/.local/share/fonts/fontina exists: something escaped the sandbox"
+else
+    ok "nothing of ours is left in the real font directories"
+fi
+
+# --- exports ------------------------------------------------------------------------
+say "exports"
+check "css" "$fontina" css family:Amiri --url-prefix /fonts/
+check "specimen" "$fontina" specimen family:Amiri -o "$root/specimen.html"
+if [ -s "$root/specimen.html" ]; then ok "the specimen has content"; else no "the specimen is empty"; fi
+check "glyphs" "$fontina" glyphs family:Amiri
+check "schema" "$fontina" schema face
+
+# Previews must work with no terminal at all: half blocks are the fallback that has to
+# survive a pipe, a CI log and `less -R`.
+if "$fontina" preview family:Amiri -p blocks --max-width 120 >"$root/preview.txt" 2>&1 && [ -s "$root/preview.txt" ]; then
+    ok "preview -p blocks draws something without a terminal"
+else
+    no "preview -p blocks produced nothing"
+fi
+check "preview -o writes a PNG" "$fontina" preview family:Amiri -o "$root/preview.png"
+if [ -s "$root/preview.png" ] && head -c 8 "$root/preview.png" | LC_ALL=C grep -qa PNG; then
+    ok "the PNG has a PNG header"
+else
+    no "the PNG is empty or not a PNG"
+fi
+
+say ""
+say "$pass passed, $fail failed"
+[ "$fail" -eq 0 ]

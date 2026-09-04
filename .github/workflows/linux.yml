@@ -1,0 +1,78 @@
+# GNU/Linux is the reference platform, and it is not one system. This workflow proves
+# the binary actually manages fonts on several distributions, with fontconfig as the
+# witness: after `fontina activate`, `fc-list` and `fc-match` have to see the font, the
+# way any other program on the desktop would.
+#
+# ci.yml runs the unit and integration tests on one Ubuntu runner. This runs the whole
+# command-line surface end to end on Debian, Ubuntu, Fedora, Arch, Alpine (musl) and a
+# system with no fontconfig installed at all. The same script, scripts/acceptance, is
+# what a contributor runs on their own desktop, and scripts/test-distros drives it
+# locally against the same images.
+name: linux
+
+on:
+  pull_request:
+    paths:
+      - 'crates/**'
+      - 'fixtures/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'scripts/acceptance'
+      - 'scripts/test-distros'
+      - '.github/workflows/linux.yml'
+  push:
+    branches: [main]
+  schedule:
+    # Distribution images move under us; a weekly run catches that without waiting for
+    # someone to open a pull request.
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: build (static, musl)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - uses: Swatinem/rust-cache@v2
+      # Static, so one binary runs on every distribution in the matrix, including the
+      # musl one, and the matrix measures the distribution rather than the toolchain.
+      - run: cargo build --release --locked -p fontina-cli --target x86_64-unknown-linux-musl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fontina-musl
+          path: target/x86_64-unknown-linux-musl/release/fontina
+          if-no-files-found: error
+
+  acceptance:
+    name: ${{ matrix.name }}
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        name: [debian, ubuntu, fedora, arch, alpine, bare]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v4
+        with:
+          name: fontina-musl
+          path: .
+      - run: chmod +x fontina
+      # Docker on the runner rather than a `container:` job, because actions/checkout
+      # cannot run inside an Alpine container: its Node is built against glibc.
+      - run: FONTINA_BIN=$PWD/fontina scripts/test-distros ${{ matrix.name }}

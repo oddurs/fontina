@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+# Run scripts/acceptance inside several GNU/Linux distributions.
+#
+# GNU/Linux is the reference platform, and "GNU/Linux" is not one system: fontconfig
+# versions differ, musl is not glibc, and a release binary built on the newest Ubuntu
+# will not start on a stable Debian. CI runs one runner image; this runs the real thing
+# on several, and it is the same script a contributor can run before opening a pull
+# request.
+#
+#   scripts/test-distros                 # every distribution below
+#   scripts/test-distros debian alpine   # only these
+#   KEEP=1 scripts/test-distros          # keep the built binaries in target/distro
+#   FONTINA_BIN=./fontina scripts/test-distros   # test a binary you already have
+#
+# FONTINA_BIN is how CI uses this: it builds one static musl binary, which runs on every
+# distribution here, and fans it out. Locally the script builds per libc instead, so what
+# you test is what your machine would produce.
+#
+# Needs a container runtime. OrbStack is the light one on macOS:
+#   brew install --cask orbstack
+# Podman or Docker work too; anything that provides a `docker` command.
+set -euo pipefail
+
+repo=$(cd "$(dirname "$0")/.." && pwd)
+out=$repo/target/distro
+runtime=${DOCKER:-docker}
+command -v "$runtime" >/dev/null || {
+    echo "no container runtime: install OrbStack (brew install --cask orbstack), Podman or Docker" >&2
+    exit 1
+}
+"$runtime" info >/dev/null 2>&1 || {
+    echo "the container runtime is installed but not running: start OrbStack and try again" >&2
+    exit 1
+}
+
+# name|image|libc|platform|command that installs fontconfig
+# `bare` is Debian with no fontconfig at all: activation is symlinks, a missing fc-cache
+# is not an error, and the program has to stay useful on a machine that has never had a
+# desktop installed. Arch publishes no aarch64 image, so it is pinned to amd64 and runs
+# under emulation on an Apple Silicon machine; on an amd64 runner it is native.
+DISTROS="
+debian|debian:12||apt-get update -qq && apt-get install -y -qq fontconfig
+ubuntu|ubuntu:24.04||apt-get update -qq && apt-get install -y -qq fontconfig
+fedora|fedora:41||dnf install -y -q fontconfig
+arch|archlinux:latest|linux/amd64|pacman -Sy --noconfirm --quiet fontconfig
+alpine|alpine:3.20||apk add --no-cache -q fontconfig
+bare|debian:12||true
+"
+
+want=("$@")
+selected() {
+    [ ${#want[@]} -eq 0 ] && return 0
+    for w in "${want[@]}"; do [ "$w" = "$1" ] && return 0; done
+    return 1
+}
+
+# One cache volume for the registry and one target directory per libc, so a second run
+# is quick and the two builds never share fingerprints.
+build() { # build <libc>
+    local libc=$1 image target
+    if [ -n "${FONTINA_BIN:-}" ]; then
+        mkdir -p "$out/$libc"
+        cp "$FONTINA_BIN" "$out/$libc/fontina"
+        chmod +x "$out/$libc/fontina"
+        return 0
+    fi
+    case $libc in
+    gnu)
+        # Bookworm's glibc is old enough for every distribution we claim to support.
+        image=rust:1.88-slim-bookworm target=x86_64-unknown-linux-gnu
+        ;;
+    musl) image=rust:1.88-alpine target=x86_64-unknown-linux-musl ;;
+    esac
+    [ -x "$out/$libc/fontina" ] && return 0
+    echo "==> building for $libc in $image"
+    mkdir -p "$out/$libc"
+    "$runtime" run --rm \
+        -v "$repo:/repo" -v "fontina-cargo-$libc:/usr/local/cargo/registry" \
+        -v "fontina-target-$libc:/target" -w /repo -e CARGO_TARGET_DIR=/target \
+        "$image" sh -c '
+            set -e
+            if [ -f /etc/alpine-release ]; then apk add --no-cache musl-dev >/dev/null; fi
+            cargo build --release --locked -p fontina-cli
+            cp /target/release/fontina /repo/target/distro/'"$libc"'/fontina
+        '
+}
+
+libc_of() { case "$1" in alpine*) echo musl ;; *) echo gnu ;; esac; }
+
+case "$(uname -m)" in
+aarch64 | arm64) host_platform=linux/arm64 ;;
+*) host_platform=linux/amd64 ;;
+esac
+
+run_one() { # run_one <name> <image> <platform> <install command>
+    local name=$1 image=$2 platform=$3 install=$4 libc
+    libc=$(libc_of "$image")
+    echo
+    echo "==> $name ($image, $libc${platform:+, $platform})"
+    # A pinned platform that is not this machine's would need a binary for that
+    # architecture as well, which is a long emulated build for one distribution. CI runs
+    # on amd64 and covers it there; locally we say so rather than pretend.
+    if [ -n "$platform" ] && [ "$platform" != "$host_platform" ]; then
+        echo "    skipped: $image publishes no ${host_platform#linux/} image, and CI runs on ${platform#linux/}"
+        return 0
+    fi
+    "$runtime" run --rm ${platform:+--platform "$platform"} \
+        -v "$repo:/repo:ro" -v "$out/$libc/fontina:/usr/local/bin/fontina:ro" \
+        -w /repo -e FONTINA=/usr/local/bin/fontina -e FIXTURES=/repo/fixtures \
+        "$image" sh -c "$install >/dev/null 2>&1; exec /repo/scripts/acceptance"
+}
+
+libcs=""
+while IFS='|' read -r name image platform install; do
+    [ -z "$name" ] && continue
+    selected "$name" || continue
+    libc=$(libc_of "$image")
+    case "$libcs" in *"$libc"*) ;; *) libcs="$libcs $libc" ;; esac
+done <<<"$DISTROS"
+for libc in $libcs; do build "$libc"; done
+
+failed=""
+while IFS='|' read -r name image platform install; do
+    [ -z "$name" ] && continue
+    selected "$name" || continue
+    if run_one "$name" "$image" "$platform" "$install"; then
+        echo "==> $name: passed"
+    else
+        echo "==> $name: FAILED"
+        failed="$failed $name"
+    fi
+done <<<"$DISTROS"
+
+[ -n "${KEEP:-}" ] || rm -rf "$out"
+echo
+if [ -n "$failed" ]; then
+    echo "failed:$failed"
+    exit 1
+fi
+echo "every distribution passed"
