@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Dispatched by the release-please workflow on the release branch.
   workflow_dispatch:
 
 permissions:

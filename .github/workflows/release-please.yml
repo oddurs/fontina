@@ -3,8 +3,10 @@ name: release-please
 on:
   push:
     branches: [main]
-  # Merges made by the automerge workflow use GITHUB_TOKEN, whose pushes do not
-  # trigger push workflows; the automerge job dispatches this one explicitly.
+  # Backstop: a merge performed on behalf of GITHUB_TOKEN (auto-merge enabled by the
+  # automerge workflow) does not trigger push workflows.
+  schedule:
+    - cron: "17 */6 * * *"
   workflow_dispatch:
 
 concurrency:

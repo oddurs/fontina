@@ -1,10 +1,10 @@
-# Merges a pull request once every other check on its head commit has succeeded.
+# Turns on GitHub's native auto-merge for Dependabot minor/patch updates and for any PR
+# carrying the `automerge` label. Branch protection on main then merges the PR once the
+# required checks pass. No polling, no custom merge logic.
 #
-# Applies to Dependabot minor/patch updates and to any PR carrying the `automerge`
-# label (only collaborators can add labels). It never checks out PR code, so
-# pull_request_target is safe here. It waits for the checks itself instead of relying
-# on GitHub's auto-merge, which merges immediately when no branch protection
-# requires checks.
+# Humans and coding agents do not need this workflow: after opening a PR, run
+#   gh pr merge --auto --squash --delete-branch
+# and GitHub does the rest.
 
 name: automerge
 
@@ -15,25 +15,13 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  checks: read
-  actions: write
-
-concurrency:
-  group: automerge-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
 
 jobs:
-  automerge:
+  enable:
     if: >-
       github.event.pull_request.draft == false &&
       (github.actor == 'dependabot[bot]' || contains(github.event.pull_request.labels.*.name, 'automerge'))
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      PR: ${{ github.event.pull_request.number }}
-      SHA: ${{ github.event.pull_request.head.sha }}
-      REPO: ${{ github.repository }}
     steps:
       - name: Dependabot metadata
         if: github.actor == 'dependabot[bot]'
@@ -42,41 +30,11 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Decide
-        id: decide
-        run: |
-          if [ "${{ github.actor }}" = "dependabot[bot]" ]; then
-            case "${{ steps.md.outputs.update-type }}" in
-              version-update:semver-minor|version-update:semver-patch) echo "go=true" >> "$GITHUB_OUTPUT" ;;
-              *) echo "major update: leaving for a human"; echo "go=false" >> "$GITHUB_OUTPUT" ;;
-            esac
-          else
-            echo "go=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Wait for the other checks, then squash-merge
-        if: steps.decide.outputs.go == 'true'
-        run: |
-          for i in $(seq 1 80); do
-            runs=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" \
-              --jq '[.check_runs[] | select(.name != "automerge") | {name, status, conclusion}]')
-            total=$(jq length <<<"$runs")
-            pending=$(jq '[.[] | select(.status != "completed")] | length' <<<"$runs")
-            failed=$(jq '[.[] | select(.conclusion != null and (.conclusion | IN("success","skipped","neutral") | not))] | length' <<<"$runs")
-            echo "checks: $total total, $pending pending, $failed failed"
-            if [ "$failed" -gt 0 ]; then
-              jq -r '.[] | select(.conclusion != null and (.conclusion | IN("success","skipped","neutral") | not)) | "  \(.name): \(.conclusion)"' <<<"$runs"
-              exit 1
-            fi
-            if [ "$total" -gt 0 ] && [ "$pending" -eq 0 ]; then
-              # REST merge needs no local checkout; the repo deletes head branches on merge.
-              gh api -X PUT "repos/$REPO/pulls/$PR/merge" -f merge_method=squash --jq '.message'
-              # A merge made with GITHUB_TOKEN does not trigger push workflows on main;
-              # workflow_dispatch is the documented exception, so trigger them here.
-              gh workflow run release-please.yml --ref main
-              gh workflow run ci.yml --ref main
-              exit 0
-            fi
-            sleep 30
-          done
-          echo "timed out waiting for checks"; exit 1
+      - name: Enable auto-merge
+        if: >-
+          github.actor != 'dependabot[bot]' ||
+          steps.md.outputs.update-type == 'version-update:semver-minor' ||
+          steps.md.outputs.update-type == 'version-update:semver-patch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr merge --auto --squash "${{ github.event.pull_request.html_url }}"
