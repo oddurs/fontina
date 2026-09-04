@@ -8,3 +8,9 @@
 *.db
 *.db-wal
 *.db-shm
+# Agent worktrees (see CLAUDE.md, "Working alongside other agents")
+/.worktrees/
+# The docs site lives in its own PRs; its build outputs and dependencies never belong in git.
+node_modules/
+/site/dist/
+/site/.astro/
