@@ -302,7 +302,17 @@ cloud sync, accounts, telemetry, an Electron shell.
 - **Unit + snapshot tests** on metadata extraction for every fixture (`insta`).
 - **Fixture-backed tests** for every health check id, every facet, every activation
   state transition (against a temporary index and a temporary font directory).
-- **Fuzz**: `cargo-fuzz` on the import wrapper; corrupt-font corpus from `fontations`.
+- **Fuzz**: `cargo-fuzz` (`fuzz/`, its own workspace, nightly) on two targets — `parse`,
+  which drives `load_bytes` and so spends its budget in container detection and the
+  WOFF/WOFF2 decoders, and `sfnt`, which drives `parse::parse_sfnt` directly so the
+  mutator reaches the table readers instead of failing a magic-number check. Every run
+  passes `-timeout` and `-rss_limit_mb`, because the `catch_unwind` in `scan::parse_paths`
+  catches a panic and neither a hang nor a runaway allocation. The corpus is seeded from
+  `fixtures/`; `scripts/fuzz` is the entry point, and `.github/workflows/fuzz.yml` runs a
+  minute per target on a pull request that touches the crates, half an hour weekly, and
+  whatever a manual dispatch asks for. Findings are kept as inputs in `fuzz/regressions/`
+  and replayed on stable by `crates/fontina-core/tests/fuzz_regressions.rs`, which
+  requires each of them to return, without panicking, inside a time bound.
 - **Platform integration tests** behind `--features platform-tests`, run on the CI matrix
   in a throwaway user profile: install → enumerate → conflict → uninstall round-trips.
 - **Render tests**: shaped previews snapshot as PNGs per fixture; half-block output

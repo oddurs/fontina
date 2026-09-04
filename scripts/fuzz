@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# Fuzz the font import path with cargo-fuzz, with the limits that make the run mean
+# something.
+#
+#   scripts/fuzz                  # seed the corpus, then 60s on each target
+#   scripts/fuzz parse            # 60s on one target
+#   scripts/fuzz parse 900        # 15 minutes on one target
+#   scripts/fuzz seed             # only refresh the corpora
+#   scripts/fuzz build            # only build the targets
+#
+# `scan::parse_paths` wraps parsing in catch_unwind, which catches a panic and nothing
+# else. A hostile font that spins forever, eats every byte of memory, or runs the stack
+# off the end walks straight past it, and #33 was exactly such a hang. So every run here
+# passes:
+#
+#   -timeout=10        an input that takes ten seconds is a hang; report it
+#   -rss_limit_mb=2048 an allocation steered by a length field is a bug; report it
+#   -max_len=1048576   a font a mutator can still reason about
+#
+# A stack overflow is caught by the AddressSanitizer that cargo-fuzz links in by default.
+# Crashing inputs land in fuzz/artifacts/<target>/; copy one into fuzz/regressions/ and
+# `cargo test -p fontina-core --test fuzz_regressions` will replay it on stable forever.
+set -euo pipefail
+
+repo=$(cd "$(dirname "$0")/.." && pwd)
+toolchain=${FUZZ_TOOLCHAIN:-nightly}
+seconds=${2:-60}
+targets=(parse sfnt)
+
+# The corpus is seeded from fixtures/ rather than from checked-in binaries: a real font
+# is the best possible starting point for a mutator, and the repository already carries
+# six of them. Anything the fuzzer has found since is in fuzz/regressions/, and goes in
+# too — a corpus that has forgotten last month's crash will find it again the slow way.
+# fuzz/regressions/open/ is a directory, so the [ -f ] test below skips it: those inputs
+# are for defects that are not fixed yet, and libFuzzer runs its whole corpus before it
+# fuzzes anything, so seeding a known-bad one would abort the run at startup.
+seed() {
+    for t in "${targets[@]}"; do
+        dir=$repo/fuzz/corpus/$t
+        mkdir -p "$dir"
+        for f in "$repo"/fixtures/*.ttf "$repo"/fixtures/*.otf "$repo"/fixtures/*.woff \
+            "$repo"/fixtures/*.woff2 "$repo"/fuzz/regressions/*; do
+            [ -f "$f" ] || continue
+            case "$f" in
+            *.md) continue ;;
+            *.gz) gunzip -c "$f" >"$dir/$(basename "${f%.gz}")" ;;
+            *) cp -f "$f" "$dir/$(basename "$f")" ;;
+            esac
+        done
+        echo "==> seeded fuzz/corpus/$t with $(find "$dir" -type f | wc -l | tr -d ' ') inputs"
+    done
+}
+
+build() {
+    (cd "$repo/fuzz" && cargo "+$toolchain" fuzz build)
+}
+
+run() {
+    local target=$1
+    echo "==> fuzzing $target for ${seconds}s"
+    (cd "$repo/fuzz" && cargo "+$toolchain" fuzz run "$target" -- \
+        -max_total_time="$seconds" \
+        -timeout=10 \
+        -rss_limit_mb=2048 \
+        -max_len=1048576 \
+        -print_final_stats=1)
+}
+
+case "${1:-all}" in
+seed) seed ;;
+build) build ;;
+all)
+    seed
+    build
+    for t in "${targets[@]}"; do run "$t"; done
+    ;;
+*)
+    seed
+    run "$1"
+    ;;
+esac

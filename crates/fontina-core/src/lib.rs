@@ -71,14 +71,35 @@ pub fn load_file(path: &std::path::Path) -> Result<(FileInfo, Vec<FaceMetadata>)
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
-    let container =
-        Container::detect(&bytes).ok_or_else(|| Error::UnknownFormat(path.to_path_buf()))?;
-    let sfnt = container::unwrap(container, &bytes)?;
+    let name = path.to_string_lossy();
+    let (mut file, faces) = load_bytes(&bytes, &name)?;
+    file.size = meta.len();
+    file.mtime = mtime;
+    let faces = faces
+        .into_iter()
+        .map(|mut f| {
+            f.file.size = file.size;
+            f.file.mtime = file.mtime;
+            f
+        })
+        .collect();
+    Ok((file, faces))
+}
+
+/// Parse font bytes already in memory, as [`load_file`] does without the file I/O.
+///
+/// `name` becomes the reported path; `size` is the length of `bytes` and `mtime` is 0,
+/// because a slice has no directory entry to ask. This is the whole import path —
+/// container detection, WOFF/WOFF2 unwrapping, sfnt parsing — in one call, which makes
+/// it what `fuzz/fuzz_targets/parse.rs` drives.
+pub fn load_bytes(bytes: &[u8], name: &str) -> Result<(FileInfo, Vec<FaceMetadata>)> {
+    let container = Container::detect(bytes).ok_or_else(|| Error::UnknownFormat(name.into()))?;
+    let sfnt = container::unwrap(container, bytes)?;
     let mut file = FileInfo {
-        path: path.to_string_lossy().into_owned(),
-        size: meta.len(),
-        mtime,
-        blake3: blake3::hash(&bytes).to_hex().to_string(),
+        path: name.to_owned(),
+        size: bytes.len() as u64,
+        mtime: 0,
+        blake3: blake3::hash(bytes).to_hex().to_string(),
         container,
         face_count: 0,
     };

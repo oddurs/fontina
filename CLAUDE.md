@@ -14,6 +14,8 @@ crates/fontina-platform   per-OS font directories and the FontActivator trait
 crates/fontina-cli        the `fontina` binary; `src/ui/` is the ratatui TUI (M1)
 schemas/                  JSON Schemas (face, collection, cli-output); regenerate with `fontina schema <name>`
 fixtures/                 OFL-licensed test fonts; keep total size small
+fuzz/                     cargo-fuzz targets (own workspace, nightly); `scripts/fuzz` drives them,
+                          `fuzz/regressions/` keeps the findings and stable replays them
 docs/adr/                 architecture decision records, one file per decision
 docs/fontina.texi         the manual (GFDL); man pages come from `fontina man`
 site/                     project web site and manual (Astro, static, no JS); deploys to GitHub Pages
