@@ -31,7 +31,7 @@ read in a text browser. Colour carries hierarchy, never meaning on its own.
 | `--gap` | `32px` | gap between the main column and the nav column |
 | `--pad` | `4px` | inner padding of small boxes |
 | `--pad-2` | `8px` | inner padding of nav bodies, examples and table cells |
-| `--leading` | `1.45` | body line height |
+| `--leading` | `1.35` | body line height; the nav column is 1.5, examples 1.35 |
 
 The colours are gcc.gnu.org's, unchanged. What is new is the measure, the leading,
 the soft foreground and the panel edge: the four things that separate a page that

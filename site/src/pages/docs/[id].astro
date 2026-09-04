@@ -11,11 +11,13 @@ export async function getStaticPaths() {
 }
 
 const { entry, prev, next } = Astro.props;
+const chapters = (await getCollection('docs')).sort((a, b) => a.data.order - b.data.order);
 const { Content } = await render(entry);
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const u = (p: string) => `${base}${p}`;
 ---
-<Base title={entry.data.title} description={entry.data.description} source={`site/src/content/docs/${entry.id}.md`}>
+<Base title={entry.data.title} description={entry.data.description} source={`site/src/content/docs/${entry.id}.md`}
+  extraNav={{ head: 'This manual', links: [['Contents', u('/docs/')], ...chapters.map((c): [string, string] => [`${c.data.order}. ${c.data.title}`, u(`/docs/${c.id}/`)])] }}>
   <p class="node-nav">
     {next && <>Next: <a href={u(`/docs/${next.id}/`)}>{next.data.title}</a>, &nbsp;</>}
     {prev && <>Previous: <a href={u(`/docs/${prev.id}/`)}>{prev.data.title}</a>, &nbsp;</>}

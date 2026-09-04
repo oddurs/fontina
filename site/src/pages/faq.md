@@ -5,6 +5,22 @@ description: "Answers to common questions about unifont."
 source: site/src/pages/faq.md
 ---
 
+1. [Is this GNU Unifont?](#is-this-gnu-unifont)
+2. [What does it do that `fc-list` does not?](#what-does-it-do-that-fc-list-does-not)
+3. [Does it need root, or write to `/usr/share/fonts`?](#does-it-need-root-or-write-to-usrsharefonts)
+4. [Does it phone home?](#does-it-phone-home)
+5. [Where is the database?](#where-is-the-database)
+6. [Can it edit or convert fonts?](#can-it-edit-or-convert-fonts)
+7. [Why a webview for the desktop app instead of a native toolkit?](#why-a-webview-for-the-desktop-app-instead-of-a-native-toolkit)
+8. [Why Rust?](#why-rust)
+9. [Why is the license MIT OR Apache-2.0 and not the GPL?](#why-is-the-license-mit-or-apache-20-and-not-the-gpl)
+10. [Which fonts ship with it?](#which-fonts-ship-with-it)
+11. [The variable font's style shows as "96pt ExtraBold". Is that right?](#the-variable-fonts-style-shows-as-96pt-extrabold-is-that-right)
+12. [A WOFF2 file fails with an `hmtx` transform error.](#a-woff2-file-fails-with-an-hmtx-transform-error)
+13. [How do I report a bug?](#how-do-i-report-a-bug)
+
+---
+
 ### Is this GNU Unifont?
 
 No. GNU Unifont is a bitmap font covering the Basic Multilingual Plane. This is a font

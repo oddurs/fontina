@@ -21,7 +21,7 @@
   --gap: 32px;
   --pad: 4px;
   --pad-2: 8px;
-  --leading: 1.45;
+  --leading: 1.35;
   color-scheme: light only;
 }
 
@@ -91,7 +91,7 @@ h2 + h3, h3 + h4 { margin-top: 0.6em; }
   border-top: 0;
   font-size: 80%;
   padding: var(--pad) var(--pad-2) 5px;
-  line-height: 1.6;
+  line-height: 1.5;
 }
 .navbody a { display: inline-block; }
 
@@ -161,7 +161,7 @@ pre {
   padding: 6px var(--pad-2);
   overflow-x: auto;
   font-size: 88%;
-  line-height: 1.4;
+  line-height: 1.35;
   tab-size: 4;
 }
 pre code { background: none; padding: 0; font-size: 100%; }
