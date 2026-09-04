@@ -107,6 +107,18 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Follow the watched sources (and any extra directories) and keep the index
+    /// current until interrupted. One line per batch of changes; `--json` for one
+    /// JSON object per line.
+    Watch {
+        /// Extra directories to follow for this run.
+        paths: Vec<PathBuf>,
+        /// Quiet period in milliseconds before a batch is applied.
+        #[arg(long, default_value_t = 500)]
+        debounce_ms: u64,
+        #[arg(long)]
+        json: bool,
+    },
     /// Show everything known about a face, by index id or by file path (parses the file when not indexed).
     Info {
         /// Face id from `list`, or a path to a font file.
@@ -595,6 +607,57 @@ fn run() -> Result<()> {
             }
         }
         Command::Restore { json } => run_restore(&cli, *json)?,
+        Command::Watch {
+            paths,
+            debounce_ms,
+            json,
+        } => {
+            let mut index = open_index(&cli)?;
+            let mut roots: Vec<PathBuf> = index
+                .sources()?
+                .into_iter()
+                .filter(|s| s.watch && std::path::Path::new(&s.path).is_dir())
+                .map(|s| PathBuf::from(s.path))
+                .collect();
+            roots.extend(paths.iter().cloned());
+            if roots.is_empty() {
+                bail!(
+                    "nothing to watch: add a source (`unifont source add <dir>`) or pass directories"
+                );
+            }
+            if !*json {
+                for r in &roots {
+                    eprintln!("watching {}", r.display());
+                }
+            }
+            unifont_core::watch::watch(
+                &mut index,
+                &roots,
+                &unifont_core::watch::WatchOptions {
+                    debounce: std::time::Duration::from_millis(*debounce_ms),
+                    ..Default::default()
+                },
+                |ev| {
+                    if *json {
+                        println!("{}", serde_json::to_string(ev).unwrap_or_default());
+                    } else {
+                        println!(
+                            "{} path(s): {} parsed ({} faces), {} unchanged, {} removed, {} failed",
+                            ev.paths.len(),
+                            ev.report.parsed,
+                            ev.report.faces,
+                            ev.report.unchanged,
+                            ev.report.removed,
+                            ev.report.failed.len()
+                        );
+                        for f in &ev.report.failed {
+                            eprintln!("  ! {}: {}", f.path, f.error);
+                        }
+                    }
+                    true
+                },
+            )?;
+        }
         Command::Info { target, json } => {
             let faces = resolve_faces(&cli, target)?;
             if *json {

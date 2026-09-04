@@ -861,6 +861,26 @@
         "faces"
       ],
       "type": "object"
+    },
+    "WatchEvent": {
+      "description": "One batch of changes applied to the index.",
+      "properties": {
+        "paths": {
+          "description": "Files re-parsed or dropped, plus directories rescanned.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "report": {
+          "$ref": "#/$defs/ScanReport"
+        }
+      },
+      "required": [
+        "paths",
+        "report"
+      ],
+      "type": "object"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",

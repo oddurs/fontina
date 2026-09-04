@@ -10,6 +10,7 @@
 //! - [`index`]: the SQLite index with full-text search and facet queries.
 //! - [`scan`]: parallel directory scanning that feeds the index.
 //! - [`css`]: `@font-face` rule generation (CSS Fonts Level 4 is the style model).
+//! - [`watch`]: follow directories and keep the index current.
 
 pub mod check;
 pub mod container;
@@ -22,6 +23,7 @@ pub mod parse;
 pub mod scan;
 pub mod specimen;
 pub mod unicode;
+pub mod watch;
 
 pub use check::{CheckReport, Finding, Severity, check_face};
 pub use error::{Error, Result};
@@ -101,6 +103,7 @@ pub fn cli_output_schema() -> serde_json::Value {
     add::<Source>(&mut g);
     add::<ActivationRecord>(&mut g);
     add::<Conflict>(&mut g);
+    add::<watch::WatchEvent>(&mut g);
     let defs = g.take_definitions(true);
     serde_json::json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
