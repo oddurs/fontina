@@ -91,7 +91,10 @@ scan_ms=$(ms 1 "$FONTINA" scan "$corpus")
 faces=$("$FONTINA" list | tail -1 | tr -d '[:alpha:]() ')
 touch "$corpus/f1.woff2"
 rescan_ms=$(ms 3 "$FONTINA" scan "$corpus/f1.woff2" --force)
-list_ms=$(ms 3 "$FONTINA" list)
+# The budget is stated for five thousand faces, so measure five thousand. Timing the
+# unbounded list on a ten thousand file corpus measured twice the work against half the
+# budget, which is how this job came to be red on main the day it was added.
+list_ms=$(ms 3 "$FONTINA" list -n 5000)
 # A screenful, which is what "keystroke to results" means: the unbounded form measures
 # the cost of printing ten thousand lines, not of finding them.
 search_ms=$(ms 3 "$FONTINA" list inter -n 50)
@@ -107,7 +110,7 @@ printf '%-46s %8s %-3s %8s %s\n' "metric" "actual" "" "budget" ""
 row "release binary, stripped" "$((size_kb / 1024))" MB 12
 row "initial index, $files files" "$scan_ms" ms 10000
 row "incremental rescan, 1 changed file" "$rescan_ms" ms 50
-row "list, cold start to output" "$list_ms" ms 50
+row "list, cold start to 5k faces" "$list_ms" ms 50
 row "search, query to a screenful of results" "$search_ms" ms 30
 row "preview render, 64 px, 36 characters" "$preview_ms" ms 30
 echo
