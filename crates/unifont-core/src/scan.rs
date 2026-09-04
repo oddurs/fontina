@@ -1,7 +1,7 @@
 //! Walk directories, parse fonts in parallel, and feed the index.
 
 use crate::error::Result;
-use crate::index::Index;
+use crate::index::{Index, SourceKind};
 use crate::model::Container;
 use crate::{FaceMetadata, FileInfo};
 use rayon::prelude::*;
@@ -15,9 +15,11 @@ pub struct ScanOptions {
     pub follow_symlinks: bool,
     /// Remove index entries under the scanned roots whose files no longer exist.
     pub prune: bool,
+    /// How scanned directories are recorded as sources.
+    pub kind: Option<SourceKind>,
 }
 
-#[derive(Debug, Default, serde::Serialize)]
+#[derive(Debug, Default, serde::Serialize, schemars::JsonSchema)]
 pub struct ScanReport {
     pub candidates: usize,
     pub parsed: usize,
@@ -27,7 +29,7 @@ pub struct ScanReport {
     pub failed: Vec<ScanFailure>,
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, schemars::JsonSchema)]
 pub struct ScanFailure {
     pub path: String,
     pub error: String,
@@ -138,6 +140,13 @@ pub fn scan(index: &mut Index, roots: &[PathBuf], opts: &ScanOptions) -> Result<
         for root in &roots {
             report.removed += index.prune_missing(&root.to_string_lossy())?;
         }
+    }
+    // Directories become sources so `watch` and `facets` know about them.
+    for root in roots.iter().filter(|r| r.is_dir()) {
+        index.touch_source(
+            &root.to_string_lossy(),
+            opts.kind.unwrap_or(SourceKind::User),
+        )?;
     }
     Ok(report)
 }

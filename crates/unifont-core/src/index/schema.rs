@@ -105,6 +105,15 @@ CREATE TABLE face_ranges (
 );
 CREATE INDEX face_ranges_face ON face_ranges(face_id);
 "#,
+    // 3: where a persistent install put its copy; vendor facet index; what a source was
+    // added as (explicit path or an OS font directory from `scan --system`).
+    r#"
+ALTER TABLE activations ADD COLUMN installed_path TEXT;
+ALTER TABLE sources ADD COLUMN kind TEXT NOT NULL DEFAULT 'user';
+CREATE INDEX faces_vendor ON faces(vendor);
+CREATE INDEX face_tags_tag ON face_tags(tag_id);
+CREATE INDEX collection_faces_face ON collection_faces(face_id);
+"#,
 ];
 
 pub fn migrate(conn: &mut Connection) -> Result<()> {

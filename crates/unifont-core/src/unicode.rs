@@ -39,7 +39,7 @@ pub fn coverage_from_codepoints(mut cps: Vec<u32>) -> Coverage {
 }
 
 /// One Unicode block and the codepoints a face covers within it.
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, schemars::JsonSchema)]
 pub struct BlockCoverage {
     pub block: String,
     pub start: u32,

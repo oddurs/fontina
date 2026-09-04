@@ -11,7 +11,7 @@ crates/unifont-core       parsing (fontations), metadata model, SQLite index, sc
                           health checks (check.rs), HTML specimen (specimen.rs)
 crates/unifont-platform   per-OS font directories and the FontActivator trait
 crates/unifont-cli        the `unifont` binary; `src/ui/` is the ratatui TUI (M1)
-schemas/                  JSON Schema for the metadata model; regenerate with `unifont schema`
+schemas/                  JSON Schemas (face, collection, cli-output); regenerate with `unifont schema <name>`
 fixtures/                 OFL-licensed test fonts; keep total size small
 docs/adr/                 architecture decision records, one file per decision
 ```
@@ -52,6 +52,9 @@ Set `UNIFONT_DB` to keep an index out of the platform data directory while devel
   zero clippy warnings.
 - Public types in `unifont-core::model` are the schema. Any change to them bumps
   `SCHEMA_VERSION` if it is not backwards-compatible, and regenerates `schemas/face.json`.
+  Every type printed with `--json` derives `JsonSchema` and is listed in
+  `cli_output_schema()`; regenerate `schemas/cli-output.json` and `schemas/collection.json`
+  with `unifont schema cli-output` / `unifont schema collection` (CI diffs all three).
 - Snapshot tests in `crates/unifont-core/tests` cover every fixture. Add a fixture when a
   new capability is parsed (a fixture is an OFL/Apache/UFL font under ~500 KB).
 - SQL lives in `crates/unifont-core/src/index`. Migrations are append-only entries in

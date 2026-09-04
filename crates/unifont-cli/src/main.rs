@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
-use unifont_core::{FaceFilter, FaceSummary, Index, ScanOptions};
+use unifont_core::{ActivationState, FaceFilter, FaceSummary, Index, ScanOptions, SourceKind};
 
 /// unifont: a lightweight, standards-based font manager.
 #[derive(Parser)]
@@ -37,6 +37,20 @@ enum Command {
     },
     /// List indexed faces, optionally filtered.
     List(ListArgs),
+    /// List families (faces grouped by typographic family name), optionally filtered.
+    Families(ListArgs),
+    /// Count faces per weight, width, style, script, license, vendor, tag, collection,
+    /// activation state and source, for the faces matching the filters.
+    Facets(ListArgs),
+    /// Tag faces. A tag is a free-form label; a face can carry many.
+    #[command(subcommand)]
+    Tag(TagCmd),
+    /// Collections: ordered, named sets of faces that export to and import from JSON.
+    #[command(subcommand)]
+    Collection(CollectionCmd),
+    /// Sources: the directories the index was built from; `watch` follows the watched ones.
+    #[command(subcommand)]
+    Source(SourceCmd),
     /// Show everything known about a face, by index id or by file path (parses the file when not indexed).
     Info {
         /// Face id from `list`, or a path to a font file.
@@ -127,14 +141,156 @@ enum Command {
         #[arg(long)]
         title: Option<String>,
     },
-    /// Print the JSON Schema for face metadata.
-    Schema,
+    /// Print a JSON Schema: `face` (default), `collection`, or `cli-output`.
+    Schema {
+        #[arg(default_value = "face")]
+        which: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum TagCmd {
+    /// All tags with their face counts.
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Add a tag to faces (created if new).
+    Add {
+        tag: String,
+        /// Face ids, `family:<name>`, or indexed file paths.
+        #[arg(required = true)]
+        targets: Vec<String>,
+    },
+    /// Remove a tag from faces.
+    Remove {
+        tag: String,
+        #[arg(required = true)]
+        targets: Vec<String>,
+    },
+    Rename {
+        old: String,
+        new: String,
+    },
+    /// Delete a tag from every face.
+    Delete {
+        tag: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum CollectionCmd {
+    /// All collections with their face counts.
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+    Create {
+        name: String,
+    },
+    Delete {
+        name: String,
+    },
+    Rename {
+        old: String,
+        new: String,
+    },
+    /// Append faces to a collection (created if missing).
+    Add {
+        name: String,
+        /// Face ids, `family:<name>`, or indexed file paths.
+        #[arg(required = true)]
+        targets: Vec<String>,
+    },
+    Remove {
+        name: String,
+        #[arg(required = true)]
+        targets: Vec<String>,
+    },
+    /// The faces of a collection, in order.
+    Show {
+        name: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Write a collection as JSON (`schemas/collection.json`).
+    Export {
+        name: String,
+        /// Output file; `-` for stdout.
+        #[arg(default_value = "-")]
+        output: PathBuf,
+    },
+    /// Read a collection JSON file into this index, matching faces by identity hash,
+    /// PostScript name, then path.
+    Import {
+        /// Input file; `-` for stdin.
+        #[arg(default_value = "-")]
+        input: PathBuf,
+        /// Import under this name instead of the one in the file.
+        #[arg(long)]
+        name: Option<String>,
+        /// Do not apply the tags stored in the file.
+        #[arg(long)]
+        no_tags: bool,
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum SourceCmd {
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Register a directory and scan it now.
+    Add {
+        path: PathBuf,
+        /// Register without following it in `watch`.
+        #[arg(long)]
+        no_watch: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Forget a directory; with `--purge`, drop its faces from the index too.
+    Remove {
+        path: PathBuf,
+        #[arg(long)]
+        purge: bool,
+    },
+    /// Turn watching on (default) or off for a source.
+    Watch {
+        path: PathBuf,
+        #[arg(long)]
+        off: bool,
+    },
 }
 
 #[derive(Args)]
 struct ListArgs {
     /// Full-text query over family, style, PostScript name and designer.
     query: Option<String>,
+    #[command(flatten)]
+    filter: FilterArgs,
+    #[arg(long, short = 'n')]
+    limit: Option<usize>,
+    #[arg(long)]
+    json: bool,
+}
+
+impl ListArgs {
+    fn to_filter(&self) -> FaceFilter {
+        FaceFilter {
+            query: self.query.clone(),
+            limit: self.limit,
+            ..self.filter.to_filter()
+        }
+    }
+}
+
+/// Filters shared by `list`, `families`, `facets` and `covers`.
+#[derive(Args, Clone, Default)]
+struct FilterArgs {
     /// Exact family name.
     #[arg(long)]
     family: Option<String>,
@@ -156,13 +312,58 @@ struct ListArgs {
     /// Weight range, e.g. 600-900.
     #[arg(long, value_parser = parse_range)]
     weight: Option<(u16, u16)>,
+    /// Width range in percent, e.g. 50-87.
+    #[arg(long, value_parser = parse_range)]
+    width: Option<(u16, u16)>,
+    /// `OS/2` vendor id, e.g. GOOG, ADBE.
+    #[arg(long)]
+    vendor: Option<String>,
+    /// Faces carrying this tag.
+    #[arg(long)]
+    tag: Option<String>,
+    /// Faces in this collection.
+    #[arg(long)]
+    collection: Option<String>,
+    /// Only faces activated or installed through unifont (`--active=false` for the rest).
+    #[arg(long, num_args = 0..=1, default_missing_value = "true")]
+    active: Option<bool>,
+    /// Only faces in this activation state: session, user or installed.
+    #[arg(long, value_parser = parse_state)]
+    activation: Option<ActivationState>,
+    /// Container: ttf, otf, ttc, woff or woff2.
+    #[arg(long)]
+    container: Option<String>,
     /// Only faces whose path starts with this prefix.
     #[arg(long)]
     under: Option<String>,
-    #[arg(long, short = 'n')]
-    limit: Option<usize>,
-    #[arg(long)]
-    json: bool,
+}
+
+impl FilterArgs {
+    fn to_filter(&self) -> FaceFilter {
+        FaceFilter {
+            family: self.family.clone(),
+            variable: self.variable,
+            color: self.color,
+            italic: self.italic,
+            script: self.script.clone(),
+            license: self.license.clone(),
+            weight: self.weight,
+            width: self.width,
+            vendor: self.vendor.clone(),
+            tag: self.tag.clone(),
+            collection: self.collection.clone(),
+            active: self.active,
+            activation: self.activation,
+            container: self.container.clone(),
+            path_prefix: self.under.clone(),
+            ..Default::default()
+        }
+    }
+}
+
+fn parse_state(s: &str) -> std::result::Result<ActivationState, String> {
+    s.parse()
+        .map_err(|_| format!("unknown state {s:?}; use session, user or installed"))
 }
 
 fn parse_range(s: &str) -> std::result::Result<(u16, u16), String> {
@@ -195,16 +396,16 @@ fn run() -> Result<()> {
             prune,
             json,
         } => {
-            let mut roots = paths.clone();
-            if *system {
-                roots.extend(
-                    unifont_platform::system_font_dirs()
-                        .into_iter()
-                        .map(|d| d.path)
-                        .filter(|p| p.exists()),
-                );
-            }
-            if roots.is_empty() {
+            let system_roots: Vec<PathBuf> = if *system {
+                unifont_platform::system_font_dirs()
+                    .into_iter()
+                    .map(|d| d.path)
+                    .filter(|p| p.exists())
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            if paths.is_empty() && system_roots.is_empty() {
                 bail!("nothing to scan: pass directories or --system");
             }
             let mut index = open_index(&cli)?;
@@ -212,9 +413,29 @@ fn run() -> Result<()> {
                 force: *force,
                 follow_symlinks: *follow_symlinks,
                 prune: *prune,
+                kind: None,
             };
             let started = std::time::Instant::now();
-            let report = unifont_core::scan::scan(&mut index, &roots, &opts)?;
+            let mut report = unifont_core::ScanReport::default();
+            if !paths.is_empty() {
+                report = unifont_core::scan::scan(&mut index, paths, &opts)?;
+            }
+            if !system_roots.is_empty() {
+                let sys = unifont_core::scan::scan(
+                    &mut index,
+                    &system_roots,
+                    &ScanOptions {
+                        kind: Some(SourceKind::System),
+                        ..opts.clone()
+                    },
+                )?;
+                report.candidates += sys.candidates;
+                report.parsed += sys.parsed;
+                report.faces += sys.faces;
+                report.unchanged += sys.unchanged;
+                report.removed += sys.removed;
+                report.failed.extend(sys.failed);
+            }
             if *json {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {
@@ -235,25 +456,34 @@ fn run() -> Result<()> {
         }
         Command::List(args) => {
             let index = open_index(&cli)?;
-            let filter = FaceFilter {
-                query: args.query.clone(),
-                family: args.family.clone(),
-                variable: args.variable,
-                color: args.color,
-                italic: args.italic,
-                script: args.script.clone(),
-                license: args.license.clone(),
-                weight: args.weight,
-                path_prefix: args.under.clone(),
-                limit: args.limit,
-            };
-            let faces = index.list(&filter)?;
+            let faces = index.list(&args.to_filter())?;
             if args.json {
                 println!("{}", serde_json::to_string_pretty(&faces)?);
             } else {
                 print_table(&faces);
             }
         }
+        Command::Families(args) => {
+            let index = open_index(&cli)?;
+            let families = index.families(&args.to_filter())?;
+            if args.json {
+                println!("{}", serde_json::to_string_pretty(&families)?);
+            } else {
+                print_families(&families);
+            }
+        }
+        Command::Facets(args) => {
+            let index = open_index(&cli)?;
+            let facets = index.facets(&args.to_filter())?;
+            if args.json {
+                println!("{}", serde_json::to_string_pretty(&facets)?);
+            } else {
+                print_facets(&facets);
+            }
+        }
+        Command::Tag(cmd) => run_tag(&cli, cmd)?,
+        Command::Collection(cmd) => run_collection(&cli, cmd)?,
+        Command::Source(cmd) => run_source(&cli, cmd)?,
         Command::Info { target, json } => {
             let faces = resolve_faces(&cli, target)?;
             if *json {
@@ -323,6 +553,10 @@ fn run() -> Result<()> {
                 println!("variable:  {}", stats.variable_faces);
                 println!("color:     {}", stats.color_faces);
                 println!("failed:    {}", stats.failed_files);
+                println!("tags:      {}", stats.tags);
+                println!("collections: {}", stats.collections);
+                println!("sources:   {}", stats.sources);
+                println!("active:    {}", stats.activations);
                 for (p, e) in index.failures()?.iter().take(20) {
                     println!("  ! {p}: {e}");
                 }
@@ -578,11 +812,14 @@ fn run() -> Result<()> {
                 );
             }
         }
-        Command::Schema => {
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&unifont_core::face_schema())?
-            );
+        Command::Schema { which } => {
+            let schema = match which.as_str() {
+                "face" => unifont_core::face_schema(),
+                "collection" => unifont_core::collection_schema(),
+                "cli-output" | "cli_output" | "cli" => unifont_core::cli_output_schema(),
+                other => bail!("unknown schema {other:?}; use face, collection or cli-output"),
+            };
+            println!("{}", serde_json::to_string_pretty(&schema)?);
         }
     }
     Ok(())
@@ -603,6 +840,18 @@ struct LicenseRow<'a> {
 /// A target is a face id when numeric and not an existing path; otherwise a file path,
 /// served from the index when present and parsed directly when not.
 fn resolve_faces(cli: &Cli, target: &str) -> Result<Vec<unifont_core::FaceMetadata>> {
+    if let Some(family) = target.strip_prefix("family:") {
+        let index = open_index(cli)?;
+        let ids = resolve_ids(&index, target)?;
+        if ids.is_empty() {
+            bail!("no indexed family named {family:?}");
+        }
+        return ids
+            .iter()
+            .filter_map(|id| index.get_face(*id).transpose())
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(Into::into);
+    }
     let path = PathBuf::from(target);
     if !path.exists() {
         if let Ok(id) = target.parse::<i64>() {
@@ -642,19 +891,33 @@ fn print_table(faces: &[FaceSummary]) {
         .max()
         .unwrap_or(5)
         .clamp(5, 28);
+    let any_tags = faces.iter().any(|f| !f.tags.is_empty());
     println!(
-        "{:>6}  {:<w_fam$}  {:<w_sub$}  {:>4}  {:>4}  {:<5}  {:<12}  path",
-        "id", "family", "style", "wght", "wdth", "flags", "license"
+        "{:>6}  {:<w_fam$}  {:<w_sub$}  {:>4}  {:>4}  {:<5}  {:<12}  path{}",
+        "id",
+        "family",
+        "style",
+        "wght",
+        "wdth",
+        "flags",
+        "license",
+        if any_tags { "  [tags]" } else { "" }
     );
     for f in faces {
         let flags = format!(
-            "{}{}{}",
+            "{}{}{}{}",
             if f.variable { "V" } else { "-" },
             if f.color { "C" } else { "-" },
-            if f.italic { "I" } else { "-" }
+            if f.italic { "I" } else { "-" },
+            match f.activation {
+                Some(ActivationState::Session) => "s",
+                Some(ActivationState::User) => "u",
+                Some(ActivationState::Installed) => "i",
+                None => "-",
+            }
         );
         println!(
-            "{:>6}  {:<w_fam$}  {:<w_sub$}  {:>4}  {:>4}  {:<5}  {:<12}  {}{}",
+            "{:>6}  {:<w_fam$}  {:<w_sub$}  {:>4}  {:>4}  {:<5}  {:<12}  {}{}{}",
             f.id,
             truncate(&f.family, w_fam),
             truncate(&f.subfamily, w_sub),
@@ -667,6 +930,11 @@ fn print_table(faces: &[FaceSummary]) {
                 format!("#{}", f.index)
             } else {
                 String::new()
+            },
+            if f.tags.is_empty() {
+                String::new()
+            } else {
+                format!("  [{}]", f.tags.join(", "))
             }
         );
     }
@@ -799,4 +1067,349 @@ fn print_info(f: &unifont_core::FaceMetadata) {
             .unwrap_or_default()
     );
     println!();
+}
+
+/// Face ids for a target that must already be indexed: a numeric id, `family:<name>`, or
+/// a file path.
+fn resolve_ids(index: &Index, target: &str) -> Result<Vec<i64>> {
+    if let Some(family) = target.strip_prefix("family:") {
+        let faces = index.list(&FaceFilter {
+            family: Some(family.to_string()),
+            ..Default::default()
+        })?;
+        if faces.is_empty() {
+            bail!("no indexed family named {family:?}");
+        }
+        return Ok(faces.into_iter().map(|f| f.id).collect());
+    }
+    let path = PathBuf::from(target);
+    if path.exists() {
+        let canonical = std::fs::canonicalize(&path)?;
+        let ids = index.ids_for_path(&canonical.to_string_lossy())?;
+        if ids.is_empty() {
+            bail!("{target} is not indexed; run `unifont scan` on it first");
+        }
+        return Ok(ids);
+    }
+    if let Ok(id) = target.parse::<i64>() {
+        if index.summaries(&[id])?.is_empty() {
+            bail!("no face with id {id}");
+        }
+        return Ok(vec![id]);
+    }
+    bail!("{target}: no such file, and not a face id")
+}
+
+fn resolve_all_ids(index: &Index, targets: &[String]) -> Result<Vec<i64>> {
+    let mut ids = Vec::new();
+    for t in targets {
+        ids.extend(resolve_ids(index, t)?);
+    }
+    ids.dedup();
+    Ok(ids)
+}
+
+fn run_tag(cli: &Cli, cmd: &TagCmd) -> Result<()> {
+    let mut index = open_index(cli)?;
+    match cmd {
+        TagCmd::List { json } => {
+            let tags = index.tags()?;
+            if *json {
+                println!("{}", serde_json::to_string_pretty(&tags)?);
+            } else if tags.is_empty() {
+                println!("no tags");
+            } else {
+                for t in tags {
+                    println!("{:<30} {:>6}", t.name, t.faces);
+                }
+            }
+        }
+        TagCmd::Add { tag, targets } => {
+            let ids = resolve_all_ids(&index, targets)?;
+            let n = index.tag(&ids, tag)?;
+            println!("tagged {n} face(s) with {tag:?}");
+        }
+        TagCmd::Remove { tag, targets } => {
+            let ids = resolve_all_ids(&index, targets)?;
+            let n = index.untag(&ids, tag)?;
+            println!("removed {tag:?} from {n} face(s)");
+        }
+        TagCmd::Rename { old, new } => {
+            if !index.rename_tag(old, new)? {
+                bail!("no tag named {old:?}");
+            }
+            println!("renamed {old:?} to {new:?}");
+        }
+        TagCmd::Delete { tag } => {
+            if !index.delete_tag(tag)? {
+                bail!("no tag named {tag:?}");
+            }
+            println!("deleted {tag:?}");
+        }
+    }
+    Ok(())
+}
+
+fn run_collection(cli: &Cli, cmd: &CollectionCmd) -> Result<()> {
+    let mut index = open_index(cli)?;
+    match cmd {
+        CollectionCmd::List { json } => {
+            let cs = index.collections()?;
+            if *json {
+                println!("{}", serde_json::to_string_pretty(&cs)?);
+            } else if cs.is_empty() {
+                println!("no collections");
+            } else {
+                for c in cs {
+                    println!("{:<30} {:>6}", c.name, c.faces);
+                }
+            }
+        }
+        CollectionCmd::Create { name } => {
+            index.create_collection(name)?;
+            println!("created {name:?}");
+        }
+        CollectionCmd::Delete { name } => {
+            if !index.delete_collection(name)? {
+                bail!("no collection named {name:?}");
+            }
+            println!("deleted {name:?}");
+        }
+        CollectionCmd::Rename { old, new } => {
+            if !index.rename_collection(old, new)? {
+                bail!("no collection named {old:?}");
+            }
+            println!("renamed {old:?} to {new:?}");
+        }
+        CollectionCmd::Add { name, targets } => {
+            let ids = resolve_all_ids(&index, targets)?;
+            let n = index.add_to_collection(name, &ids)?;
+            println!("added {n} face(s) to {name:?}");
+        }
+        CollectionCmd::Remove { name, targets } => {
+            let ids = resolve_all_ids(&index, targets)?;
+            let n = index.remove_from_collection(name, &ids)?;
+            println!("removed {n} face(s) from {name:?}");
+        }
+        CollectionCmd::Show { name, json } => {
+            let faces = index.collection_faces(name)?;
+            if *json {
+                println!("{}", serde_json::to_string_pretty(&faces)?);
+            } else {
+                print_table(&faces);
+            }
+        }
+        CollectionCmd::Export { name, output } => {
+            let export = index.export_collection(name)?;
+            let json = serde_json::to_string_pretty(&export)?;
+            if output.as_os_str() == "-" {
+                println!("{json}");
+            } else {
+                std::fs::write(output, json.as_bytes())
+                    .with_context(|| format!("writing {}", output.display()))?;
+                eprintln!("wrote {} ({} faces)", output.display(), export.faces.len());
+            }
+        }
+        CollectionCmd::Import {
+            input,
+            name,
+            no_tags,
+            json,
+        } => {
+            let text = if input.as_os_str() == "-" {
+                std::io::read_to_string(std::io::stdin())?
+            } else {
+                std::fs::read_to_string(input)
+                    .with_context(|| format!("reading {}", input.display()))?
+            };
+            let export: unifont_core::CollectionExport =
+                serde_json::from_str(&text).context("parsing collection JSON")?;
+            let report = index.import_collection(&export, name.as_deref(), !*no_tags)?;
+            if *json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                println!(
+                    "imported {:?}: {} face(s) matched, {} missing, {} tag(s) applied",
+                    report.collection,
+                    report.matched,
+                    report.missing.len(),
+                    report.tags_applied
+                );
+                for m in &report.missing {
+                    eprintln!("  missing: {} {}  {}", m.family, m.subfamily, m.path);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn run_source(cli: &Cli, cmd: &SourceCmd) -> Result<()> {
+    let mut index = open_index(cli)?;
+    match cmd {
+        SourceCmd::List { json } => {
+            let sources = index.sources()?;
+            if *json {
+                println!("{}", serde_json::to_string_pretty(&sources)?);
+            } else if sources.is_empty() {
+                println!("no sources; run `unifont scan <dir>` or `unifont source add <dir>`");
+            } else {
+                for s in sources {
+                    println!(
+                        "{:<60} {}{}",
+                        s.path,
+                        match s.kind {
+                            SourceKind::User => "user",
+                            SourceKind::System => "system",
+                        },
+                        if s.watch { ", watched" } else { "" }
+                    );
+                }
+            }
+        }
+        SourceCmd::Add {
+            path,
+            no_watch,
+            json,
+        } => {
+            if !path.is_dir() {
+                bail!("{} is not a directory", path.display());
+            }
+            let canonical = std::fs::canonicalize(path)?;
+            let report = unifont_core::scan::scan(
+                &mut index,
+                std::slice::from_ref(&canonical),
+                &ScanOptions::default(),
+            )?;
+            let source =
+                index.add_source(&canonical.to_string_lossy(), !*no_watch, SourceKind::User)?;
+            if *json {
+                println!("{}", serde_json::to_string_pretty(&source)?);
+            } else {
+                println!(
+                    "added {}: {} parsed ({} faces), {} unchanged, {} failed{}",
+                    source.path,
+                    report.parsed,
+                    report.faces,
+                    report.unchanged,
+                    report.failed.len(),
+                    if source.watch { ", watched" } else { "" }
+                );
+            }
+        }
+        SourceCmd::Remove { path, purge } => {
+            let key = std::fs::canonicalize(path)
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_else(|_| path.to_string_lossy().into_owned());
+            if !index.remove_source(&key, *purge)? {
+                bail!("{key} is not a source");
+            }
+            println!(
+                "removed {key}{}",
+                if *purge { " and its faces" } else { "" }
+            );
+        }
+        SourceCmd::Watch { path, off } => {
+            let key = std::fs::canonicalize(path)
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_else(|_| path.to_string_lossy().into_owned());
+            if !index.set_source_watch(&key, !*off)? {
+                bail!("{key} is not a source");
+            }
+            println!("{key}: watch {}", if *off { "off" } else { "on" });
+        }
+    }
+    Ok(())
+}
+
+fn print_families(families: &[unifont_core::Family]) {
+    if families.is_empty() {
+        println!("no families match");
+        return;
+    }
+    let w = families
+        .iter()
+        .map(|f| f.name.chars().count())
+        .max()
+        .unwrap_or(6)
+        .clamp(6, 40);
+    println!(
+        "{:<w$}  {:>5}  {:<9}  {:<9}  {:<5}  {:<12}  scripts",
+        "family", "faces", "weights", "widths", "flags", "license"
+    );
+    for f in families {
+        let flags = format!(
+            "{}{}{}{}",
+            if f.variable { "V" } else { "-" },
+            if f.color { "C" } else { "-" },
+            if f.italic { "I" } else { "-" },
+            if f.active > 0 { "A" } else { "-" }
+        );
+        let range = |lo: f32, hi: f32| {
+            if (lo - hi).abs() < 0.5 {
+                format!("{}", lo.round() as i64)
+            } else {
+                format!("{}-{}", lo.round() as i64, hi.round() as i64)
+            }
+        };
+        println!(
+            "{:<w$}  {:>5}  {:<9}  {:<9}  {:<5}  {:<12}  {}",
+            truncate(&f.name, w),
+            f.faces,
+            range(f.weights[0], f.weights[1]),
+            range(f.widths[0], f.widths[1]),
+            flags,
+            truncate(f.license.as_deref().unwrap_or("-"), 12),
+            f.scripts
+                .iter()
+                .take(4)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+    }
+    println!("{} family(ies)", families.len());
+}
+
+fn print_facets(f: &unifont_core::Facets) {
+    println!("{} face(s) in {} family(ies)", f.faces, f.families);
+    let row =
+        |label: &str, items: &[unifont_core::index::FacetCount], name: &dyn Fn(&str) -> String| {
+            if items.is_empty() {
+                return;
+            }
+            let parts: Vec<String> = items
+                .iter()
+                .take(12)
+                .map(|c| format!("{} {}", name(&c.value), c.count))
+                .collect();
+            let more = if items.len() > 12 {
+                format!(" · +{} more", items.len() - 12)
+            } else {
+                String::new()
+            };
+            println!("{label:<11} {}{more}", parts.join(" · "));
+        };
+    row("weight", &f.weight, &|v| {
+        format!(
+            "{v} {}",
+            unifont_core::index::weight_name(v.parse().unwrap_or(400))
+        )
+    });
+    row("width", &f.width, &|v| {
+        format!(
+            "{v}% {}",
+            unifont_core::index::width_name(v.parse().unwrap_or(100.0))
+        )
+    });
+    row("style", &f.style, &|v| v.to_string());
+    println!("{:<11} {}   color {}", "variable", f.variable, f.color);
+    row("container", &f.container, &|v| v.to_string());
+    row("script", &f.script, &|v| v.to_string());
+    row("license", &f.license, &|v| v.to_string());
+    row("vendor", &f.vendor, &|v| v.to_string());
+    row("tag", &f.tag, &|v| v.to_string());
+    row("collection", &f.collection, &|v| v.to_string());
+    row("activation", &f.activation, &|v| v.to_string());
+    row("source", &f.source, &|v| v.to_string());
 }

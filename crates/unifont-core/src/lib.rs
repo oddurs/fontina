@@ -25,7 +25,11 @@ pub mod unicode;
 
 pub use check::{CheckReport, Finding, Severity, check_face};
 pub use error::{Error, Result};
-pub use index::{DuplicateGroup, FaceFilter, FaceSummary, Index};
+pub use index::{
+    ActivationRecord, ActivationState, CollectionExport, CollectionFace, CollectionInfo, Conflict,
+    DuplicateGroup, FaceFilter, FaceSummary, Facets, Family, ImportReport, Index, Source,
+    SourceKind, TagInfo,
+};
 pub use model::{Container, FaceMetadata, FileInfo};
 pub use scan::{ScanOptions, ScanReport};
 
@@ -68,4 +72,40 @@ pub fn load_file(path: &std::path::Path) -> Result<(FileInfo, Vec<FaceMetadata>)
 /// JSON Schema (draft 2020-12) for `FaceMetadata`.
 pub fn face_schema() -> serde_json::Value {
     serde_json::to_value(schemars::schema_for!(FaceMetadata)).expect("schema serialises")
+}
+
+/// JSON Schema for a collection export (`unifont collection export`).
+pub fn collection_schema() -> serde_json::Value {
+    serde_json::to_value(schemars::schema_for!(CollectionExport)).expect("schema serialises")
+}
+
+/// JSON Schema with one definition per type the CLI prints with `--json`.
+pub fn cli_output_schema() -> serde_json::Value {
+    use schemars::{JsonSchema, SchemaGenerator, generate::SchemaSettings};
+    let mut g = SchemaGenerator::new(SchemaSettings::draft2020_12());
+    fn add<T: JsonSchema>(g: &mut SchemaGenerator) {
+        g.subschema_for::<T>();
+    }
+    add::<FaceSummary>(&mut g);
+    add::<Family>(&mut g);
+    add::<Facets>(&mut g);
+    add::<DuplicateGroup>(&mut g);
+    add::<index::Stats>(&mut g);
+    add::<ScanReport>(&mut g);
+    add::<CheckReport>(&mut g);
+    add::<unicode::BlockCoverage>(&mut g);
+    add::<TagInfo>(&mut g);
+    add::<CollectionInfo>(&mut g);
+    add::<CollectionExport>(&mut g);
+    add::<ImportReport>(&mut g);
+    add::<Source>(&mut g);
+    add::<ActivationRecord>(&mut g);
+    add::<Conflict>(&mut g);
+    let defs = g.take_definitions(true);
+    serde_json::json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "unifont CLI output",
+        "description": "Every type `unifont --json` prints, one definition each.",
+        "$defs": defs,
+    })
 }
