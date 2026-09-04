@@ -41,13 +41,18 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test --workspace
+      # platform-tests register a fixture font with the OS (session scope, per-user) and
+      # undo it; the runner is disposable.
+      - run: cargo test --workspace --features unifont-platform/platform-tests
       - name: smoke the CLI
         shell: bash
         run: |
           cargo run -q -p unifont-cli -- --db "${RUNNER_TEMP}/u.db" scan fixtures
           cargo run -q -p unifont-cli -- --db "${RUNNER_TEMP}/u.db" list --json | head -c 400
           cargo run -q -p unifont-cli -- --db "${RUNNER_TEMP}/u.db" scan --system
+          cargo run -q -p unifont-cli -- --db "${RUNNER_TEMP}/u.db" activate --session family:Amiri
+          cargo run -q -p unifont-cli -- --db "${RUNNER_TEMP}/u.db" activations
+          cargo run -q -p unifont-cli -- --db "${RUNNER_TEMP}/u.db" deactivate family:Amiri
 
   msrv:
     name: msrv

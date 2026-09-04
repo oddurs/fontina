@@ -51,6 +51,62 @@ enum Command {
     /// Sources: the directories the index was built from; `watch` follows the watched ones.
     #[command(subcommand)]
     Source(SourceCmd),
+    /// Make faces visible to other applications, in place. Persistent for the user unless
+    /// `--session`. Exit code 2 when a conflict blocks it (see `conflicts`).
+    Activate {
+        /// Face ids, `family:<name>`, or indexed file paths.
+        #[arg(required = true)]
+        targets: Vec<String>,
+        /// Until logout or reboot instead of persistently.
+        #[arg(long)]
+        session: bool,
+        /// Deactivate or uninstall conflicting faces that unifont manages first.
+        #[arg(long)]
+        replace: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Undo `activate`.
+    Deactivate {
+        #[arg(required = true)]
+        targets: Vec<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Copy faces into the per-user font directory. Exit code 2 on an unresolved conflict.
+    Install {
+        #[arg(required = true)]
+        targets: Vec<String>,
+        #[arg(long)]
+        replace: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Remove the per-user copies made by `install`.
+    Uninstall {
+        #[arg(required = true)]
+        targets: Vec<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Faces that would clash with these once active: same PostScript name or same
+    /// family and style, already active or living in an OS font directory.
+    Conflicts {
+        #[arg(required = true)]
+        targets: Vec<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Everything unifont has activated or installed.
+    Activations {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Re-apply recorded activations, for a login agent or after a reboot.
+    Restore {
+        #[arg(long)]
+        json: bool,
+    },
     /// Show everything known about a face, by index id or by file path (parses the file when not indexed).
     Info {
         /// Face id from `list`, or a path to a font file.
@@ -484,6 +540,61 @@ fn run() -> Result<()> {
         Command::Tag(cmd) => run_tag(&cli, cmd)?,
         Command::Collection(cmd) => run_collection(&cli, cmd)?,
         Command::Source(cmd) => run_source(&cli, cmd)?,
+        Command::Activate {
+            targets,
+            session,
+            replace,
+            json,
+        } => {
+            let state = if *session {
+                ActivationState::Session
+            } else {
+                ActivationState::User
+            };
+            run_activate(&cli, targets, state, *replace, *json)?
+        }
+        Command::Install {
+            targets,
+            replace,
+            json,
+        } => run_activate(&cli, targets, ActivationState::Installed, *replace, *json)?,
+        Command::Deactivate { targets, json } => run_deactivate(&cli, targets, false, *json)?,
+        Command::Uninstall { targets, json } => run_deactivate(&cli, targets, true, *json)?,
+        Command::Conflicts { targets, json } => {
+            let index = open_index(&cli)?;
+            let ids = resolve_all_ids(&index, targets)?;
+            let conflicts = collect_conflicts(&index, &ids)?;
+            if *json {
+                println!("{}", serde_json::to_string_pretty(&conflicts)?);
+            } else if conflicts.is_empty() {
+                println!("no conflicts");
+            } else {
+                print_conflicts(&conflicts);
+                std::process::exit(2);
+            }
+        }
+        Command::Activations { json } => {
+            let index = open_index(&cli)?;
+            let records = index.activations()?;
+            if *json {
+                println!("{}", serde_json::to_string_pretty(&records)?);
+            } else if records.is_empty() {
+                println!("nothing activated or installed through unifont");
+            } else {
+                for r in &records {
+                    println!(
+                        "{:<10} [{}] {} {}  {}",
+                        r.state.as_str(),
+                        r.face.id,
+                        r.face.family,
+                        r.face.subfamily,
+                        r.installed_path.as_deref().unwrap_or(&r.face.path)
+                    );
+                }
+                println!("{} face(s)", records.len());
+            }
+        }
+        Command::Restore { json } => run_restore(&cli, *json)?,
         Command::Info { target, json } => {
             let faces = resolve_faces(&cli, target)?;
             if *json {
@@ -1412,4 +1523,236 @@ fn print_facets(f: &unifont_core::Facets) {
     row("collection", &f.collection, &|v| v.to_string());
     row("activation", &f.activation, &|v| v.to_string());
     row("source", &f.source, &|v| v.to_string());
+}
+
+fn system_roots() -> Vec<String> {
+    unifont_platform::system_font_dirs()
+        .into_iter()
+        .map(|d| d.path.to_string_lossy().into_owned())
+        .collect()
+}
+
+fn collect_conflicts(index: &Index, ids: &[i64]) -> Result<Vec<unifont_core::Conflict>> {
+    let roots = system_roots();
+    let mut out: Vec<unifont_core::Conflict> = Vec::new();
+    for id in ids {
+        for c in index.conflicts(*id, &roots)? {
+            if !ids.contains(&c.face.id) && !out.iter().any(|o| o.face.id == c.face.id) {
+                out.push(c);
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn print_conflicts(conflicts: &[unifont_core::Conflict]) {
+    for c in conflicts {
+        eprintln!(
+            "conflict: [{}] {} {} ({})  {}",
+            c.face.id, c.face.family, c.face.subfamily, c.reason, c.face.path
+        );
+    }
+    eprintln!(
+        "{} conflict(s); pass --replace to deactivate the ones unifont manages",
+        conflicts.len()
+    );
+}
+
+/// The distinct files behind a set of face ids, each with every face id in that file.
+fn files_for(index: &Index, ids: &[i64]) -> Result<Vec<(PathBuf, Vec<i64>)>> {
+    let mut out: Vec<(PathBuf, Vec<i64>)> = Vec::new();
+    for s in index.summaries(ids)? {
+        let path = PathBuf::from(&s.path);
+        if out.iter().any(|(p, _)| *p == path) {
+            continue;
+        }
+        let faces = index.file_faces(s.id)?;
+        out.push((path, faces));
+    }
+    Ok(out)
+}
+
+fn run_activate(
+    cli: &Cli,
+    targets: &[String],
+    state: ActivationState,
+    replace: bool,
+    json: bool,
+) -> Result<()> {
+    let mut index = open_index(cli)?;
+    let ids = resolve_all_ids(&index, targets)?;
+    let activator = unifont_platform::activator();
+    let conflicts = collect_conflicts(&index, &ids)?;
+    if !conflicts.is_empty() {
+        if !replace {
+            print_conflicts(&conflicts);
+            std::process::exit(2);
+        }
+        for c in &conflicts {
+            match c.face.activation {
+                Some(ActivationState::Installed) => {
+                    let rec = index.activation(c.face.id)?;
+                    if let Some(p) = rec.and_then(|r| r.installed_path) {
+                        activator.uninstall(std::path::Path::new(&p))?;
+                    }
+                    let faces = index.file_faces(c.face.id)?;
+                    index.clear_activation(&faces)?;
+                    eprintln!("uninstalled {} {}", c.face.family, c.face.subfamily);
+                }
+                Some(_) => {
+                    activator.deactivate(std::path::Path::new(&c.face.path))?;
+                    let faces = index.file_faces(c.face.id)?;
+                    index.clear_activation(&faces)?;
+                    eprintln!("deactivated {} {}", c.face.family, c.face.subfamily);
+                }
+                None => eprintln!(
+                    "warning: {} {} is a system font at {}; it cannot be replaced, the OS decides which wins",
+                    c.face.family, c.face.subfamily, c.face.path
+                ),
+            }
+        }
+    }
+    let mut done = Vec::new();
+    for (path, faces) in files_for(&index, &ids)? {
+        match state {
+            ActivationState::Installed => {
+                let installed = activator
+                    .install(&path)
+                    .with_context(|| format!("installing {}", path.display()))?;
+                index.set_activation(&faces, state, Some(&installed.to_string_lossy()))?;
+            }
+            ActivationState::Session | ActivationState::User => {
+                let scope = if state == ActivationState::Session {
+                    unifont_platform::Scope::Session
+                } else {
+                    unifont_platform::Scope::User
+                };
+                activator
+                    .activate(&path, scope)
+                    .with_context(|| format!("activating {}", path.display()))?;
+                index.set_activation(&faces, state, None)?;
+            }
+        }
+        done.extend(faces);
+    }
+    let records: Vec<_> = index
+        .activations()?
+        .into_iter()
+        .filter(|r| done.contains(&r.face.id))
+        .collect();
+    if json {
+        println!("{}", serde_json::to_string_pretty(&records)?);
+    } else {
+        for r in &records {
+            println!(
+                "{} {} {}{}",
+                match state {
+                    ActivationState::Installed => "installed",
+                    _ => "activated",
+                },
+                r.face.family,
+                r.face.subfamily,
+                match (&r.installed_path, state) {
+                    (Some(p), _) => format!(" -> {p}"),
+                    (None, ActivationState::Session) => " (until logout)".into(),
+                    _ => String::new(),
+                }
+            );
+        }
+    }
+    Ok(())
+}
+
+fn run_deactivate(cli: &Cli, targets: &[String], uninstall: bool, json: bool) -> Result<()> {
+    let mut index = open_index(cli)?;
+    let ids = resolve_all_ids(&index, targets)?;
+    let activator = unifont_platform::activator();
+    let mut done = Vec::new();
+    for (path, faces) in files_for(&index, &ids)? {
+        let record = index.activation(faces[0])?;
+        if uninstall {
+            let Some(installed) = record.as_ref().and_then(|r| r.installed_path.clone()) else {
+                bail!("{} was not installed by unifont", path.display());
+            };
+            activator
+                .uninstall(std::path::Path::new(&installed))
+                .with_context(|| format!("uninstalling {installed}"))?;
+        } else {
+            activator
+                .deactivate(&path)
+                .with_context(|| format!("deactivating {}", path.display()))?;
+        }
+        index.clear_activation(&faces)?;
+        done.push(path);
+    }
+    if json {
+        println!("{}", serde_json::to_string_pretty(&done)?);
+    } else {
+        for p in &done {
+            println!(
+                "{} {}",
+                if uninstall {
+                    "uninstalled"
+                } else {
+                    "deactivated"
+                },
+                p.display()
+            );
+        }
+    }
+    Ok(())
+}
+
+#[derive(serde::Serialize, Default)]
+struct RestoreReport {
+    restored: usize,
+    reinstalled: usize,
+    failed: Vec<(String, String)>,
+}
+
+fn run_restore(cli: &Cli, json: bool) -> Result<()> {
+    let mut index = open_index(cli)?;
+    let activator = unifont_platform::activator();
+    let mut report = RestoreReport::default();
+    for r in index.activations()? {
+        let path = std::path::Path::new(&r.face.path);
+        let result = match r.state {
+            ActivationState::Session => activator.activate(path, unifont_platform::Scope::Session),
+            ActivationState::User => activator.activate(path, unifont_platform::Scope::User),
+            ActivationState::Installed => {
+                match r
+                    .installed_path
+                    .as_deref()
+                    .filter(|p| std::path::Path::new(p).exists())
+                {
+                    Some(_) => Ok(()),
+                    None => activator.install(path).and_then(|p| {
+                        report.reinstalled += 1;
+                        let faces = index.file_faces(r.face.id).unwrap_or_default();
+                        index
+                            .set_activation(&faces, r.state, Some(&p.to_string_lossy()))
+                            .map_err(|e| unifont_platform::PlatformError::Os(e.to_string()))
+                    }),
+                }
+            }
+        };
+        match result {
+            Ok(()) => report.restored += 1,
+            Err(e) => report.failed.push((r.face.path.clone(), e.to_string())),
+        }
+    }
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        println!(
+            "restored {} activation(s), {} reinstalled, {} failed",
+            report.restored,
+            report.reinstalled,
+            report.failed.len()
+        );
+        for (p, e) in &report.failed {
+            eprintln!("  ! {p}: {e}");
+        }
+    }
+    Ok(())
 }

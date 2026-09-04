@@ -1,11 +1,27 @@
-//! Platform integration: where fonts live on each OS, and the activation trait that the
-//! macOS, Windows and Linux backends implement.
+//! Platform integration: where fonts live on each OS, and the activation backend that
+//! makes a font file visible to other applications without touching system directories
+//! or asking for elevation.
 //!
-//! M0 ships the directory model and system enumeration. Native activation backends
-//! (CoreText, `AddFontResourceEx`, fontconfig) land in M1.
+//! One trait, three implementations, all per-user:
+//!
+//! | OS | install | activate |
+//! |---|---|---|
+//! | Linux | symlink into `$XDG_DATA_HOME/fonts/unifont/` | symlink into `$XDG_DATA_HOME/fonts/unifont-active/`, declared in `~/.config/fontconfig/conf.d/50-unifont.conf` |
+//! | macOS | copy into `~/Library/Fonts` | `CTFontManagerRegisterFontsForURL`, session or user scope |
+//! | Windows | copy into `%LOCALAPPDATA%\Microsoft\Windows\Fonts` + `HKCU\...\Fonts` | `AddFontResourceExW` (+ registry for user scope) |
+//!
+//! Deleting unifont leaves everything reversible: links and copies are ordinary files in
+//! the per-user font directory, registrations are the OS's own per-user mechanisms.
 
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+#[cfg(all(unix, not(target_os = "macos")))]
+mod linux;
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg(target_os = "windows")]
+mod windows;
 
 /// How long an activation should last.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,23 +43,54 @@ pub struct SystemFontDir {
 
 #[derive(Debug, thiserror::Error)]
 pub enum PlatformError {
-    #[error("not supported on this platform yet: {0}")]
+    #[error("not supported on this platform: {0}")]
     Unsupported(&'static str),
+    #[error("{0}: {1}")]
+    Io(PathBuf, #[source] std::io::Error),
+    #[error("{0} is not a file")]
+    NotAFile(PathBuf),
+    #[error("{0} was not installed by unifont (it is outside {1})")]
+    NotManaged(PathBuf, PathBuf),
+    #[error("no per-user font directory on this system")]
+    NoUserDir,
     #[error("{0}")]
-    Io(#[from] std::io::Error),
+    Os(String),
 }
 
 pub type Result<T> = std::result::Result<T, PlatformError>;
 
-/// The activation backend contract. One implementation per OS.
+/// The activation backend contract. One implementation per OS; get it from
+/// [`activator`].
 pub trait FontActivator {
-    /// Persistent, per-user install. Never touches system directories.
-    fn install(&self, file: &std::path::Path) -> Result<PathBuf>;
-    fn uninstall(&self, file: &std::path::Path) -> Result<()>;
-    fn activate(&self, file: &std::path::Path, scope: Scope) -> Result<()>;
-    fn deactivate(&self, file: &std::path::Path) -> Result<()>;
+    /// Persistent, per-user install of `file`. Returns the path the OS now reads (a copy
+    /// or link inside the per-user font directory). Never touches system directories.
+    fn install(&self, file: &Path) -> Result<PathBuf>;
+    /// Undo [`FontActivator::install`], given the path it returned.
+    fn uninstall(&self, installed: &Path) -> Result<()>;
+    /// Make `file` visible in place, for the session or persistently for the user.
+    fn activate(&self, file: &Path, scope: Scope) -> Result<()>;
+    /// Undo [`FontActivator::activate`] for either scope. Succeeds when nothing was active.
+    fn deactivate(&self, file: &Path) -> Result<()>;
     /// Font directories the OS reads, in precedence order.
-    fn font_dirs(&self) -> Vec<SystemFontDir>;
+    fn font_dirs(&self) -> Vec<SystemFontDir> {
+        system_font_dirs()
+    }
+}
+
+/// The backend for the running OS.
+pub fn activator() -> Box<dyn FontActivator> {
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        Box::new(linux::Fontconfig)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        Box::new(macos::CoreText)
+    }
+    #[cfg(target_os = "windows")]
+    {
+        Box::new(windows::Gdi)
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -101,10 +148,7 @@ pub fn system_font_dirs() -> Vec<SystemFontDir> {
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
-        let data_home = std::env::var_os("XDG_DATA_HOME")
-            .map(PathBuf::from)
-            .or_else(|| home().map(|h| h.join(".local/share")));
-        if let Some(d) = data_home {
+        if let Some(d) = linux::data_home() {
             dirs.push(SystemFontDir {
                 path: d.join("fonts"),
                 user_writable: true,
@@ -138,4 +182,53 @@ pub fn user_font_dir() -> Option<PathBuf> {
         .into_iter()
         .find(|d| d.user_writable)
         .map(|d| d.path)
+}
+
+// ----- helpers shared by the backends -----
+
+fn io(path: &Path) -> impl FnOnce(std::io::Error) -> PlatformError + '_ {
+    move |e| PlatformError::Io(path.to_path_buf(), e)
+}
+
+/// `file` must exist and be a regular file; returns its canonical path.
+fn regular_file(file: &Path) -> Result<PathBuf> {
+    let canonical = std::fs::canonicalize(file).map_err(io(file))?;
+    if !canonical.is_file() {
+        return Err(PlatformError::NotAFile(file.to_path_buf()));
+    }
+    Ok(canonical)
+}
+
+/// A name for `file` inside `dir` that does not collide with a different file of the
+/// same basename: the basename itself when free (or already ours), otherwise the stem
+/// plus a short hash of the source path.
+fn slot_name(dir: &Path, file: &Path, is_ours: impl Fn(&Path) -> bool) -> PathBuf {
+    let base = file
+        .file_name()
+        .map(|n| n.to_os_string())
+        .unwrap_or_else(|| "font".into());
+    let candidate = dir.join(&base);
+    if !candidate.exists() && std::fs::symlink_metadata(&candidate).is_err() || is_ours(&candidate)
+    {
+        return candidate;
+    }
+    let hash = blake3::hash(file.to_string_lossy().as_bytes()).to_hex();
+    let stem = file
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "font".into());
+    let ext = file
+        .extension()
+        .map(|e| format!(".{}", e.to_string_lossy()))
+        .unwrap_or_default();
+    dir.join(format!("{stem}-{}{ext}", &hash[..8]))
+}
+
+/// True when `path` is inside `dir` (after canonicalising `dir`).
+fn is_under(path: &Path, dir: &Path) -> bool {
+    let dir = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+    let parent = path
+        .parent()
+        .map(|p| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf()));
+    parent.is_some_and(|p| p.starts_with(&dir))
 }
