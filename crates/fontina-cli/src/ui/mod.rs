@@ -24,6 +24,7 @@
 mod controls;
 mod glyphs;
 mod preview;
+mod sheet;
 
 use anyhow::Result;
 use fontina_core::index::FacetCount;
@@ -155,6 +156,11 @@ pub struct App {
     /// Columns the glyph grid used when it was last drawn, so a PageDown moves by what
     /// the reader can see rather than by a guess.
     glyph_cols: usize,
+    /// The waterfall or comparison, while it is open. Full-screen for the same reason
+    /// the glyph map is: rendered type needs the width.
+    sheet: Option<sheet::Sheet>,
+    /// Terminal lines the sheet had on the last frame, so a PageDown moves by a screen.
+    sheet_visible: usize,
     preview: preview::Cache,
 }
 
@@ -192,6 +198,8 @@ impl App {
             controls: controls::Controls::default(),
             glyphs: None,
             glyph_cols: 16,
+            sheet: None,
+            sheet_visible: 20,
             preview: preview::Cache::default(),
         };
         app.reload()?;
@@ -398,10 +406,17 @@ impl App {
                 self.help = false;
                 continue;
             }
-            // Ctrl-C still quits from anywhere; the glyph map takes every other key.
-            if self.glyphs.is_some() && !(ctrl_c(&key)) {
-                self.handle_glyph_key(key.code)?;
-                continue;
+            // Ctrl-C still quits from anywhere; a full-screen mode takes every other key,
+            // so nothing underneath can move while it covers the panes.
+            if !ctrl_c(&key) {
+                if self.glyphs.is_some() {
+                    self.handle_glyph_key(key.code)?;
+                    continue;
+                }
+                if self.sheet.is_some() {
+                    self.handle_sheet_key(key.code)?;
+                    continue;
+                }
             }
             let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
             match key.code {
@@ -420,6 +435,8 @@ impl App {
                 }
                 KeyCode::Char('?') => self.help = true,
                 KeyCode::Char('m') => self.open_glyphs(),
+                KeyCode::Char('w') => self.open_sheet(sheet::Kind::Waterfall)?,
+                KeyCode::Char('C') => self.open_sheet(sheet::Kind::Compare)?,
                 KeyCode::Tab => {
                     self.focus = match self.focus {
                         Focus::Facets => Focus::List,
@@ -518,6 +535,90 @@ impl App {
             self.detail_id.map(|id| id.to_string()).unwrap_or_default()
         );
         self.glyphs = Some(map);
+    }
+
+    /// Open a waterfall over the selected face, or a comparison across everything the
+    /// selection stands for.
+    fn open_sheet(&mut self, kind: sheet::Kind) -> Result<()> {
+        let ids: Vec<i64> = match kind {
+            sheet::Kind::Waterfall => self.current_face_id().into_iter().collect(),
+            // Inside an open family the listing is the family's own faces, and that is
+            // exactly the view a reader presses `C` from. `current_face_ids` narrows to
+            // the selected face there, which would compare a face with itself.
+            sheet::Kind::Compare if self.open_family.is_some() => {
+                self.faces.iter().map(|f| f.id).collect()
+            }
+            sheet::Kind::Compare => self.current_face_ids(),
+        };
+        // Read every face once, here. The sheet is drawn on every frame and holds what
+        // it needs; querying per row per frame is the mistake #36 fixed for the pane.
+        let mut faces = Vec::with_capacity(ids.len());
+        for id in &ids {
+            if let Some(face) = self.index.get_face(*id)? {
+                faces.push(face);
+            }
+        }
+        if faces.is_empty() {
+            self.status = "no face on show".into();
+            return Ok(());
+        }
+        let sheet = match kind {
+            sheet::Kind::Waterfall => sheet::Sheet::waterfall(
+                faces.remove(0),
+                self.controls.variations(),
+                self.controls.forced_features(),
+            ),
+            sheet::Kind::Compare => sheet::Sheet::compare(faces, self.preview_size),
+        };
+        self.status = format!(
+            "{}   (fontina specimen {})",
+            sheet.title(),
+            ids.iter()
+                .map(|id| id.to_string())
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+        self.sheet = Some(sheet);
+        Ok(())
+    }
+
+    /// Keys the sheet owns while it is open. Everything else is swallowed, for the same
+    /// reason the glyph map swallows: it covers the panes underneath.
+    fn handle_sheet_key(&mut self, code: KeyCode) -> Result<()> {
+        let visible = self.sheet_visible.max(1);
+        let Some(sheet) = self.sheet.as_mut() else {
+            return Ok(());
+        };
+        match code {
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('w') | KeyCode::Char('C') => {
+                self.sheet = None;
+            }
+            KeyCode::Down | KeyCode::Char('j') => sheet.scroll_by(1, visible),
+            KeyCode::Up | KeyCode::Char('k') => sheet.scroll_by(-1, visible),
+            KeyCode::PageDown | KeyCode::Char(' ') => sheet.scroll_by(visible as i32 - 1, visible),
+            KeyCode::PageUp => sheet.scroll_by(-(visible as i32 - 1), visible),
+            KeyCode::Home | KeyCode::Char('g') => sheet.scroll_by(i32::MIN / 2, visible),
+            KeyCode::End | KeyCode::Char('G') => sheet.scroll_by(i32::MAX / 2, visible),
+            KeyCode::Char('+') | KeyCode::Char('=') | KeyCode::Char('-') => {
+                let delta = if code == KeyCode::Char('-') {
+                    -4.0
+                } else {
+                    4.0
+                };
+                let fixed = !sheet.resize(delta) && sheet.kind() == sheet::Kind::Waterfall;
+                if fixed {
+                    // Silence would read as a broken key; the ladder is deliberate.
+                    self.status =
+                        "a waterfall is the size ladder; C compares faces at one size".into();
+                }
+            }
+            KeyCode::Char('e') => {
+                let text = self.preview_text.clone().unwrap_or_default();
+                self.start_input(InputKind::Text, text);
+            }
+            _ => {}
+        }
+        Ok(())
     }
 
     /// Keys the glyph map owns while it is open. Returns whether it took the key.
@@ -901,12 +1002,80 @@ impl App {
         self.draw_detail(f, columns[2]);
         self.draw_status(f, vertical[1]);
         self.draw_keys(f, vertical[2]);
+        if self.sheet.is_some() {
+            self.draw_sheet(f, vertical[0]);
+        }
         if self.glyphs.is_some() {
             self.draw_glyphs(f, vertical[0]);
         }
         if self.help {
             self.draw_help(f, area);
         }
+    }
+
+    /// The waterfall or the comparison: each row rendered, labelled, and stacked, with
+    /// the whole sheet scrolling by terminal lines.
+    fn draw_sheet(&mut self, f: &mut ratatui::Frame, area: Rect) {
+        let Some(sheet) = &self.sheet else { return };
+        f.render_widget(Clear, area);
+        // A waterfall runs to a few hundred lines, so where you are in it is worth
+        // saying; without it the only cue is that scrolling stopped.
+        let position = match sheet.lines() {
+            0 => String::new(),
+            total => format!(" [{}/{}]", sheet.scroll_row() + 1, total),
+        };
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Cyan))
+            .title(format!(
+                " {}{position} — e sets the text, Esc closes ",
+                sheet.title()
+            ));
+        let inner = block.inner(area);
+        f.render_widget(block, area);
+        if inner.width < 8 || inner.height < 2 {
+            return;
+        }
+
+        let visible = inner.height as usize;
+        self.sheet_visible = visible;
+        let width = inner.width;
+        let text = self.preview_text.clone();
+
+        // Lay the sheet out once per pane width and sample text, not once per frame:
+        // a waterfall is nine rasterisations and a comparison is one per face.
+        if !self
+            .sheet
+            .as_ref()
+            .is_some_and(|s| s.is_built_for(width, text.as_deref()))
+        {
+            let Some(sheet) = self.sheet.take() else {
+                return;
+            };
+            let mut lines: Vec<Line> = Vec::new();
+            for row in sheet.rows() {
+                let words = sheet.text_for(row, text.as_deref());
+                let opts = sheet.options(row, words, width as u32);
+                lines.push(Line::from(Span::styled(
+                    row.label.clone(),
+                    Style::default().fg(Color::DarkGray),
+                )));
+                let px_rows = (row.size.ceil() as u32 * 2).max(2);
+                lines.extend(self.preview.lines(&row.face, &opts, px_rows));
+                lines.push(Line::from(""));
+            }
+            let mut sheet = sheet;
+            sheet.set_built(width, text, lines);
+            self.sheet = Some(sheet);
+        }
+
+        let Some(sheet) = self.sheet.as_mut() else {
+            return;
+        };
+        // Re-clamp against the height being drawn: a pane that grew since the last
+        // keypress must not start past the end and render blank.
+        sheet.scroll_by(0, visible);
+        f.render_widget(Paragraph::new(sheet.window(visible)), inner);
     }
 
     /// The glyph map: covered blocks down the left, the characters of the selected one
@@ -1398,6 +1567,8 @@ impl App {
              n/p step through named instances   0 resets everything
  Glyphs      m opens the glyph map: h/l pick a block, j/k scroll, / finds a
              codepoint (U+0041, 0x41, 41) or a block by name
+ Sheets      w waterfalls the face down the size ladder; C compares every face
+             the selection stands for. j/k scroll, +/- resize a comparison
  Index       R rescans every source (fontina scan --prune)
  Quit        q
 
@@ -1405,7 +1576,7 @@ impl App {
 
  any key to close";
         let w = 90.min(area.width);
-        let h = 22.min(area.height);
+        let h = 24.min(area.height);
         let rect = Rect::new(
             area.x + (area.width - w) / 2,
             area.y + (area.height - h) / 2,
@@ -1773,6 +1944,124 @@ mod tests {
         assert!(
             map.scroll_row() * 40 < covered,
             "a widened pane still starts inside the block"
+        );
+    }
+
+    #[test]
+    fn a_waterfall_covers_one_face_and_a_comparison_the_whole_family() {
+        let mut app = app();
+        select_family(&mut app, "Bricolage");
+
+        app.open_sheet(sheet::Kind::Waterfall).unwrap();
+        let s = app.sheet.as_ref().expect("a face was selected");
+        assert_eq!(s.kind(), sheet::Kind::Waterfall);
+        let names: std::collections::BTreeSet<&str> = s
+            .rows()
+            .iter()
+            .map(|r| r.face.names.family.as_str())
+            .collect();
+        assert_eq!(names.len(), 1, "a waterfall is one face at many sizes");
+        assert!(app.status.contains("fontina specimen"), "{}", app.status);
+
+        // Every key is swallowed while it is open, so nothing underneath can move.
+        let before = app.detail_id;
+        app.handle_sheet_key(KeyCode::Char('a')).unwrap();
+        assert_eq!(app.detail_id, before);
+        assert!(app.sheet.is_some());
+        app.handle_sheet_key(KeyCode::Esc).unwrap();
+        assert!(app.sheet.is_none());
+
+        app.open_sheet(sheet::Kind::Compare).unwrap();
+        let s = app.sheet.as_ref().unwrap();
+        assert_eq!(s.kind(), sheet::Kind::Compare);
+        assert_eq!(
+            s.rows().len(),
+            app.current_face_ids().len(),
+            "a comparison covers everything the selection stands for"
+        );
+    }
+
+    /// The face listing inside a family is exactly the view a reader presses `C` from,
+    /// and `current_face_ids` narrows to the selected face there — which would compare a
+    /// face with itself.
+    #[test]
+    fn comparing_inside_an_open_family_covers_the_family() {
+        let mut app = app();
+        select_family(&mut app, "Inter");
+        app.open_family().unwrap();
+        assert!(app.open_family.is_some(), "the family is open");
+        let listed = app.faces.len();
+        assert!(listed > 1, "this family has siblings to compare");
+        assert_eq!(app.current_face_ids().len(), 1, "the selection is one face");
+
+        app.open_sheet(sheet::Kind::Compare).unwrap();
+        assert_eq!(
+            app.sheet.as_ref().unwrap().rows().len(),
+            listed,
+            "C compares what the listing shows"
+        );
+    }
+
+    #[test]
+    fn only_a_comparison_answers_the_size_keys() {
+        let mut app = app();
+        select_family(&mut app, "Amiri");
+        app.open_sheet(sheet::Kind::Waterfall).unwrap();
+        let sizes: Vec<f32> = app
+            .sheet
+            .as_ref()
+            .unwrap()
+            .rows()
+            .iter()
+            .map(|r| r.size)
+            .collect();
+        app.handle_sheet_key(KeyCode::Char('+')).unwrap();
+        let after: Vec<f32> = app
+            .sheet
+            .as_ref()
+            .unwrap()
+            .rows()
+            .iter()
+            .map(|r| r.size)
+            .collect();
+        assert_eq!(sizes, after, "a waterfall's ladder is fixed");
+
+        app.sheet = None;
+        app.open_sheet(sheet::Kind::Compare).unwrap();
+        let before = app.sheet.as_ref().unwrap().size();
+        app.handle_sheet_key(KeyCode::Char('+')).unwrap();
+        assert!(app.sheet.as_ref().unwrap().size() > before);
+    }
+
+    /// One rendering per row, held between frames: scrolling a waterfall must not
+    /// re-render nine bitmaps on every keypress.
+    #[test]
+    fn the_preview_cache_holds_a_rendering_for_every_row() {
+        let mut app = app();
+        select_family(&mut app, "Amiri");
+        let face = app.detail.clone().unwrap();
+        let opts = |size: f32| RenderOptions {
+            text: "Ag".into(),
+            size,
+            padding: 1,
+            max_width: Some(60),
+            ..Default::default()
+        };
+        for size in fontina_core::typography::WATERFALL_SIZES {
+            app.preview.lines(&face, &opts(*size), 40);
+        }
+        assert_eq!(
+            app.preview.len(),
+            fontina_core::typography::WATERFALL_SIZES.len(),
+            "every size kept its rendering"
+        );
+        // And asking again returns them without rendering: the count does not grow.
+        for size in fontina_core::typography::WATERFALL_SIZES {
+            app.preview.lines(&face, &opts(*size), 40);
+        }
+        assert_eq!(
+            app.preview.len(),
+            fontina_core::typography::WATERFALL_SIZES.len()
         );
     }
 
