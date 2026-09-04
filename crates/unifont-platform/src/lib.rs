@@ -46,6 +46,7 @@ pub trait FontActivator {
     fn font_dirs(&self) -> Vec<SystemFontDir>;
 }
 
+#[cfg(not(target_os = "windows"))]
 fn home() -> Option<PathBuf> {
     directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf())
 }
