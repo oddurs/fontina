@@ -16,8 +16,8 @@ carries one archive per platform:
 
 | Target | Archive |
 |---|---|
-| Linux x86_64 (glibc) | `fontina-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz` |
-| Linux aarch64 (glibc) | `fontina-vX.Y.Z-aarch64-unknown-linux-gnu.tar.gz` |
+| GNU/Linux x86_64 | `fontina-vX.Y.Z-x86_64-unknown-linux-musl.tar.gz` |
+| GNU/Linux aarch64 | `fontina-vX.Y.Z-aarch64-unknown-linux-musl.tar.gz` |
 | macOS Apple silicon | `fontina-vX.Y.Z-aarch64-apple-darwin.tar.gz` |
 | macOS Intel | `fontina-vX.Y.Z-x86_64-apple-darwin.tar.gz` |
 | Windows x86_64 | `fontina-vX.Y.Z-x86_64-pc-windows-msvc.zip` |
@@ -26,6 +26,11 @@ Each archive holds the `fontina` binary (or `fontina.exe`), `COPYING`, the manua
 source, a `completions/` directory with bash, zsh, fish and PowerShell completions,
 and a `man/` directory with one page per command. Put the binary on your `PATH`;
 there is no installer.
+
+The GNU/Linux binaries are statically linked against musl, so one file runs on every
+distribution: Debian, Ubuntu, Fedora, Arch, Alpine, and a machine with no fontconfig
+installed at all. There is no minimum glibc version to check, because there is no
+glibc in it. Each of those is tested on every release.
 
 Linux also gets `.deb` and `.rpm` packages built from the same binary, with the
 completions and man pages in their proper places:

@@ -24,6 +24,12 @@ use fontina_core::{
 use std::io::Write as _;
 use std::path::PathBuf;
 
+// See the note in Cargo.toml. musl's own allocator makes a parallel scan four times
+// slower, and the scan is the thing a user waits for.
+#[cfg(target_env = "musl")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 /// fontina: a lightweight, standards-based font manager.
 #[derive(Parser)]
 #[command(name = "fontina", version, about, propagate_version = true)]

@@ -36,8 +36,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest,     target: x86_64-unknown-linux-gnu,  ext: tar.gz }
-          - { os: ubuntu-24.04-arm,  target: aarch64-unknown-linux-gnu, ext: tar.gz }
+          # Static musl for GNU/Linux. A glibc build carries the version of whatever
+          # runner built it: v0.1.0 needed GLIBC_2.39 and would not start on Debian 12,
+          # Ubuntu 22.04 or RHEL 9. A static binary has no such floor.
+          - { os: ubuntu-latest,     target: x86_64-unknown-linux-musl,  ext: tar.gz, musl: true }
+          - { os: ubuntu-24.04-arm,  target: aarch64-unknown-linux-musl, ext: tar.gz, musl: true }
           - { os: macos-latest,      target: aarch64-apple-darwin,      ext: tar.gz }
           - { os: macos-latest,      target: x86_64-apple-darwin,       ext: tar.gz }
           - { os: windows-latest,    target: x86_64-pc-windows-msvc,    ext: zip }
@@ -51,6 +54,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+      # musl-gcc links the static binary, and builds mimalloc's C for the same target.
+      - if: matrix.musl
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq musl-tools
+          # cc-rs reads CC_<target with underscores>; only the triple is rewritten.
+          echo "CC_$(echo '${{ matrix.target }}' | tr - _)=musl-gcc" >> "$GITHUB_ENV"
       - run: cargo build --release --locked -p fontina-cli --target ${{ matrix.target }}
 
       # Completions and man pages come from the binary itself, so they always match it.
