@@ -312,18 +312,26 @@ cloud sync, accounts, telemetry, an Electron shell.
 
 ---
 
-## 7. Performance budgets (CI-enforced)
+## 7. Performance budgets
 
-| Metric | Budget |
-|---|---|
-| Release binary, stripped | ≤ 12 MB per platform |
-| `fontina list` cold start to output, 5k faces | ≤ 50 ms |
-| Idle RSS of `fontina ui`, 5k faces | ≤ 40 MB |
-| Initial index, 10k files, SSD | ≤ 10 s |
-| Incremental rescan, 1 changed file | ≤ 50 ms |
-| Search keystroke → results | ≤ 30 ms for 50k faces |
-| Preview render, one face, 64 px, 40 characters | ≤ 30 ms |
-| TUI repaint | ≤ 16 ms |
+`scripts/bench` measures these against a corpus of real font files and fails on a miss;
+`.github/workflows/perf.yml` runs it. The two marked *not measured* need a terminal, and
+a number produced without one would be a number about nothing; they are checked by hand
+until there is a harness that can hold a pty.
+
+| Metric | Budget | Measured |
+|---|---|---|
+| Release binary, stripped | ≤ 12 MB per platform | yes |
+| `fontina list` cold start to output | ≤ 50 ms | yes, at 10k faces |
+| Initial index, 10k files, SSD | ≤ 10 s | yes |
+| Incremental rescan, 1 changed file | ≤ 50 ms | yes |
+| Search keystroke → a screenful of results | ≤ 30 ms | yes, at 10k faces |
+| Preview render, one face, 64 px, 40 characters | ≤ 30 ms | yes |
+| Idle RSS of `fontina ui`, 5k faces | ≤ 40 MB | not measured |
+| TUI repaint | ≤ 16 ms | not measured |
+
+The search budget is a screenful, not every match: the unbounded form measures the cost
+of printing ten thousand lines rather than of finding them.
 
 ---
 

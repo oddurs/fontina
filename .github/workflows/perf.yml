@@ -1,0 +1,37 @@
+# The budgets in PLAN.md §7 are a promise, and a promise nobody measures is a wish.
+# scripts/bench builds a corpus of real font files, drives the release binary against it,
+# and fails on a miss. Runners are shared and noisy, so each timing is the best of three:
+# the best run is what the machine can do, the rest is whatever else it was doing.
+name: perf
+
+on:
+  pull_request:
+    paths:
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'scripts/bench'
+      - '.github/workflows/perf.yml'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: perf-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  budgets:
+    name: budgets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: scripts/bench
