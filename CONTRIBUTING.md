@@ -68,6 +68,39 @@ the required checks attach to the release PR. Merge it like any other PR. Mergin
 builds the archives (with completions and man pages), `.deb` and `.rpm` packages,
 checksums, provenance attestations and the SBOM. Nothing is published by hand.
 
+## Testing
+
+Three layers, cheapest first.
+
+1. **Unit and integration tests**, `cargo test`. Hermetic, no system font directory
+   touched. Snapshot tests cover every fixture, and every health check id has a case
+   that triggers it.
+2. **Platform integration tests**, `cargo test --workspace --features
+   fontina-platform/platform-tests`. These register a font with the running operating
+   system, per user and for the session, and undo it. CI runs them on GNU/Linux, macOS
+   and Windows.
+3. **Acceptance**, `FONTINA=./target/release/fontina scripts/acceptance`. The whole
+   command-line surface end to end, asserted the way a user would: after `activate`,
+   `fc-list` and `fc-match` have to see the font, because a font manager that only
+   convinces itself has done nothing. Everything it touches is inside one temporary
+   XDG home, which it removes on the way out.
+
+GNU/Linux is the reference platform and is not one system, so `scripts/test-distros`
+runs the acceptance script inside Debian, Ubuntu, Fedora, Arch, Alpine (musl) and a
+Debian with no fontconfig installed. It needs a container runtime; on macOS that is
+
+```
+brew install --cask orbstack
+```
+
+and Podman or Docker work as well. `.github/workflows/linux.yml` runs the same script
+on every pull request that touches the crates, weekly on a schedule, and on `main`.
+
+Adding a capability means adding to whichever layer can prove it: a new metadata field
+gets a fixture snapshot, a new health check gets a case in `tests/checks.rs`, a new
+activation behaviour gets a platform test, and anything a user would type gets a line
+in `scripts/acceptance`.
+
 ## Fixtures
 
 Only fonts under a free license (OFL-1.1, Apache-2.0, CC0) may be added to
