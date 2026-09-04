@@ -600,6 +600,58 @@ fn watch_applies_file_and_directory_changes() {
 }
 
 #[test]
+fn watch_removes_a_vanished_directory_whose_name_has_a_dot() {
+    use std::collections::BTreeSet;
+    let dir = std::env::temp_dir().join(format!("fontina-watch-dot-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    // A version in the directory's name gives it a file extension as far as
+    // `Path::extension` is concerned. It is still a directory.
+    std::fs::create_dir_all(dir.join("Inter v4.0")).unwrap();
+    std::fs::copy(
+        fixtures().join("Amiri-Regular.ttf"),
+        dir.join("Inter v4.0").join("Amiri-Regular.ttf"),
+    )
+    .unwrap();
+    let mut index = Index::open_in_memory().unwrap();
+    fontina_core::scan::scan(
+        &mut index,
+        std::slice::from_ref(&dir),
+        &ScanOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(index.stats().unwrap().faces, 1);
+
+    let roots = vec![std::fs::canonicalize(&dir).unwrap()];
+    let versioned = roots[0].join("Inter v4.0");
+    let opts = fontina_core::watch::WatchOptions::default();
+    std::fs::remove_dir_all(&versioned).unwrap();
+    let ev = fontina_core::watch::apply(
+        &mut index,
+        &roots,
+        &opts,
+        BTreeSet::from([versioned.clone()]),
+    )
+    .unwrap();
+    assert_eq!(ev.report.removed, 1, "{ev:?}");
+    assert_eq!(index.stats().unwrap().faces, 0, "{ev:?}");
+    assert!(
+        ev.paths.contains(&versioned.to_string_lossy().into_owned()),
+        "{ev:?}"
+    );
+
+    // A vanished plain file the index never knew about is still a no-op.
+    let ev = fontina_core::watch::apply(
+        &mut index,
+        &roots,
+        &opts,
+        BTreeSet::from([roots[0].join("README.txt")]),
+    )
+    .unwrap();
+    assert!(ev.paths.is_empty(), "{ev:?}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn render_shapes_and_rasterises() {
     use fontina_core::render::{RenderOptions, encode, render_face, shaped_glyphs};
     let (_, faces) = fontina_core::load_file(&fixtures().join("Amiri-Regular.ttf")).unwrap();
