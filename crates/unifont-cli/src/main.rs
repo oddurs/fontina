@@ -1,7 +1,7 @@
 mod ui;
 
 use anyhow::{Context, Result, bail};
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand};
 use std::io::Write as _;
 use std::path::PathBuf;
 use unifont_core::{ActivationState, FaceFilter, FaceSummary, Index, ScanOptions, SourceKind};
@@ -217,6 +217,14 @@ enum Command {
     Preview(PreviewArgs),
     /// Browse the index: facets, families, faces, details and previews, keyboard first.
     Ui,
+    /// Print shell completions: bash, zsh, fish, elvish or powershell.
+    Completions { shell: clap_complete::Shell },
+    /// Print the man page, or write one page per command into a directory.
+    Man {
+        /// Write `unifont.1`, `unifont-scan.1`, ... here instead of printing `unifont.1`.
+        #[arg(long)]
+        out_dir: Option<PathBuf>,
+    },
     /// Print a JSON Schema: `face` (default), `collection`, or `cli-output`.
     Schema {
         #[arg(default_value = "face")]
@@ -1056,6 +1064,27 @@ fn run() -> Result<()> {
         Command::Ui => {
             let path = cli.db.clone().unwrap_or_else(Index::default_path);
             ui::run(&path)?
+        }
+        Command::Completions { shell } => {
+            let mut cmd = Cli::command();
+            clap_complete::generate(*shell, &mut cmd, "unifont", &mut std::io::stdout());
+        }
+        Command::Man { out_dir } => {
+            let cmd = Cli::command();
+            match out_dir {
+                Some(dir) => {
+                    std::fs::create_dir_all(dir)
+                        .with_context(|| format!("creating {}", dir.display()))?;
+                    clap_mangen::generate_to(cmd, dir)
+                        .with_context(|| format!("writing man pages to {}", dir.display()))?;
+                    eprintln!("wrote man pages to {}", dir.display());
+                }
+                None => {
+                    let mut out = Vec::new();
+                    clap_mangen::Man::new(cmd).render(&mut out)?;
+                    std::io::stdout().write_all(&out)?;
+                }
+            }
         }
         Command::Schema { which } => {
             let schema = match which.as_str() {

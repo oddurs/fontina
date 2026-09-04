@@ -10,12 +10,12 @@ open standards end to end.
 > Working codename. "Unifont" collides with GNU Unifont and will be renamed before the
 > first release.
 
-**Status:** core library and CLI. They parse TTF, OTF, TTC, WOFF and WOFF2, build a
-searchable SQLite index, run health checks, answer "which fonts cover this text",
-export `@font-face` CSS and interactive HTML specimens. Next (M1): tags and
-collections, native activation on all three desktops, watched folders, shaped glyph
-previews in the terminal, and a TUI. See [`PLAN.md`](PLAN.md) for the roadmap and
-principles.
+**Status:** M1 done. The core library and CLI parse TTF, OTF, TTC, WOFF and WOFF2,
+build a searchable SQLite index with tags and collections, activate and install fonts
+per user on Linux, macOS and Windows, follow watched folders, run health checks, answer
+"which fonts cover this text", show shaped glyph previews in the terminal, export
+`@font-face` CSS and HTML specimens, and come with a keyboard-first TUI. See
+[`PLAN.md`](PLAN.md) for the roadmap and principles.
 
 ## Install
 
@@ -27,7 +27,9 @@ cargo install --git https://github.com/oddurs/unifont unifont-cli
 
 Release binaries for Linux, macOS and Windows are attached to each
 [GitHub release](https://github.com/oddurs/unifont/releases) with SHA-256 checksums,
-SLSA provenance attestations and an SPDX SBOM. Verify with
+SLSA provenance attestations and an SPDX SBOM, plus `.deb` and `.rpm` packages for
+Linux. Every archive carries shell completions and man pages; `unifont completions
+<shell>` and `unifont man` print them too. Verify with
 `gh attestation verify <archive> --repo oddurs/unifont`.
 
 ## Use
