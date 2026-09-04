@@ -272,6 +272,14 @@ impl Index {
         Ok(missing.len())
     }
 
+    /// Forget one file (and its faces). Returns whether it was indexed.
+    pub fn remove_file(&mut self, path: &str) -> Result<bool> {
+        Ok(self
+            .conn
+            .execute("DELETE FROM files WHERE path = ?1", params![path])?
+            > 0)
+    }
+
     /// Remove every file under `root` from the index, present on disk or not.
     pub fn remove_under(&mut self, root: &str) -> Result<usize> {
         Ok(self.conn.execute(

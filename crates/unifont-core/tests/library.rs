@@ -436,3 +436,99 @@ fn schemas_cover_the_new_types() {
         assert!(defs.contains_key(name), "missing {name}");
     }
 }
+
+#[test]
+fn watch_applies_file_and_directory_changes() {
+    use std::collections::BTreeSet;
+    let dir = std::env::temp_dir().join(format!("unifont-watch-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("sub")).unwrap();
+    let mut index = Index::open_in_memory().unwrap();
+    unifont_core::scan::scan(
+        &mut index,
+        std::slice::from_ref(&dir),
+        &ScanOptions::default(),
+    )
+    .unwrap();
+    let roots = vec![std::fs::canonicalize(&dir).unwrap()];
+    let opts = unifont_core::watch::WatchOptions::default();
+
+    // A new file is parsed on its own.
+    let amiri = roots[0].join("Amiri-Regular.ttf");
+    std::fs::copy(fixtures().join("Amiri-Regular.ttf"), &amiri).unwrap();
+    let ev = unifont_core::watch::apply(&mut index, &roots, &opts, BTreeSet::from([amiri.clone()]))
+        .unwrap();
+    assert_eq!(ev.report.parsed, 1);
+    assert_eq!(ev.paths, [amiri.to_string_lossy().into_owned()]);
+    assert_eq!(index.stats().unwrap().faces, 1);
+
+    // Non-font and unchanged paths are no-ops.
+    let readme = roots[0].join("README.txt");
+    std::fs::write(&readme, "hi").unwrap();
+    let ev = unifont_core::watch::apply(
+        &mut index,
+        &roots,
+        &opts,
+        BTreeSet::from([readme, amiri.clone()]),
+    )
+    .unwrap();
+    assert_eq!(ev.report.parsed, 0);
+    assert_eq!(ev.report.unchanged, 1);
+
+    // A directory event rescans it with pruning; a removed file is dropped.
+    let sub = roots[0].join("sub");
+    std::fs::copy(
+        fixtures().join("SourceSerif4-Regular.otf"),
+        sub.join("S.otf"),
+    )
+    .unwrap();
+    std::fs::remove_file(&amiri).unwrap();
+    let ev = unifont_core::watch::apply(
+        &mut index,
+        &roots,
+        &opts,
+        BTreeSet::from([sub.clone(), amiri.clone()]),
+    )
+    .unwrap();
+    assert_eq!(ev.report.parsed, 1, "{ev:?}");
+    assert_eq!(ev.report.removed, 1, "{ev:?}");
+    assert_eq!(index.stats().unwrap().faces, 1);
+
+    // A directory that vanished takes its files with it.
+    std::fs::remove_dir_all(&sub).unwrap();
+    let ev = unifont_core::watch::apply(&mut index, &roots, &opts, BTreeSet::from([sub])).unwrap();
+    assert_eq!(ev.report.removed, 1, "{ev:?}");
+    assert_eq!(index.stats().unwrap().faces, 0);
+
+    // The live watcher delivers a batch for a copied file.
+    let (tx, rx) = std::sync::mpsc::channel();
+    let root_for_thread = roots[0].clone();
+    let handle = std::thread::spawn(move || {
+        let mut index = Index::open_in_memory().unwrap();
+        unifont_core::watch::watch(
+            &mut index,
+            &[root_for_thread],
+            &unifont_core::watch::WatchOptions {
+                debounce: std::time::Duration::from_millis(200),
+                ..Default::default()
+            },
+            |ev| {
+                tx.send(ev.report.parsed).unwrap();
+                false
+            },
+        )
+        .unwrap();
+    });
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    std::fs::copy(
+        fixtures().join("Nabla[EDPT,EHLT].ttf"),
+        roots[0].join("Nabla.ttf"),
+    )
+    .unwrap();
+    let parsed = rx
+        .recv_timeout(std::time::Duration::from_secs(15))
+        .expect("watcher reported the new file");
+    assert_eq!(parsed, 1);
+    handle.join().unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+}
