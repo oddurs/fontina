@@ -80,6 +80,19 @@ pub fn spdx_from_names(description: Option<&str>, url: Option<&str>) -> Option<S
     Some(id.to_string())
 }
 
+/// The greatest index at or below `max` that is a char boundary of `s`, so a byte
+/// budget can be sliced off non-ASCII text without splitting a UTF-8 sequence.
+fn floor_char_boundary(s: &str, max: usize) -> usize {
+    if max >= s.len() {
+        return s.len();
+    }
+    let mut i = max;
+    while !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
+}
+
 /// Extract OFL "Reserved Font Name" declarations from copyright/license text.
 /// Handles `Reserved Font Name "Foo"`, `Reserved Font Names "Foo" and "Bar"`,
 /// `Reserved Font Name Foo.` and comma lists.
@@ -93,11 +106,13 @@ pub fn reserved_font_names(texts: &[Option<&str>]) -> Vec<String> {
             let rest = &text[start..];
             let rest = rest.trim_start_matches(['s', 'S']);
             let rest = rest.trim_start_matches(|c: char| c == ':' || c.is_whitespace());
-            // Take up to a sentence end or a line break.
+            // Take up to a sentence end or a line break, and no more than 200 bytes.
+            // The cap is a byte budget, so it is walked back to a char boundary before
+            // slicing: license text is not always ASCII.
+            let cap = floor_char_boundary(rest, 200);
             let end = rest
                 .find(['.', '\n', '\r', ';'])
-                .map(|i| i.min(200))
-                .unwrap_or(rest.len().min(200));
+                .map_or(cap, |i| i.min(cap));
             let clause = &rest[..end];
             let quoted: Vec<String> = clause
                 .split(['"', '\u{201C}', '\u{201D}', '\u{2018}', '\u{2019}', '\''])
@@ -144,6 +159,20 @@ mod tests {
         let t = "with Reserved Font Name Ubuntu.";
         assert_eq!(reserved_font_names(&[Some(t)]), vec!["Ubuntu"]);
         assert!(reserved_font_names(&[Some("no names here"), None]).is_empty());
+    }
+
+    #[test]
+    fn reads_reserved_font_names_from_non_ascii_license_text() {
+        // The 200-byte clause cap used to be applied as if it were a char index, so
+        // license text without a sentence end in its first 200 bytes panicked.
+        let cyrillic = format!(
+            "Copyright 2026 Пример, with Reserved Font Name \"Пример\" {}",
+            "абвгдеж ".repeat(40)
+        );
+        assert_eq!(reserved_font_names(&[Some(&cyrillic)]), vec!["Пример"]);
+
+        let cjk = format!("with Reserved Font Name {}", "汉字测试".repeat(50));
+        assert!(reserved_font_names(&[Some(&cjk)]).is_empty());
     }
 
     #[test]
