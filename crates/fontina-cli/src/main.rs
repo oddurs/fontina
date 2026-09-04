@@ -2232,8 +2232,8 @@ mod tests {
         fn activate(&self, _file: &Path, _scope: Scope) -> fontina_platform::Result<()> {
             Ok(())
         }
-        fn deactivate(&self, _file: &Path) -> fontina_platform::Result<()> {
-            Ok(())
+        fn deactivate(&self, _file: &Path) -> fontina_platform::Result<bool> {
+            Ok(true)
         }
     }
 
