@@ -28,28 +28,10 @@ pub struct Cache {
     lines: Vec<Line<'static>>,
 }
 
-/// Sample text for a face: its own sample string, else a phrase in its main script.
+/// Sample text for a face: the shared default for Latin, so the pane and the HTML
+/// specimen agree, and the opening clause of its own script's paragraph otherwise.
 pub fn sample_for(face: &FaceMetadata) -> String {
-    let script = face
-        .coverage
-        .scripts
-        .iter()
-        .map(|s| s.script.as_str())
-        .find(|s| !matches!(*s, "Zyyy" | "Zinh" | "Zzzz"))
-        .unwrap_or("Latn");
-    match script {
-        "Arab" => "صِف خَلقَ خَودِ كَمِثلِ الشَمسِ",
-        "Cyrl" => "Съешь же ещё этих мягких булок",
-        "Grek" => "Ξεσκεπάζω την ψυχοφθόρα βδελυγμία",
-        "Hebr" => "דג סקרן שט בים מאוכזב",
-        "Deva" => "ऋषियों को सताने वाले दुष्ट",
-        "Hani" => "視野無限廣 窗外有藍天",
-        "Hira" | "Kana" => "いろはにほへと ちりぬるを",
-        "Hang" => "키스의 고유조건은 입술끼리",
-        "Thai" => "เป็นมนุษย์สุดประเสริฐเลิศคุณค่า",
-        _ => "Sphinx of black quartz, judge my vow",
-    }
-    .to_string()
+    fontina_core::typography::preview_text(face).to_string()
 }
 
 impl Cache {

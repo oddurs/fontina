@@ -29,6 +29,7 @@
 //! - [`watch`]: follow directories and keep the index current.
 //! - [`render`]: shaped, rasterised previews (harfrust + skrifa) and their terminal encodings.
 //! - [`freedom`]: whether a font's license grants the four freedoms.
+//! - [`typography`]: the judgements a specimen makes, shared by every client.
 
 pub mod check;
 pub mod container;
@@ -42,6 +43,7 @@ pub mod parse;
 pub mod render;
 pub mod scan;
 pub mod specimen;
+pub mod typography;
 pub mod unicode;
 pub mod watch;
 
