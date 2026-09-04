@@ -532,3 +532,115 @@ fn watch_applies_file_and_directory_changes() {
     handle.join().unwrap();
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn render_shapes_and_rasterises() {
+    use unifont_core::render::{RenderOptions, encode, render_face, shaped_glyphs};
+    let (_, faces) = unifont_core::load_file(&fixtures().join("Amiri-Regular.ttf")).unwrap();
+    let bytes = std::fs::read(fixtures().join("Amiri-Regular.ttf")).unwrap();
+    // Shaping is real: Arabic letters come back as contextual forms, not the isolated
+    // glyphs, and Latin ligatures collapse.
+    let word = shaped_glyphs(&bytes, 0, "سلام").unwrap();
+    assert_eq!(word.len(), 4);
+    let isolated: Vec<u32> = "سلام"
+        .chars()
+        .map(|c| shaped_glyphs(&bytes, 0, &c.to_string()).unwrap()[0])
+        .collect();
+    assert_ne!(word, isolated);
+    let serif = std::fs::read(fixtures().join("SourceSerif4-Regular.otf")).unwrap();
+    assert_eq!(
+        shaped_glyphs(&serif, 0, "fi").unwrap().len(),
+        1,
+        "fi ligature"
+    );
+    assert_eq!(shaped_glyphs(&serif, 0, "ab").unwrap().len(), 2);
+
+    let bm = render_face(
+        &faces[0],
+        &RenderOptions {
+            text: "سلام\nAmiri".into(),
+            size: 32.0,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert!(
+        bm.width > 40 && bm.height > 60,
+        "{}x{}",
+        bm.width,
+        bm.height
+    );
+    assert!(!bm.is_blank());
+    assert_eq!(bm.missing, 0);
+    assert!(bm.glyphs >= 8);
+    // Ink sits below the first baseline and above the second.
+    assert!(bm.baseline > 20.0 && bm.baseline < bm.height as f32);
+
+    let png = encode::png(&bm, [255, 255, 255], None);
+    assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
+    assert_eq!(&png[12..16], b"IHDR");
+    assert!(png.ends_with(b"IEND\xaeB`\x82"));
+    let opaque = encode::png(&bm, [0, 0, 0], Some([255, 255, 255]));
+    assert!(opaque.len() > 100);
+
+    let six = encode::sixel(&bm, [255, 255, 255], [0, 0, 0], 16);
+    assert!(six.starts_with("\x1bP0;1;0q\"1;1;"));
+    assert!(six.ends_with("\x1b\\"));
+    assert!(six.contains('-'), "band separators");
+
+    let blocks = encode::half_blocks(&bm, [255, 255, 255], [0, 0, 0]);
+    assert_eq!(blocks.lines().count(), (bm.height as usize).div_ceil(2));
+    assert!(blocks.contains('▀'));
+    assert!(blocks.contains("\x1b[38;2;"));
+
+    let k = encode::kitty(&png, false);
+    assert!(k.starts_with("\x1b_Gf=100,a=T,t=d,q=2,m="));
+    assert!(encode::kitty(&png, true).starts_with("\x1bPtmux;\x1b\x1b_G"));
+    assert!(encode::iterm(&png, false).starts_with("\x1b]1337;File=inline=1;size="));
+    assert_eq!(encode::parse_rgb("#1a2B3c"), Some([0x1a, 0x2b, 0x3c]));
+    assert_eq!(encode::parse_rgb("nope"), None);
+
+    // Variable axes and features are honoured.
+    let (_, bric) =
+        unifont_core::load_file(&fixtures().join("BricolageGrotesque[opsz,wdth,wght].ttf"))
+            .unwrap();
+    let light = render_face(
+        &bric[0],
+        &RenderOptions {
+            text: "Bold".into(),
+            variations: vec![("wght".into(), 200.0)],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let heavy = render_face(
+        &bric[0],
+        &RenderOptions {
+            text: "Bold".into(),
+            variations: vec![("wght".into(), 800.0)],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let ink = |b: &unifont_core::render::Bitmap| b.coverage.iter().map(|&c| c as u64).sum::<u64>();
+    assert!(
+        ink(&heavy) > ink(&light) * 3 / 2,
+        "{} vs {}",
+        ink(&heavy),
+        ink(&light)
+    );
+    assert!(
+        render_face(
+            &bric[0],
+            &RenderOptions {
+                variations: vec![("weight".into(), 1.0)],
+                ..Default::default()
+            }
+        )
+        .is_err(),
+        "bad tag is an error"
+    );
+    let woff = unifont_core::load_file(&fixtures().join("inter-latin-400-normal.woff2")).unwrap();
+    let w = render_face(&woff.1[0], &RenderOptions::default()).unwrap();
+    assert!(!w.is_blank(), "WOFF2 is unwrapped before rendering");
+}

@@ -1,5 +1,6 @@
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
+use std::io::Write as _;
 use std::path::PathBuf;
 use unifont_core::{ActivationState, FaceFilter, FaceSummary, Index, ScanOptions, SourceKind};
 
@@ -209,11 +210,72 @@ enum Command {
         #[arg(long)]
         title: Option<String>,
     },
+    /// Show faces as real, shaped glyphs in the terminal (kitty, iTerm2 or sixel
+    /// images, or half-block text anywhere), or write a PNG.
+    Preview(PreviewArgs),
     /// Print a JSON Schema: `face` (default), `collection`, or `cli-output`.
     Schema {
         #[arg(default_value = "face")]
         which: String,
     },
+}
+
+#[derive(Args)]
+struct PreviewArgs {
+    /// Face ids, `family:<name>`, or font file paths.
+    #[arg(required = true)]
+    targets: Vec<String>,
+    /// Sample text; `\n` for a new line. Defaults to a pangram, or the face's own
+    /// sample text when it has one.
+    #[arg(long, short = 't')]
+    text: Option<String>,
+    /// Font size in pixels.
+    #[arg(long, short = 's', default_value_t = 48.0)]
+    size: f32,
+    /// Variable axis setting, e.g. `wght=700`; repeatable.
+    #[arg(long = "axis", short = 'a', value_parser = parse_axis)]
+    axes: Vec<(String, f32)>,
+    /// OpenType feature to turn on (`smcp`) or off (`liga=0`); repeatable.
+    #[arg(long = "feature", short = 'f', value_parser = parse_feature)]
+    features: Vec<(String, bool)>,
+    /// Output protocol: auto, kitty, iterm, sixel, blocks, or png (needs --output).
+    #[arg(long, short = 'p', default_value = "auto")]
+    protocol: String,
+    /// Write a PNG here instead of drawing in the terminal (one face only).
+    #[arg(long, short = 'o')]
+    output: Option<PathBuf>,
+    /// Ink colour, `#rrggbb`.
+    #[arg(long)]
+    fg: Option<String>,
+    /// Background colour for sixel and blocks, `#rrggbb`.
+    #[arg(long)]
+    bg: Option<String>,
+    /// Clip to this many pixels wide.
+    #[arg(long)]
+    max_width: Option<u32>,
+}
+
+fn parse_axis(s: &str) -> std::result::Result<(String, f32), String> {
+    let (tag, value) = s
+        .split_once('=')
+        .ok_or_else(|| format!("expected tag=value, got {s:?}"))?;
+    let v: f32 = value
+        .trim()
+        .parse()
+        .map_err(|_| format!("bad axis value {value:?}"))?;
+    Ok((tag.trim().to_string(), v))
+}
+
+fn parse_feature(s: &str) -> std::result::Result<(String, bool), String> {
+    let (tag, on) = match s.split_once('=') {
+        Some((t, v)) => (t, !matches!(v.trim(), "0" | "off" | "false")),
+        None => (s, true),
+    };
+    let tag = tag.trim();
+    if tag.len() != 4 {
+        return Err(format!("{tag:?} is not a four-character feature tag"));
+    }
+    Ok((tag.to_string(), on))
 }
 
 #[derive(Subcommand)]
@@ -986,6 +1048,7 @@ fn run() -> Result<()> {
                 );
             }
         }
+        Command::Preview(args) => run_preview(&cli, args)?,
         Command::Schema { which } => {
             let schema = match which.as_str() {
                 "face" => unifont_core::face_schema(),
@@ -1818,4 +1881,175 @@ fn run_restore(cli: &Cli, json: bool) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Which inline-image protocol the terminal speaks, from the environment.
+fn detect_protocol() -> &'static str {
+    let env = |k: &str| std::env::var(k).unwrap_or_default();
+    let term = env("TERM");
+    let program = env("TERM_PROGRAM");
+    if !std::io::IsTerminal::is_terminal(&std::io::stdout()) {
+        return "blocks";
+    }
+    if term.starts_with("xterm-kitty")
+        || !env("KITTY_WINDOW_ID").is_empty()
+        || program == "ghostty"
+        || term.contains("ghostty")
+        || env("KONSOLE_VERSION").parse::<u32>().unwrap_or(0) >= 220400
+        || program == "WezTerm"
+    {
+        return "kitty";
+    }
+    if program == "iTerm.app" || program == "mintty" || !env("ITERM_SESSION_ID").is_empty() {
+        return "iterm";
+    }
+    if term.starts_with("foot")
+        || term == "mlterm"
+        || term.contains("sixel")
+        || !env("WT_SESSION").is_empty()
+    {
+        return "sixel";
+    }
+    "blocks"
+}
+
+/// Whether the terminal background is dark, from `COLORFGBG` ("15;0" = light on dark).
+fn dark_background() -> bool {
+    std::env::var("COLORFGBG")
+        .ok()
+        .and_then(|v| v.rsplit(';').next()?.parse::<u8>().ok())
+        .map(|bg| bg <= 6 || bg == 8)
+        .unwrap_or(true)
+}
+
+fn run_preview(cli: &Cli, args: &PreviewArgs) -> Result<()> {
+    use unifont_core::render::{RenderOptions, encode, render_face};
+    let mut faces = Vec::new();
+    for t in &args.targets {
+        faces.extend(resolve_faces(cli, t)?);
+    }
+    let protocol = if args.output.is_some() {
+        "png"
+    } else if args.protocol == "auto" {
+        detect_protocol()
+    } else {
+        args.protocol.as_str()
+    };
+    if protocol == "png" && args.output.is_none() {
+        bail!("--protocol png needs --output <file.png>");
+    }
+    if args.output.is_some() && faces.len() != 1 {
+        bail!("--output writes one face; got {}", faces.len());
+    }
+    let dark = dark_background();
+    let fg = match &args.fg {
+        Some(s) => encode::parse_rgb(s).with_context(|| format!("bad colour {s:?}"))?,
+        None if dark => [235, 235, 235],
+        None => [20, 20, 20],
+    };
+    let bg = match &args.bg {
+        Some(s) => encode::parse_rgb(s).with_context(|| format!("bad colour {s:?}"))?,
+        None if dark => [0, 0, 0],
+        None => [255, 255, 255],
+    };
+    let tmux = std::env::var_os("TMUX").is_some();
+    let mut out = std::io::stdout().lock();
+    for face in &faces {
+        let text = args
+            .text
+            .clone()
+            .or_else(|| face.names.sample_text.clone())
+            .unwrap_or_else(|| "Sphinx of black quartz, judge my vow".into())
+            .replace("\\n", "\n");
+        let size = if protocol == "blocks" && args.size == 48.0 {
+            24.0
+        } else {
+            args.size
+        };
+        let bitmap = render_face(
+            face,
+            &RenderOptions {
+                text,
+                size,
+                variations: args.axes.clone(),
+                features: args.features.clone(),
+                padding: 2,
+                max_width: args.max_width.or_else(|| {
+                    (protocol == "blocks").then(|| terminal_columns().saturating_sub(1))
+                }),
+            },
+        )
+        .with_context(|| format!("rendering {}", face.file.path))?;
+        if protocol == "png" {
+            let path = args.output.as_ref().expect("checked");
+            std::fs::write(path, encode::png(&bitmap, fg, args.bg.as_ref().map(|_| bg)))
+                .with_context(|| format!("writing {}", path.display()))?;
+            eprintln!(
+                "wrote {} ({}x{}, {} glyphs)",
+                path.display(),
+                bitmap.width,
+                bitmap.height,
+                bitmap.glyphs
+            );
+            continue;
+        }
+        writeln!(
+            out,
+            "{} {}  ({} {}px{})",
+            face.names.family,
+            face.names.subfamily,
+            face.file.container.as_str(),
+            size as u32,
+            if bitmap.missing > 0 {
+                format!(", {} glyph(s) missing", bitmap.missing)
+            } else {
+                String::new()
+            }
+        )?;
+        let rendered = match protocol {
+            "kitty" => encode::kitty(&encode::png(&bitmap, fg, None), tmux),
+            "iterm" => encode::iterm(&encode::png(&bitmap, fg, None), tmux),
+            "sixel" => {
+                let mut s = encode::sixel(&bitmap, fg, bg, 16);
+                s.push('\n');
+                s
+            }
+            "blocks" => encode::half_blocks(&bitmap, fg, bg),
+            other => {
+                bail!("unknown protocol {other:?}; use auto, kitty, iterm, sixel, blocks or png")
+            }
+        };
+        out.write_all(rendered.as_bytes())?;
+    }
+    Ok(())
+}
+
+fn terminal_columns() -> u32 {
+    std::env::var("COLUMNS")
+        .ok()
+        .and_then(|c| c.parse().ok())
+        .or_else(|| {
+            // SAFETY: TIOCGWINSZ fills a plain struct; a failure leaves it untouched.
+            #[cfg(unix)]
+            unsafe {
+                let mut ws: [u16; 4] = [0; 4];
+                if libc_ioctl_winsize(ws.as_mut_ptr()) == 0 && ws[1] > 0 {
+                    return Some(ws[1] as u32);
+                }
+            }
+            None
+        })
+        .unwrap_or(80)
+}
+
+#[cfg(unix)]
+unsafe fn libc_ioctl_winsize(ws: *mut u16) -> i32 {
+    unsafe extern "C" {
+        fn ioctl(fd: i32, request: u64, ...) -> i32;
+    }
+    #[cfg(any(target_os = "macos", target_os = "freebsd", target_os = "openbsd"))]
+    const TIOCGWINSZ: u64 = 0x4008_7468;
+    #[cfg(not(any(target_os = "macos", target_os = "freebsd", target_os = "openbsd")))]
+    const TIOCGWINSZ: u64 = 0x5413;
+    unsafe { ioctl(1, TIOCGWINSZ, ws) }
 }

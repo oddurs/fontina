@@ -11,6 +11,7 @@
 //! - [`scan`]: parallel directory scanning that feeds the index.
 //! - [`css`]: `@font-face` rule generation (CSS Fonts Level 4 is the style model).
 //! - [`watch`]: follow directories and keep the index current.
+//! - [`render`]: shaped, rasterised previews (harfrust + skrifa) and their terminal encodings.
 
 pub mod check;
 pub mod container;
@@ -20,6 +21,7 @@ pub mod index;
 pub mod license;
 pub mod model;
 pub mod parse;
+pub mod render;
 pub mod scan;
 pub mod specimen;
 pub mod unicode;
