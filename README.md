@@ -18,6 +18,9 @@ per user on Linux, macOS and Windows, follow watched folders, run health checks,
 `@font-face` CSS and HTML specimens, and come with a keyboard-first TUI. See
 [`PLAN.md`](PLAN.md) for the roadmap and principles.
 
+Documentation, the manual and the roadmap are at
+[oddurs.github.io/fontina](https://oddurs.github.io/fontina/).
+
 ## Install
 
 From source (Rust 1.88 or newer):

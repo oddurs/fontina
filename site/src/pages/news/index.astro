@@ -1,20 +1,23 @@
 ---
 import Base from '../../layouts/Base.astro';
-import { getCollection, render } from 'astro:content';
+import { getCollection } from 'astro:content';
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const u = (p: string) => `${base}${p}`;
 const news = (await getCollection('news')).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
-const rendered = await Promise.all(news.map(async (n) => ({ n, Content: (await render(n)).Content })));
+// First sentence of the body, as plain text, for the one-line summary.
+const lead = (body = '') => body.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/[`*_]/g, '').split(/(?<=\.)\s/)[0];
 ---
 <Base title="News" description="Announcements and release notes for fontina, newest first." source="site/src/content/news">
   <h1>fontina news</h1>
   <p class="smaller">Also an <a href={u('/feed.xml')}>RSS feed</a>. Release notes for every version are on the
     <a href="https://github.com/oddurs/fontina/releases">releases page</a> and in the
     <a href="https://github.com/oddurs/fontina/blob/main/CHANGELOG.md">changelog</a>.</p>
-  {rendered.map(({ n, Content }) => (
-    <article>
-      <h2 id={n.id}><a href={u(`/news/${n.id}/`)}>{n.data.title}</a> <span class="small">[{n.data.date.toISOString().slice(0, 10)}]</span></h2>
-      <Content />
-    </article>
-  ))}
+  <dl class="news">
+    {news.map((n) => (
+      <>
+        <dt><a href={u(`/news/${n.id}/`)}>{n.data.title}</a> <span class="date">[{n.data.date.toISOString().slice(0, 10)}]</span></dt>
+        <dd>{lead(n.body)}</dd>
+      </>
+    ))}
+  </dl>
 </Base>

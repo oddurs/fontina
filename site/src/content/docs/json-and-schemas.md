@@ -1,7 +1,7 @@
 ---
 title: JSON output and schemas
 description: "machine-readable output, the three JSON Schemas, and stability guarantees."
-order: 4
+order: 6
 ---
 
 Every reporting command takes `--json` and then prints exactly one JSON document to

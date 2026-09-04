@@ -1,54 +1,65 @@
 ---
 layout: ../layouts/Page.astro
 title: Roadmap
-description: "What exists, what is next, and what fontina will never do."
+description: "What is done, what is next, and what fontina will never do."
 source: site/src/pages/roadmap.md
 ---
 
 The authoritative plan is [`PLAN.md`](https://github.com/oddurs/fontina/blob/main/PLAN.md)
-in the repository. This page is the summary.
+in the repository. This page is the summary. Milestones are named for what they let
+you do, not for versions; the version number is set by the release process from the
+commit history.
 
-## Done: foundations
+## M0, foundations: done, 2026-09-03
 
-The library and the command line. Every container format (TTF, OTF, TTC, WOFF, WOFF2),
-the full metadata model, the SQLite index with full-text search, duplicate detection
-across containers, JSON output against published schemas, and a CI matrix on Linux,
-macOS and Windows with license and advisory auditing.
+The library and the command line. Every container format (TTF, OTF, TTC, WOFF,
+WOFF2), the full metadata model, the SQLite index with full-text search, duplicate
+detection across containers, health checks, CSS export, the HTML specimen, coverage
+queries, JSON output against published schemas, and a CI matrix on Linux, macOS and
+Windows with license and advisory auditing. Decision records for fontations,
+SQLite, the deferred desktop shell, the license and WOFF decoding.
 
-Ahead of schedule, the "pro typography" features shipped through the core and the
-command line: health checks, text coverage queries, glyph maps by Unicode block, the
-license and embedding report with reserved font names, and the HTML specimen with axis
-sliders, feature toggles, a waterfall, a glyph map and side-by-side comparison. The
-desktop application will reuse those modules rather than reimplement them.
+## M1, manage: done, 2026-09-04
 
-Also done: tags, collections with JSON import and export, registered source
-directories, activation state in the index, facet counts and family grouping.
+The font manager proper, in the terminal. Re-scoped on 2026-09-03 from a desktop
+application to command line plus terminal browser.
 
-## Next: activation and the terminal
+1. **Organise.** Tags, collections with JSON import and export, sources, family
+   grouping, facet counts, richer filters.
+2. **Activate.** Native `activate`, `deactivate`, `install` and `uninstall` on Linux,
+   macOS and Windows; conflict detection with `--replace`; activation state in the
+   index; `restore` for login agents.
+3. **Watch.** `source add` scans immediately; `watch` follows every watched source
+   with debounced incremental rescans.
+4. **Preview.** Shaped, rasterised previews in the terminal over kitty graphics,
+   iTerm2 images, sixel or half-block text, with axis coordinates and feature
+   toggles.
+5. **Browse.** `fontina ui`: search, facets, families and faces, details, previews,
+   tagging and activation from the keyboard.
+6. **Ship.** Completions and man pages in the archives; `.deb` and `.rpm` from the
+   release workflow.
 
-Per-user font activation on all three platforms through one trait with three
-implementations: symlinks and a fontconfig fragment on Linux, Core Text registration
-on macOS, per-user font registration on Windows. Session and persistent scopes.
-Conflict detection on PostScript name and family plus style before activating. A
-foreground `watch` command that follows registered sources for scripts and systemd
-user units. Terminal previews and a full-screen terminal interface.
+Still to do before 1.0: a Homebrew formula, winget and Scoop manifests, an AUR
+`PKGBUILD`, and the rename.
 
-## Later: the desktop application
+## M2, typography
 
-A Tauri 2 shell with a Svelte 5 frontend, following each platform's own conventions:
-a virtualised library grid with truthful previews, watched folders, facets, activation
-and conflict warnings, family and duplicate views. Packaged as Flatpak, AppImage, dmg
-with a Homebrew cask, and MSIX with winget. Signed and notarised. Hard budgets: at
-most 15 MB installer, 300 ms to first paint with five thousand faces, 80 MB idle.
+In the browser: axis sliders with named-instance snapping, feature toggles, a glyph
+map by block with codepoint search, compare and waterfall views, a license viewer.
+`check` grows toward fontbakery parity where it is cheap; identifiers never change.
+Optional login-agent packaging (systemd user unit, LaunchAgent, Run key), off by
+default. An optional offline Google Fonts index, separately packaged, opt-in.
 
-## After 1.0: ecosystem
+## M3, ecosystem and shells
 
-Team sharing through plain folders (collection JSON and relative paths over Syncthing,
-git or any synced directory), tag synchronisation with Finder tags and Windows file
-properties, and a plugin surface that is only the command line and JSON. No
-in-process plugins.
+Team sharing through plain folders (collection JSON with relative paths over
+Syncthing, git or any synced directory), tag synchronisation with Finder tags and
+Windows file properties, and a plugin surface that is only the command line and
+JSON. A graphical shell, as one more client of the core, only if the terminal browser
+leaves a real gap; it would have to meet the same budgets and follow each platform's
+own design conventions, Linux first.
 
 ## Never
 
 Font editing. Format conversion or subsetting. Cloud synchronisation. Accounts.
-Telemetry.
+Telemetry. An Electron shell.

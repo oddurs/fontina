@@ -1,7 +1,7 @@
 ---
 title: The index and paths
 description: "where the database lives, what is in it, migrations, and how to move or discard it."
-order: 7
+order: 9
 ---
 
 ## Location

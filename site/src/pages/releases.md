@@ -1,46 +1,45 @@
 ---
 layout: ../layouts/Page.astro
 title: fontina releases
-description: "Release series, their support status, and the release timeline."
+description: "Release policy, what a release contains, and the timeline."
 source: site/src/pages/releases.md
 ---
 
-## Download
+## Status
 
-Releases may be downloaded from the
-[GitHub releases page](https://github.com/oddurs/fontina/releases); see
-[Download](../download/) for the archives per platform and how to verify them.
-There are no mirrors yet.
+There is no tagged release yet. `main` is at version 0.0.x and is usable; the
+[download](../download/) page says how to build it. The first tagged release will be
+cut by the release process below and will carry binaries for every platform.
 
-*Important: 0.0.x releases are pre-releases for people who want to try the library
-and the command line. There is no desktop application yet.*
+## What a release contains
 
-You can also retrieve our sources
-[using Git](https://github.com/oddurs/fontina).
+Every release on
+[github.com/oddurs/fontina/releases](https://github.com/oddurs/fontina/releases)
+carries, per platform, one archive with the binary, shell completions for bash,
+zsh, fish and PowerShell, and the man pages; a SHA-256 checksum for each archive;
+a SLSA build provenance attestation; `.deb` and `.rpm` packages for Linux with their
+own checksums; and an SPDX software bill of materials. See
+[Download](../download/) for verification.
 
-## Support
+## Policy
 
-Only the latest release and the `main` branch receive fixes. Releases follow
-[semantic versioning](https://semver.org/) and are cut by
+Only the latest release and the `main` branch receive fixes. Versions follow
+[semantic versioning](https://semver.org/). Releases are cut by
 [release-please](https://github.com/googleapis/release-please) from the commit
-history; the [changelog](https://github.com/oddurs/fontina/blob/main/CHANGELOG.md)
-is generated the same way. Nothing is released by hand.
+history: it keeps a release pull request open with the changelog and the version
+bump, and merging that pull request tags the release and starts the build. The
+[changelog](https://github.com/oddurs/fontina/blob/main/CHANGELOG.md) is generated
+the same way. Nothing is released by hand.
+
+Before 1.0, command output, schemas and check identifiers may still change, and
+every such change is called out in the changelog. From 1.0, they are stable.
 
 Security fixes are announced in the release notes and, for anything serious, on the
 [news](../news/) page.
 
 ## Timeline
 
-<table class="padding5">
-<tr><th>Release</th><th>Release date</th><th>Notes</th></tr>
-<tr><td><a href="https://github.com/oddurs/fontina/releases/tag/v0.0.1">fontina 0.0.1</a></td><td>September 3, 2026</td><td>Core library and command line. Pre-release.</td></tr>
-</table>
-
-Planned series, from the [roadmap](../roadmap/):
-
-<table class="padding5">
-<tr><th>Series</th><th>Scope</th></tr>
-<tr><td>0.1</td><td>Font activation on Linux, macOS and Windows; <code>watch</code>; terminal previews and a terminal interface.</td></tr>
-<tr><td>0.2</td><td>The desktop application, packaged for Flathub, AppImage, Homebrew and winget.</td></tr>
-<tr><td>1.0</td><td>Stable schemas and command-line output; the public name.</td></tr>
+<table>
+<tr><th>Release</th><th>Date</th><th>Notes</th></tr>
+<tr><td>none yet</td><td></td><td>The first release will be 0.0.2 or later, pending the project rename.</td></tr>
 </table>

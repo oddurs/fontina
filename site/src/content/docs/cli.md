@@ -1,7 +1,7 @@
 ---
 title: Command reference
 description: "fontina(1), in the form of a man page."
-order: 3
+order: 5
 ---
 
 This chapter follows the layout of a manual page. `fontina help <command>` prints the
@@ -10,7 +10,7 @@ have.
 
 ## NAME
 
-fontina: scan, search, inspect, check and export fonts.
+fontina: scan, search, inspect, preview, activate, check and export fonts.
 
 ## SYNOPSIS
 
@@ -28,6 +28,9 @@ report accepts `--json`; the output types are published in
 
 A *target* argument is a face id from `list`, a path to a font file, or, for
 commands that act on a set of faces, `family:<name>`.
+
+Exit status is `0` on success, `1` on error, and `2` when a conflict blocked an
+activation and nothing was applied.
 
 ## COMMANDS
 
@@ -124,6 +127,66 @@ PostScript name.</dd>
 then PostScript name, then path.</dd>
 </dl>
 
+### Activating
+
+See [Activation and installation](../activation/).
+
+<dl>
+<dt><code>activate TARGETS... [--session] [--replace] [--json]</code></dt>
+<dd>Make faces visible to other applications, in place. Persistent for the user
+unless <code>--session</code>, which lasts until logout. Exit status 2 when a conflict
+blocks it; <code>--replace</code> first deactivates or uninstalls the conflicting faces
+that fontina manages.</dd>
+<dt><code>deactivate TARGETS... [--json]</code></dt>
+<dd>Undo <code>activate</code>.</dd>
+<dt><code>install TARGETS... [--replace] [--json]</code></dt>
+<dd>Copy faces into the per-user font directory. Exit status 2 on an unresolved
+conflict.</dd>
+<dt><code>uninstall TARGETS... [--json]</code></dt>
+<dd>Remove the per-user copies made by <code>install</code>.</dd>
+<dt><code>conflicts TARGETS... [--json]</code></dt>
+<dd>Faces that would clash with these once active: same PostScript name, or same
+family and style, already active or living in an operating-system font directory.</dd>
+<dt><code>activations [--json]</code></dt>
+<dd>Everything fontina has activated or installed, with state and time.</dd>
+<dt><code>restore [--json]</code></dt>
+<dd>Re-apply recorded activations, for a login agent or after a reboot. Idempotent.</dd>
+</dl>
+
+### Watching
+
+<dl>
+<dt><code>watch [PATHS]... [--debounce-ms MS] [--json]</code></dt>
+<dd>Follow the watched sources, and any extra directories given, and keep the index
+current until interrupted. Changes are applied in batches after a quiet period
+(default 500 ms); one line per batch, or one JSON object per line. See
+<a href="../terminal/">Watching, previews and the browser</a>.</dd>
+</dl>
+
+### Previewing
+
+<dl>
+<dt><code>preview TARGETS... [-t TEXT] [-s SIZE] [-a AXIS=VALUE]... [-f FEATURE[=0]]... [-p PROTOCOL] [-o FILE] [--fg RGB] [--bg RGB] [--max-width PX]</code></dt>
+<dd>Draw faces as real, shaped glyphs in the terminal, using kitty graphics, iTerm2
+images, sixel, or half-block text, whichever the terminal supports (<code>-p</code>
+forces one). <code>-o</code> writes a PNG of one face instead. <code>-s</code> is the size
+in pixels (default 48); <code>-t</code> the sample text, <code>\n</code> for a new line.</dd>
+<dt><code>ui</code></dt>
+<dd>The keyboard-first browser over the index: facets, families, faces, details and
+previews. <code>?</code> inside it lists the keys.</dd>
+</dl>
+
+### Shell
+
+<dl>
+<dt><code>completions SHELL</code></dt>
+<dd>Print completions for <code>bash</code>, <code>zsh</code>, <code>fish</code>,
+<code>elvish</code> or <code>powershell</code>. Release archives carry them too.</dd>
+<dt><code>man [--out-dir DIR]</code></dt>
+<dd>Print the man page, or write <code>fontina.1</code>, <code>fontina-scan.1</code> and
+one page per command into a directory.</dd>
+</dl>
+
 ### Checking
 
 <dl>
@@ -211,8 +274,9 @@ See [The index and paths](../index-and-paths/).
 ## EXIT STATUS
 
 `0` on success. `1` on any error, including a `check` that reports an error (or a
-warning with `--strict`). Parse failures during `scan` are counted and reported but
-do not fail the scan.
+warning with `--strict`). `2` when `activate` or `install` found a conflict and
+applied nothing. Parse failures during `scan` are counted and reported but do not
+fail the scan.
 
 ## EXAMPLES
 
@@ -247,7 +311,21 @@ Fail a build if any shipped font has an error:
 fontina check dist/fonts/* --min warn
 ```
 
+Activate a family for this session, look at it, and let it go at logout:
+
+```
+fontina activate family:Amiri --session
+fontina preview family:Amiri -t "بسم الله الرحمن الرحيم"
+```
+
+Install the completions for zsh:
+
+```
+fontina completions zsh > ~/.zfunc/_fontina
+```
+
 ## SEE ALSO
 
-`fc-list(1)`, `fc-query(1)`, fonttools' `ttx(1)`.
+`fontina man` for the same reference from the binary. `fc-list(1)`, `fc-query(1)`,
+`fc-cache(1)`, fonttools' `ttx(1)`.
 The [architecture decision records](../../adr/).

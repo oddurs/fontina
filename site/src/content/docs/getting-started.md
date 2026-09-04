@@ -129,6 +129,38 @@ OFL-1.1  (1 face(s))
   Amiri Regular  [Installable]  /home/me/Fonts/Amiri-Regular.ttf
 ```
 
+## Seeing
+
+`preview` draws a face as real, shaped glyphs in the terminal, as an image where the
+terminal supports one and as half-block text everywhere else:
+
+```
+$ fontina preview 2 -t "Sphinx of black quartz" -a wght=700
+```
+
+`ui` opens a full-screen browser over the index, with facets, families, details and
+previews, driven from the keyboard:
+
+```
+$ fontina ui
+```
+
+## Activating
+
+Indexing tells fontina about a font. Activating tells the operating system, per
+user, in place, so every application can use it:
+
+```
+$ fontina activate family:Amiri
+$ fontina activate 2 --session      # until logout
+$ fontina activations
+$ fontina deactivate family:Amiri
+```
+
+`install` copies a font into the per-user font directory instead. Both refuse, with
+exit status 2, when another active font has the same name; `conflicts` shows why and
+`--replace` overrides. See [Activation and installation](../activation/).
+
 ## Exporting
 
 `css` writes `@font-face` rules, with a URL prefix of your choosing instead of file
@@ -153,4 +185,6 @@ Every command takes `--json` for machine-readable output; see
 
 - [Concepts](../concepts/) explains faces, families, identity, sources, tags,
   collections and activation state.
+- [Activation and installation](../activation/) and
+  [Watching, previews and the browser](../terminal/) cover the font manager proper.
 - The [command reference](../cli/) is the man page.
