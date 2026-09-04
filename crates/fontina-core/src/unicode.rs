@@ -74,12 +74,22 @@ pub fn glyph_map(ranges: &[[u32; 2]]) -> Vec<BlockCoverage> {
             let Some(ch) = char::from_u32(cp) else {
                 continue;
             };
-            let (name, start, end) = match unicode_blocks::find_unicode_block(ch) {
+            let block = unicode_blocks::find_unicode_block(ch);
+            let (name, start, end) = match block {
                 Some(b) => (b.name().to_string(), b.start(), b.end()),
                 None => ("Unassigned".to_string(), cp, cp),
             };
             match out.last_mut() {
-                Some(last) if last.block == name => last.codepoints.push(cp),
+                Some(last) if last.block == name => {
+                    last.codepoints.push(cp);
+                    // "Unassigned" is synthesised from a single codepoint, so it has to
+                    // grow to span the ones it goes on to absorb; leaving block_size at
+                    // 1 puts its coverage ratio above 100%.
+                    if block.is_none() {
+                        last.end = last.end.max(cp);
+                        last.block_size = last.end - last.start + 1;
+                    }
+                }
                 _ => out.push(BlockCoverage {
                     block: name,
                     start,
@@ -196,5 +206,33 @@ pub fn bcp47_for_name_language(platform_id: u16, language_id: u16) -> Option<&'s
             _ => return None,
         }),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// U+2FE0..U+2FEF belongs to no Unicode block, so `glyph_map` synthesises one.
+    #[test]
+    fn synthesised_block_spans_the_codepoints_it_absorbs() {
+        let blocks = glyph_map(&[[0x2FE0, 0x2FE0], [0x2FEF, 0x2FEF]]);
+        assert_eq!(blocks.len(), 1);
+        let b = &blocks[0];
+        assert_eq!(b.block, "Unassigned");
+        assert_eq!(b.codepoints, vec![0x2FE0, 0x2FEF]);
+        assert_eq!((b.start, b.end), (0x2FE0, 0x2FEF));
+        // Coverage is a ratio of the two, and a ratio above 1 is nonsense.
+        assert_eq!(b.block_size, 16);
+        assert!(b.codepoints.len() as u32 <= b.block_size);
+    }
+
+    #[test]
+    fn real_blocks_keep_their_declared_extent() {
+        let blocks = glyph_map(&[[0x0041, 0x005A]]);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].block, "Basic Latin");
+        assert_eq!((blocks[0].start, blocks[0].end), (0, 0x7F));
+        assert_eq!(blocks[0].block_size, 128);
     }
 }
