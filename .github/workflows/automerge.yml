@@ -15,6 +15,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  checks: read
 
 concurrency:
   group: automerge-${{ github.event.pull_request.number }}
@@ -36,7 +37,7 @@ jobs:
       - name: Dependabot metadata
         if: github.actor == 'dependabot[bot]'
         id: md
-        uses: dependabot/fetch-metadata@v2
+        uses: dependabot/fetch-metadata@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 

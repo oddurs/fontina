@@ -16,6 +16,9 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    ignore:
+      # The MSRV job passes the version as an input; the action ref stays on master.
+      - dependency-name: dtolnay/rust-toolchain
     groups:
       actions:
         patterns: ["*"]
