@@ -17,7 +17,6 @@ permissions:
   contents: write
   pull-requests: write
   actions: write
-  checks: read
 
 env:
   RELEASE_BRANCH: release-please--branches--main
@@ -33,9 +32,9 @@ jobs:
           manifest-file: .release-please-manifest.json
 
       # release-please bumps Cargo.toml but cannot rewrite the workspace entries in
-      # Cargo.lock, and a PR it opens with GITHUB_TOKEN gets no CI. Both are fixed on
-      # the release branch whenever one exists: sync the lockfile, then dispatch CI so
-      # the required checks exist and the PR can merge into protected main.
+      # Cargo.lock, and the CI runs GitHub creates for a bot-authored PR wait for
+      # approval. Whenever a release branch exists: sync the lockfile, then approve the
+      # pending pull_request CI runs so the required checks attach to the release PR.
       - name: Is there a release branch?
         id: rel
         env:
@@ -54,21 +53,29 @@ jobs:
       - if: steps.rel.outputs.exists == 'true'
         uses: dtolnay/rust-toolchain@stable
       - if: steps.rel.outputs.exists == 'true'
-        name: Sync Cargo.lock and make sure CI has run on the release branch
+        name: Sync Cargo.lock and approve CI on the release PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
         run: |
-          pushed=false
           cargo update --workspace
           if ! git diff --quiet -- Cargo.lock; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -am "chore(release): sync Cargo.lock with the workspace version"
             git push origin "HEAD:$RELEASE_BRANCH"
-            pushed=true
           fi
           sha=$(git rev-parse HEAD)
-          checks=$(gh api "repos/${{ github.repository }}/commits/$sha/check-runs" --jq '.total_count')
-          if [ "$pushed" = true ] || [ "$checks" = "0" ]; then
-            gh workflow run ci.yml --ref "$RELEASE_BRANCH"
-          fi
+          # The pull_request run for the new head can take a moment to appear.
+          for attempt in $(seq 1 12); do
+            ids=$(gh run list --branch "$RELEASE_BRANCH" --workflow ci.yml --event pull_request \
+              --json databaseId,headSha,conclusion \
+              --jq ".[] | select(.headSha==\"$sha\" and .conclusion==\"action_required\") | .databaseId")
+            if [ -n "$ids" ]; then
+              for id in $ids; do
+                gh api -X POST "repos/$REPO/actions/runs/$id/approve" >/dev/null && echo "approved CI run $id"
+              done
+              break
+            fi
+            sleep 10
+          done

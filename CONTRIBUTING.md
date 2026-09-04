@@ -60,7 +60,8 @@ and patch updates are auto-merged automatically; major updates wait for a person
 [release-please](https://github.com/googleapis/release-please) reads the commit history
 on `main`, maintains `CHANGELOG.md`, and opens a release PR that bumps the workspace
 version in `Cargo.toml` (the crates inherit it). The workflow then syncs `Cargo.lock`
-on the release branch and dispatches CI there so the required checks exist. Merging that PR tags `vX.Y.Z`. A release workflow that builds signed binaries for the tag is planned for M1.
+on the release branch and approves the CI runs GitHub holds for bot-authored PRs, so
+the required checks attach to the release PR. Merge it like any other PR. Merging that PR tags `vX.Y.Z`. A release workflow that builds signed binaries for the tag is planned for M1.
 Nothing is published by hand.
 
 ## Fixtures
