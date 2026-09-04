@@ -21,10 +21,12 @@
 //! The palette is the terminal's own 16 colours; truecolor is used only for the
 //! preview, so the screen looks native in any theme.
 
+mod controls;
 mod preview;
 
 use anyhow::Result;
 use fontina_core::index::FacetCount;
+use fontina_core::render::RenderOptions;
 use fontina_core::{ActivationState, FaceFilter, FaceMetadata, FaceSummary, Facets, Family, Index};
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -101,6 +103,8 @@ struct FacetRow {
 enum Focus {
     Facets,
     List,
+    /// The axis and feature controls, only reachable when the face offers any.
+    Controls,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -139,6 +143,9 @@ pub struct App {
     /// The listing row for `detail_id`: tags and activation state, joined once per
     /// selection rather than once per frame.
     detail_summary: Option<FaceSummary>,
+    /// Axis positions and feature toggles for the face on show. Rebuilt whenever the
+    /// selection changes, because they describe that face and no other.
+    controls: controls::Controls,
     preview: preview::Cache,
 }
 
@@ -173,6 +180,7 @@ impl App {
             detail: None,
             detail_id: None,
             detail_summary: None,
+            controls: controls::Controls::default(),
             preview: preview::Cache::default(),
         };
         app.reload()?;
@@ -338,7 +346,21 @@ impl App {
         };
         // A row that has gone since the listing was built leaves no detail, so it must
         // leave no id either: the two always describe the same face.
-        self.detail_id = id.filter(|_| face.is_some());
+        let next_id = id.filter(|_| face.is_some());
+        // Rebuild the controls only when the face itself changes. `reload` clears
+        // `detail` on every tag, activation, search and rescan, so rebuilding whenever
+        // it is None would throw away axes and toggles the reader had set on a face
+        // they never left.
+        if next_id != self.detail_id || next_id.is_none() {
+            self.controls = match &face {
+                Some(f) => controls::Controls::for_face(f),
+                None => controls::Controls::default(),
+            };
+        }
+        self.detail_id = next_id;
+        if self.focus == Focus::Controls && self.controls.is_empty() {
+            self.focus = Focus::List;
+        }
         self.detail = face;
         Ok(())
     }
@@ -384,7 +406,8 @@ impl App {
                 KeyCode::Tab => {
                     self.focus = match self.focus {
                         Focus::Facets => Focus::List,
-                        Focus::List => Focus::Facets,
+                        Focus::List if !self.controls.is_empty() => Focus::Controls,
+                        Focus::List | Focus::Controls => Focus::Facets,
                     }
                 }
                 KeyCode::Char('/') => self.start_input(InputKind::Search, self.query.clone()),
@@ -419,10 +442,34 @@ impl App {
                 }
                 KeyCode::Home | KeyCode::Char('g') => self.jump(0)?,
                 KeyCode::End | KeyCode::Char('G') => self.jump(usize::MAX)?,
+                // In the controls the arrows move an axis, so they cannot also open a
+                // family; Space and Enter still toggle the row under the cursor.
+                KeyCode::Right | KeyCode::Char('l') if self.focus == Focus::Controls => {
+                    self.controls.adjust(1);
+                }
+                KeyCode::Left | KeyCode::Char('h') if self.focus == Focus::Controls => {
+                    self.controls.adjust(-1);
+                }
+                KeyCode::Char('L') if self.focus == Focus::Controls => {
+                    self.controls.adjust(10);
+                }
+                KeyCode::Char('H') if self.focus == Focus::Controls => {
+                    self.controls.adjust(-10);
+                }
+                KeyCode::Char('n') if self.focus == Focus::Controls => {
+                    self.controls.cycle_instance(1);
+                }
+                KeyCode::Char('p') if self.focus == Focus::Controls => {
+                    self.controls.cycle_instance(-1);
+                }
+                KeyCode::Char('0') if self.focus == Focus::Controls => self.controls.reset(),
                 KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Right | KeyCode::Char('l') => {
                     match self.focus {
                         Focus::Facets => self.toggle_facet()?,
                         Focus::List => self.open_family()?,
+                        Focus::Controls => {
+                            self.controls.toggle();
+                        }
                     }
                 }
                 KeyCode::Backspace | KeyCode::Left | KeyCode::Char('h')
@@ -541,6 +588,7 @@ impl App {
                 }
                 self.facet_list.select(Some(next));
             }
+            Focus::Controls => self.controls.move_cursor(delta),
         }
         Ok(())
     }
@@ -560,6 +608,11 @@ impl App {
                     self.facet_list
                         .select(Some(first_selectable(&self.rows, i)));
                 }
+            }
+            Focus::Controls => {
+                let last = self.controls.len().saturating_sub(1);
+                self.controls
+                    .move_cursor(to.min(last) as i32 - self.controls.cursor() as i32);
             }
         }
         Ok(())
@@ -1006,15 +1059,35 @@ impl App {
         ));
         lines.push(Line::from(""));
         let text_rows = lines.len() as u16;
+        // Controls take the rows they need, capped so the preview never disappears.
+        // The pane asks for a title plus a row per control, but never takes so much that
+        // the preview vanishes, and never less than a title plus one row: a pane Tab can
+        // reach has to show the cursor sitting in it.
+        let control_rows = if self.controls.is_empty() {
+            0
+        } else {
+            let spare = inner.height.saturating_sub(text_rows + 4);
+            // Either a title and at least one control, or nothing: a pane showing only
+            // its own title would hide the cursor sitting in it.
+            if spare < 2 {
+                0
+            } else {
+                (self.controls.len() as u16 + 1).min(spare)
+            }
+        };
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Length(text_rows.min(inner.height)),
+                Constraint::Length(control_rows),
                 Constraint::Min(0),
             ])
             .split(inner);
         f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), chunks[0]);
-        let preview_area = chunks[1];
+        if control_rows > 0 {
+            self.draw_controls(f, chunks[1], face);
+        }
+        let preview_area = chunks[2];
         if preview_area.height < 2 || preview_area.width < 4 {
             return;
         }
@@ -1023,14 +1096,81 @@ impl App {
             .clone()
             .or_else(|| face.names.sample_text.clone())
             .unwrap_or_else(|| preview::sample_for(face));
-        let lines = self.preview.lines(
-            face,
-            &text,
-            self.preview_size,
-            preview_area.width as u32,
-            preview_area.height as u32 * 2,
-        );
+        let opts = self.render_options(text, preview_area.width as u32);
+        let lines = self
+            .preview
+            .lines(face, &opts, preview_area.height as u32 * 2);
         f.render_widget(Paragraph::new(lines), preview_area);
+    }
+
+    /// The preview's render settings: the sample text at the chosen size, positioned by
+    /// whatever the reader has done to the axes and features.
+    fn render_options(&self, text: String, cols: u32) -> RenderOptions {
+        RenderOptions {
+            text,
+            size: self.preview_size,
+            variations: self.controls.variations(),
+            features: self.controls.forced_features(),
+            padding: 1,
+            max_width: Some(cols),
+        }
+    }
+
+    /// Axes as `tag  value` with a bar, features as a checkbox, the selected row
+    /// highlighted when the pane has focus.
+    fn draw_controls(&self, f: &mut ratatui::Frame, area: Rect, face: &FaceMetadata) {
+        let focused = self.focus == Focus::Controls;
+        let mut lines: Vec<Line> = Vec::new();
+        let title = match self.controls.instance_name(face) {
+            Some(name) => format!("axes & features — {name}"),
+            None if self.controls.is_variable() => "axes & features — custom".to_string(),
+            // "custom" would be nonsense for a face with no axes to be custom about.
+            None => "features".to_string(),
+        };
+        lines.push(Line::from(Span::styled(
+            title,
+            Style::default().fg(Color::DarkGray),
+        )));
+        // Scroll so the cursor is always on screen; without this a reader moves down,
+        // the marker disappears, and the arrows adjust an axis they cannot see.
+        let body = area.height.saturating_sub(1) as usize;
+        let offset = self
+            .controls
+            .cursor()
+            .saturating_sub(body.saturating_sub(1));
+        for (i, row) in self.controls.rows().enumerate().skip(offset).take(body) {
+            let selected = focused && i == self.controls.cursor();
+            let marker = if selected { ">" } else { " " };
+            let style = if selected {
+                Style::default().fg(Color::Cyan)
+            } else {
+                Style::default()
+            };
+            let text = match row {
+                controls::Row::Axis(a) => {
+                    let span = (a.max - a.min).max(f32::EPSILON);
+                    let filled = (((a.value - a.min) / span) * 12.0).round() as usize;
+                    format!(
+                        "{marker} {:<4} {:>8}  [{}{}] {}",
+                        a.tag,
+                        fmt_axis(a.value),
+                        "=".repeat(filled.min(12)),
+                        " ".repeat(12 - filled.min(12)),
+                        // The designer's own name for the axis, when it differs from
+                        // the tag; `wght` labelled "wght" is noise.
+                        if a.label == a.tag { "" } else { &a.label },
+                    )
+                }
+                controls::Row::Feature(feature) => format!(
+                    "{marker} {:<4} [{}] {}",
+                    feature.tag,
+                    if feature.on { "x" } else { " " },
+                    feature.label
+                ),
+            };
+            lines.push(Line::from(Span::styled(text, style)));
+        }
+        f.render_widget(Paragraph::new(lines), area);
     }
 
     fn draw_status(&self, f: &mut ratatui::Frame, area: Rect) {
@@ -1069,12 +1209,14 @@ impl App {
         let text = "\
  fontina ui
 
- Move        j/k ↑/↓ PgUp/PgDn g/G        Tab switches between facets and the list
+ Move        j/k ↑/↓ PgUp/PgDn g/G        Tab cycles facets, list, controls
  Filter      / type to search  Esc clears   Enter/Space toggles a facet   x clears all
  Families    Enter opens a family, Backspace/Esc closes it
  Organise    t tag the selection   c add it to a collection
  Activate    a for the user, A until logout, i install a copy, d deactivate, u uninstall
  Preview     e sets the sample text   + / - change the size
+ Controls    h/l ←/→ move an axis (H/L by ten)   Space toggles a feature
+             n/p step through named instances   0 resets everything
  Index       R rescans every source (fontina scan --prune)
  Quit        q
 
@@ -1082,7 +1224,7 @@ impl App {
 
  any key to close";
         let w = 90.min(area.width);
-        let h = 18.min(area.height);
+        let h = 20.min(area.height);
         let rect = Rect::new(
             area.x + (area.width - w) / 2,
             area.y + (area.height - h) / 2,
@@ -1188,6 +1330,15 @@ fn facet_value_label(facet: Facet, value: &str) -> String {
     }
 }
 
+/// Axis values without trailing noise: `400`, not `400.0`; `87.5` kept as it is.
+fn fmt_axis(v: f32) -> String {
+    if v.fract() == 0.0 {
+        format!("{}", v as i64)
+    } else {
+        format!("{v:.1}")
+    }
+}
+
 fn activation_mark(a: Option<ActivationState>) -> &'static str {
     match a {
         Some(ActivationState::Session) => "s",
@@ -1263,5 +1414,149 @@ mod tests {
         assert!(app.detail.is_none());
         assert!(app.detail_id.is_none(), "a stale id outlived its face");
         assert!(app.detail_summary.is_none());
+    }
+
+    /// Select the first face whose family starts with `prefix`, as a reader would by
+    /// walking the list.
+    fn select_family(app: &mut App, prefix: &str) {
+        let i = (0..app.list_len())
+            .find(|i| {
+                app.list.select(Some(*i));
+                app.refresh_detail().is_ok()
+                    && app
+                        .detail
+                        .as_ref()
+                        .is_some_and(|f| f.names.family.starts_with(prefix))
+            })
+            .unwrap_or_else(|| panic!("no family starting with {prefix:?}"));
+        app.list.select(Some(i));
+        app.refresh_detail().unwrap();
+    }
+
+    #[test]
+    fn the_controls_describe_the_face_on_show_and_no_other() {
+        let mut app = app();
+        select_family(&mut app, "Bricolage");
+        assert!(!app.controls.is_empty(), "a variable face offers controls");
+        let variable_len = app.controls.len();
+
+        // Move an axis, then look at a different face: the setting does not follow it.
+        app.focus = Focus::Controls;
+        // This face's default sits at the top of its first axis, so the headroom is
+        // downward — which is itself worth pinning: `adjust` at a bound is a no-op.
+        assert!(!app.controls.adjust(1), "already at the axis maximum");
+        assert!(app.controls.adjust(-5));
+        let moved = app.controls.coords();
+        select_family(&mut app, "Amiri");
+        assert_ne!(app.controls.coords(), moved);
+        select_family(&mut app, "Bricolage");
+        assert_eq!(app.controls.len(), variable_len);
+        assert_eq!(
+            app.controls.coords(),
+            fontina_core::typography::default_coords(
+                app.detail.as_ref().unwrap().variable.as_ref().unwrap()
+            ),
+            "returning to a face starts it at its defaults again"
+        );
+    }
+
+    /// Every fixture offers at least a feature toggle, so the fallback is reached by
+    /// emptying the index instead: no face, no controls, nowhere for the focus to be.
+    #[test]
+    fn focus_never_rests_on_controls_a_face_does_not_have() {
+        let mut app = app();
+        select_family(&mut app, "Bricolage");
+        app.focus = Focus::Controls;
+        assert!(!app.controls.is_empty());
+
+        let path = app.detail.as_ref().unwrap().file.path.clone();
+        assert!(app.index.remove_file(&path).unwrap());
+        app.detail_id = None;
+        app.refresh_detail().unwrap();
+
+        assert!(
+            app.controls.is_empty(),
+            "a face that is gone offers nothing"
+        );
+        assert_ne!(
+            app.focus,
+            Focus::Controls,
+            "focus must leave a pane that no longer exists"
+        );
+    }
+
+    /// Tagging, activating, searching and rescanning all call `reload`, which clears the
+    /// detail. None of them changes which face is selected, so none of them may undo
+    /// what the reader set on it.
+    #[test]
+    fn an_action_on_the_selected_face_keeps_its_axes_and_toggles() {
+        let mut app = app();
+        select_family(&mut app, "Bricolage");
+        app.focus = Focus::Controls;
+        assert!(app.controls.adjust(-4));
+        app.controls.move_cursor(app.controls.len() as i32);
+        assert!(app.controls.toggle(), "the last row is a feature");
+        let (coords, features) = (app.controls.coords(), app.controls.forced_features());
+        assert!(!features.is_empty());
+
+        let id = app.detail_id.unwrap();
+        app.index.tag(&[id], "favourite").unwrap();
+        app.reload().unwrap();
+
+        assert_eq!(app.controls.coords(), coords, "the axes survived a reload");
+        assert_eq!(
+            app.controls.forced_features(),
+            features,
+            "the toggles survived a reload"
+        );
+        assert_eq!(app.focus, Focus::Controls, "and so did the focus");
+    }
+
+    /// The pane is drawn from `Controls::rows`, so a rendering check is really a check
+    /// that every control reaches the screen with its tag on it.
+    #[test]
+    fn every_control_is_drawn_with_its_tag() {
+        let mut app = app();
+        select_family(&mut app, "Bricolage");
+        let face = app.detail.clone().unwrap();
+        let drawn: Vec<String> = app
+            .controls
+            .rows()
+            .map(|row| match row {
+                controls::Row::Axis(a) => a.tag.clone(),
+                controls::Row::Feature(f) => f.tag.clone(),
+            })
+            .collect();
+        assert_eq!(drawn.len(), app.controls.len());
+        for tag in &drawn {
+            assert_eq!(tag.chars().count(), 4, "{tag} is not an OpenType tag");
+        }
+        // Axes come first, and the variable ones are exactly the face's own.
+        let axes: Vec<&str> = face
+            .variable
+            .as_ref()
+            .unwrap()
+            .axes
+            .iter()
+            .filter(|a| !a.hidden)
+            .map(|a| a.tag.as_str())
+            .collect();
+        assert_eq!(&drawn[..axes.len()], &axes[..]);
+    }
+
+    #[test]
+    fn the_render_options_carry_what_the_reader_set() {
+        let mut app = app();
+        select_family(&mut app, "Bricolage");
+        app.focus = Focus::Controls;
+        app.controls.adjust(-3);
+        let opts = app.render_options("Ag".into(), 80);
+        assert_eq!(opts.variations, app.controls.variations());
+        assert!(!opts.variations.is_empty());
+        assert_eq!(opts.features, app.controls.forced_features());
+        // The cache key is the options, so a moved axis is a different key.
+        let before = opts.clone();
+        app.controls.adjust(-1);
+        assert_ne!(app.render_options("Ag".into(), 80), before);
     }
 }

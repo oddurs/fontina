@@ -24,7 +24,10 @@ use ratatui::text::{Line, Span};
 
 #[derive(Default)]
 pub struct Cache {
-    key: Option<(i64, String, u32, u32)>,
+    /// The face and the exact options its lines were rendered from. Keying on the
+    /// options themselves means a new `RenderOptions` field cannot be left out of the
+    /// key and silently stop the preview repainting.
+    key: Option<(i64, RenderOptions, u32)>,
     lines: Vec<Line<'static>>,
 }
 
@@ -40,28 +43,19 @@ impl Cache {
         self.lines.clear();
     }
 
-    /// Lines for a preview fitting `cols` x `px_rows` pixels (two per text row).
+    /// Lines for a preview of `face` under `opts`, fitting `px_rows` pixel rows (two per
+    /// text row).
     pub fn lines(
         &mut self,
         face: &FaceMetadata,
-        text: &str,
-        size: f32,
-        cols: u32,
+        opts: &RenderOptions,
         px_rows: u32,
     ) -> Vec<Line<'static>> {
-        let id = crate::face_key(face);
-        let key = (id, text.to_string(), size as u32, cols);
+        let key = (crate::face_key(face), opts.clone(), px_rows);
         if self.key.as_ref() == Some(&key) {
             return self.lines.clone();
         }
-        let opts = RenderOptions {
-            text: text.to_string(),
-            size,
-            padding: 1,
-            max_width: Some(cols),
-            ..Default::default()
-        };
-        let lines = match render_face(face, &opts) {
+        let lines = match render_face(face, opts) {
             Ok(bitmap) => to_lines(&bitmap, px_rows),
             Err(e) => vec![Line::from(Span::styled(
                 format!("preview unavailable: {e}"),
