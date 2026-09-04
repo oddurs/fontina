@@ -20,7 +20,10 @@
 //! any path at logon). Persistent install copies into the per-user fonts directory and
 //! writes the same registry value. `WM_FONTCHANGE` is broadcast after every change.
 
-use super::{FontActivator, PlatformError, Result, Scope, io, is_under, regular_file, slot_name};
+use super::{
+    FontActivator, PlatformError, Result, Scope, copy_slot, io, is_copy_slot, is_under,
+    present_by_hand, regular_file,
+};
 use std::path::{Path, PathBuf};
 use windows_sys::Win32::Foundation::{ERROR_NO_MORE_ITEMS, ERROR_SUCCESS};
 use windows_sys::Win32::Graphics::Gdi::{
@@ -118,9 +121,9 @@ impl Key {
     }
 
     /// Delete every value whose data is `value`. Returns how many were removed.
-    fn delete_pointing_at(&self, value: &Path) -> Result<usize> {
-        let target = value.to_string_lossy().to_lowercase();
-        let mut names = Vec::new();
+    /// Every `REG_SZ` value in the key, as (raw name, name, data).
+    fn values(&self) -> Result<Vec<(Vec<u16>, String, String)>> {
+        let mut out = Vec::new();
         let mut index = 0u32;
         loop {
             let mut name = vec![0u16; 16_384];
@@ -158,10 +161,40 @@ impl Key {
                 .map(|c| u16::from_le_bytes([c[0], c[1]]))
                 .take_while(|&c| c != 0)
                 .collect();
-            if String::from_utf16_lossy(&data_u16).to_lowercase() == target {
-                names.push(name[..name_len as usize].to_vec());
-            }
+            let raw = name[..name_len as usize].to_vec();
+            let label = String::from_utf16_lossy(&raw);
+            out.push((raw, label, String::from_utf16_lossy(&data_u16)));
         }
+        Ok(out)
+    }
+
+    /// A value name for `file` that will not overwrite somebody else's registration.
+    ///
+    /// The name Windows shows is only the file stem plus the format, so two different
+    /// fonts called Inter-Regular.ttf want the same one. Writing ours over an entry that
+    /// points somewhere else would unregister the user's own font at the next logon, and
+    /// deactivating would then delete their entry outright.
+    fn free_name_for(&self, file: &Path) -> Result<String> {
+        let preferred = value_name(file);
+        let target = file.to_string_lossy().to_lowercase();
+        let taken = self.values()?.into_iter().any(|(_, name, data)| {
+            name.eq_ignore_ascii_case(&preferred) && data.to_lowercase() != target
+        });
+        if !taken {
+            return Ok(preferred);
+        }
+        let hash = blake3::hash(file.to_string_lossy().as_bytes()).to_hex();
+        Ok(format!("{preferred} [fontina {}]", &hash[..8]))
+    }
+
+    fn delete_pointing_at(&self, value: &Path) -> Result<usize> {
+        let target = value.to_string_lossy().to_lowercase();
+        let names: Vec<Vec<u16>> = self
+            .values()?
+            .into_iter()
+            .filter(|(_, _, data)| data.to_lowercase() == target)
+            .map(|(raw, _, _)| raw)
+            .collect();
         for n in &names {
             let mut n = n.clone();
             n.push(0);
@@ -226,8 +259,9 @@ fn add_resource(file: &Path, persistent: bool) -> Result<()> {
     Ok(())
 }
 
-fn remove_resource(file: &Path) {
+fn remove_resource(file: &Path) -> bool {
     let w = path_wide(file);
+    let mut removed = false;
     // GDI reference-counts font resources; remove until it reports none left.
     for _ in 0..64 {
         // SAFETY: NUL-terminated path.
@@ -235,6 +269,7 @@ fn remove_resource(file: &Path) {
         if ok == 0 {
             break;
         }
+        removed = true;
     }
     for _ in 0..64 {
         // SAFETY: NUL-terminated path.
@@ -242,7 +277,9 @@ fn remove_resource(file: &Path) {
         if ok == 0 {
             break;
         }
+        removed = true;
     }
+    removed
 }
 
 impl FontActivator for Gdi {
@@ -250,15 +287,16 @@ impl FontActivator for Gdi {
         let file = regular_file(file)?;
         let dir = user_fonts_dir()?;
         std::fs::create_dir_all(&dir).map_err(io(&dir))?;
-        let same_bytes = |p: &Path| {
-            std::fs::read(p).ok().map(|b| blake3::hash(&b))
-                == std::fs::read(&file).ok().map(|b| blake3::hash(&b))
-        };
-        let slot = slot_name(&dir, &file, same_bytes);
+        let slot = copy_slot(&dir, &file);
         if !slot.exists() {
+            if let Some(theirs) = present_by_hand(&dir, &file) {
+                return Err(PlatformError::AlreadyPresent(theirs));
+            }
             std::fs::copy(&file, &slot).map_err(io(&slot))?;
         }
-        Key::fonts()?.set(&value_name(&slot), &slot)?;
+        let key = Key::fonts()?;
+        let name = key.free_name_for(&slot)?;
+        key.set(&name, &slot)?;
         add_resource(&slot, true)?;
         broadcast_font_change();
         Ok(slot)
@@ -266,7 +304,7 @@ impl FontActivator for Gdi {
 
     fn uninstall(&self, installed: &Path) -> Result<()> {
         let dir = user_fonts_dir()?;
-        if !is_under(installed, &dir) {
+        if !is_under(installed, &dir) || !is_copy_slot(installed) {
             return Err(PlatformError::NotManaged(installed.to_path_buf(), dir));
         }
         remove_resource(installed);
@@ -284,18 +322,22 @@ impl FontActivator for Gdi {
         let file = regular_file(file)?;
         add_resource(&file, false)?;
         if scope == Scope::User {
-            Key::fonts()?.set(&value_name(&file), &file)?;
+            let key = Key::fonts()?;
+            let name = key.free_name_for(&file)?;
+            key.set(&name, &file)?;
         }
         broadcast_font_change();
         Ok(())
     }
 
-    fn deactivate(&self, file: &Path) -> Result<()> {
+    fn deactivate(&self, file: &Path) -> Result<bool> {
         let file = std::fs::canonicalize(file).unwrap_or_else(|_| file.to_path_buf());
-        remove_resource(&file);
-        Key::fonts()?.delete_pointing_at(&file)?;
+        let removed = remove_resource(&file);
+        // Only values whose data is this exact path are deleted, so a registration the
+        // user made themselves is never touched.
+        let cleared = Key::fonts()?.delete_pointing_at(&file)?;
         broadcast_font_change();
-        Ok(())
+        Ok(removed || cleared > 0)
     }
 }
 

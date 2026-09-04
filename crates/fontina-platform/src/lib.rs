@@ -69,6 +69,10 @@ pub enum PlatformError {
     NotAFile(PathBuf),
     #[error("{0} was not installed by fontina (it is outside {1})")]
     NotManaged(PathBuf, PathBuf),
+    #[error(
+        "an identical font is already in your font directory at {0}, put there by hand; fontina will not touch it"
+    )]
+    AlreadyPresent(PathBuf),
     #[error("no per-user font directory on this system")]
     NoUserDir,
     #[error("{0}")]
@@ -87,8 +91,10 @@ pub trait FontActivator {
     fn uninstall(&self, installed: &Path) -> Result<()>;
     /// Make `file` visible in place, for the session or persistently for the user.
     fn activate(&self, file: &Path, scope: Scope) -> Result<()>;
-    /// Undo [`FontActivator::activate`] for either scope. Succeeds when nothing was active.
-    fn deactivate(&self, file: &Path) -> Result<()>;
+    /// Undo [`FontActivator::activate`] for every scope. `Ok(false)` means there was
+    /// nothing registered to undo, which is not an error but is worth reporting: it is
+    /// how a caller learns that clearing its own record is all that happened.
+    fn deactivate(&self, file: &Path) -> Result<bool>;
     /// Font directories the OS reads, in precedence order.
     fn font_dirs(&self) -> Vec<SystemFontDir> {
         system_font_dirs()
@@ -219,7 +225,9 @@ fn regular_file(file: &Path) -> Result<PathBuf> {
 
 /// A name for `file` inside `dir` that does not collide with a different file of the
 /// same basename: the basename itself when free (or already ours), otherwise the stem
-/// plus a short hash of the source path.
+/// plus a short hash of the source path. Used by the backend that links, where the link
+/// target is proof of what fontina created; the backends that copy use [`copy_slot`].
+#[cfg(all(unix, not(target_os = "macos")))]
 fn slot_name(dir: &Path, file: &Path, is_ours: impl Fn(&Path) -> bool) -> PathBuf {
     let base = file
         .file_name()
@@ -240,6 +248,53 @@ fn slot_name(dir: &Path, file: &Path, is_ours: impl Fn(&Path) -> bool) -> PathBu
         .map(|e| format!(".{}", e.to_string_lossy()))
         .unwrap_or_default();
     dir.join(format!("{stem}-{}{ext}", &hash[..8]))
+}
+
+/// The name a *copied* font takes inside `dir`: always the stem, a short hash of the
+/// source path, and the extension.
+///
+/// The backends that copy (macOS, Windows) cannot tell one file's bytes from another's,
+/// so a plain basename would let `install` adopt a font the user had put in their own
+/// font directory by hand, and `uninstall` would then delete it. A name derived from the
+/// source path is proof that fontina wrote the file, and it is stable, so installing the
+/// same font twice reuses the same slot instead of making a second copy.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub(crate) fn copy_slot(dir: &Path, file: &Path) -> PathBuf {
+    let hash = blake3::hash(file.to_string_lossy().as_bytes()).to_hex();
+    let stem = file
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "font".into());
+    let ext = file
+        .extension()
+        .map(|e| format!(".{}", e.to_string_lossy()))
+        .unwrap_or_default();
+    dir.join(format!("{stem}-{}{ext}", &hash[..8]))
+}
+
+/// Whether `path` has the shape [`copy_slot`] gives a file fontina copied. Guards
+/// `uninstall` against deleting anything else, including a plain basename recorded by a
+/// version of fontina that still adopted files.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub(crate) fn is_copy_slot(path: &Path) -> bool {
+    path.file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .and_then(|stem| {
+            let (_, hash) = stem.rsplit_once('-')?;
+            Some(hash.len() == 8 && hash.chars().all(|c| c.is_ascii_hexdigit()))
+        })
+        .unwrap_or(false)
+}
+
+/// An identical font already sitting under its own plain name in `dir`, which means the
+/// user put it there themselves. Only the obvious candidate is checked: hashing every
+/// file in a font directory to answer this would cost more than it is worth.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub(crate) fn present_by_hand(dir: &Path, file: &Path) -> Option<PathBuf> {
+    let twin = dir.join(file.file_name()?);
+    let same = std::fs::read(&twin).ok().map(|b| blake3::hash(&b))
+        == std::fs::read(file).ok().map(|b| blake3::hash(&b));
+    same.then_some(twin)
 }
 
 /// True when `path` is inside `dir` (after canonicalising `dir`).
