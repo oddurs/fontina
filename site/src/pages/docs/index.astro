@@ -5,11 +5,11 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const u = (p: string) => `${base}${p}`;
 const docs = (await getCollection('docs')).sort((a, b) => a.data.order - b.data.order);
 ---
-<Base title="Manual" description="The unifont manual: installation, concepts, command reference, JSON output, health checks, specimens, platform notes." source="site/src/content/docs">
-  <h1>The unifont manual</h1>
-  <p class="smaller">For unifont 0.0.1. This manual is maintained in the repository under <code>site/src/content/docs</code>; corrections are pull requests.</p>
+<Base title="Manual" description="The fontina manual: installation, concepts, command reference, JSON output, health checks, specimens, platform notes." source="site/src/content/docs">
+  <h1>The fontina manual</h1>
+  <p class="smaller">For fontina 0.0.1. This manual is maintained in the repository under <code>site/src/content/docs</code>; corrections are pull requests.</p>
   <p>
-    This manual describes the <code>unifont</code> command line and the concepts behind
+    This manual describes the <code>fontina</code> command line and the concepts behind
     it. It is written to be read in order once and consulted by chapter after that.
   </p>
   <div>
@@ -22,9 +22,9 @@ const docs = (await getCollection('docs')).sort((a, b) => a.data.order - b.data.
   </div>
   <h2>Other documentation</h2>
   <ul>
-    <li><code>unifont help &lt;command&gt;</code> prints the reference for any command.</li>
+    <li><code>fontina help &lt;command&gt;</code> prints the reference for any command.</li>
     <li>The JSON Schemas for every export live in
-      <a href="https://github.com/oddurs/unifont/tree/main/schemas"><code>schemas/</code></a>.</li>
+      <a href="https://github.com/oddurs/fontina/tree/main/schemas"><code>schemas/</code></a>.</li>
     <li>The <a href={u('/adr/')}>architecture decision records</a> explain the choices the manual takes for granted.</li>
     <li>The <a href={u('/faq/')}>FAQ</a> answers the questions this manual does not.</li>
   </ul>

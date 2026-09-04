@@ -1,6 +1,6 @@
 # Security policy
 
-unifont parses untrusted font files. Parser bugs that lead to crashes, memory
+fontina parses untrusted font files. Parser bugs that lead to crashes, memory
 unsafety, or out-of-bounds reads are security bugs and we treat them as such.
 
 ## Supported versions
@@ -11,22 +11,22 @@ Only the latest release and `main` receive fixes.
 
 Please do not open a public issue. Use GitHub's private vulnerability reporting:
 **Security → Report a vulnerability** on the repository page, or email
-oddurs@gmail.com with `[unifont security]` in the subject.
+oddurs@gmail.com with `[fontina security]` in the subject.
 
 Include the font file that triggers the problem if you can share it, or the
-`unifont info --json` output and a description of how it was produced.
+`fontina info --json` output and a description of how it was produced.
 
 You will get an acknowledgement within 7 days and a fix or a mitigation plan
 within 90 days. We credit reporters in the release notes unless asked not to.
 
 ## Scope
 
-- `unifont-core` parsing, decoding (WOFF/WOFF2) and the SQLite index
-- the `unifont` CLI
+- `fontina-core` parsing, decoding (WOFF/WOFF2) and the SQLite index
+- the `fontina` CLI
 - release artifacts and the build pipeline
 
 Out of scope: vulnerabilities in the fonts themselves, or in operating-system
-font rasterisers that unifont does not ship.
+font rasterisers that fontina does not ship.
 
 ## Hardening in place
 

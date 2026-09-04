@@ -1,11 +1,11 @@
 ---
 layout: ../layouts/Page.astro
 title: Frequently asked questions
-description: "Answers to common questions about unifont."
+description: "Answers to common questions about fontina."
 source: site/src/pages/faq.md
 ---
 
-1. [Is this GNU Unifont?](#is-this-gnu-unifont)
+1. [Is this GNU Unifont?](#is-this-gnu-fontina)
 2. [What does it do that `fc-list` does not?](#what-does-it-do-that-fc-list-does-not)
 3. [Does it need root, or write to `/usr/share/fonts`?](#does-it-need-root-or-write-to-usrsharefonts)
 4. [Does it phone home?](#does-it-phone-home)
@@ -29,7 +29,7 @@ change before the first release. We apologise for the confusion in the meantime.
 
 ### What does it do that `fc-list` does not?
 
-`fc-list` tells you what fontconfig sees. unifont reads the files themselves and keeps
+`fc-list` tells you what fontconfig sees. fontina reads the files themselves and keeps
 what it finds in a database: every name record, the `OS/2` classification and
 embedding rights, variable axes and named instances, the OpenType features and
 scripts, the full character map, colour tables, hinting, license text mapped to an
@@ -39,7 +39,7 @@ as one. Then it answers queries against that, exports it, and checks it.
 ### Does it need root, or write to `/usr/share/fonts`?
 
 Never. Everything is per-user. On Linux the index lives under
-`$XDG_DATA_HOME/unifont` and activation, when it lands, will use
+`$XDG_DATA_HOME/fontina` and activation, when it lands, will use
 `$XDG_DATA_HOME/fonts` and a fontconfig fragment in `~/.config/fontconfig/conf.d`.
 
 ### Does it phone home?
@@ -50,16 +50,16 @@ There is no telemetry, no crash reporting, and no update check.
 
 ### Where is the database?
 
-One SQLite file in the platform data directory: `$XDG_DATA_HOME/unifont/index.db` on
-Linux, `~/Library/Application Support/unifont` on macOS, `%APPDATA%\unifont` on
-Windows. Set `UNIFONT_DB` or pass `--db` to put it somewhere else. You can open it
+One SQLite file in the platform data directory: `$XDG_DATA_HOME/fontina/index.db` on
+Linux, `~/Library/Application Support/fontina` on macOS, `%APPDATA%\fontina` on
+Windows. Set `FONTINA_DB` or pass `--db` to put it somewhere else. You can open it
 with any SQLite client. Deleting it loses nothing that a rescan will not recreate,
 except tags, collections and source registrations.
 
 ### Can it edit or convert fonts?
 
 No, and it will not. Subsetting, format conversion and editing are
-[fonttools](https://github.com/fonttools/fonttools)' job and it does it well. unifont
+[fonttools](https://github.com/fonttools/fonttools)' job and it does it well. fontina
 reads.
 
 ### Why a webview for the desktop app instead of a native toolkit?
@@ -91,12 +91,12 @@ SIL Open Font License or Apache-2.0, listed with their sources in `fixtures/READ
 
 Yes. For a variable font the listed style is the default instance, resolved from the
 `fvar` default coordinates and the named instances. Named instances and axis ranges
-are all in `unifont info`.
+are all in `fontina info`.
 
 ### A WOFF2 file fails with an `hmtx` transform error.
 
 The pure-Rust WOFF2 decoder does not implement the optional `hmtx` transform. Such
-files are rare in practice. They are counted under `failed` in `unifont stats`. If they
+files are rare in practice. They are counted under `failed` in `fontina stats`. If they
 turn out to be common, a fallback to Google's reference decoder is the planned
 mitigation ([ADR 0005](../adr/0005-woff-decoding/)).
 

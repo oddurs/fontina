@@ -7,7 +7,7 @@ fontations reads sfnt data only. WOFF 1.0 is per-table zlib; WOFF 2.0 is Brotli 
 glyf/loca transforms.
 
 ## Decision
-WOFF 1.0: a small hand-written unwrapper in `unifont-core::container` (flate2).
+WOFF 1.0: a small hand-written unwrapper in `fontina-core::container` (flate2).
 WOFF 2.0: the pure-Rust `woff2-patched` crate. Both produce sfnt bytes that then go
 through the normal fontations path.
 

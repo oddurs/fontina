@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping build unifont. This page is the git workflow; `CLAUDE.md` holds the
+Thanks for helping build fontina. This page is the git workflow; `CLAUDE.md` holds the
 engineering conventions and `PLAN.md` the roadmap.
 
 ## Branching model
@@ -42,7 +42,7 @@ No `Co-Authored-By`, `Signed-off-by` or tool-session trailers.
 - Title in Conventional Commits form; it becomes the squash commit subject.
 - Fill in the template: what changed, why, how it was tested, screenshots for UI.
 - One logical change per PR. Split refactors from features.
-- CI (`.github/workflows/ci.yml`) must pass on Linux, macOS and Windows.
+- CI (`.github/workflows/ci.yml`) must pass on GNU/Linux, macOS and Windows.
 - Self-review the diff before requesting review.
 - Squash-merge only. Delete the branch after merge (automatic).
 
@@ -70,10 +70,10 @@ checksums, provenance attestations and the SBOM. Nothing is published by hand.
 
 ## Fixtures
 
-Only fonts under an open license (OFL-1.1, Apache-2.0, UFL-1.0, CC0) may be added to
+Only fonts under a free license (OFL-1.1, Apache-2.0, CC0) may be added to
 `fixtures/`, each under ~500 KB, with the source URL noted in `fixtures/README.md`.
 
 ## Licensing
 
-By contributing you agree your work is licensed under `MIT OR Apache-2.0`, matching the
+By contributing you agree your work is licensed under `GPL-3.0-or-later`, matching the
 project.

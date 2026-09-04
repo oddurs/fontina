@@ -1,6 +1,6 @@
 # 0004 — Project license: MIT OR Apache-2.0
 
-**Status:** accepted, 2026-09-03
+**Status:** superseded by [ADR 0007](0007-license-gpl-3.md), 2026-09-04
 
 ## Decision
 Dual MIT / Apache-2.0 for every crate and the app, the Rust ecosystem convention. Apache

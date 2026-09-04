@@ -1,11 +1,11 @@
 ---
 layout: ../layouts/Page.astro
-title: unifont mission statement
-description: "What unifont is for, the principles that are enforced rather than aspired to, and what it will never do."
+title: fontina mission statement
+description: "What fontina is for, the principles that are enforced rather than aspired to, and what it will never do."
 source: site/src/pages/mission.md
 ---
 
-unifont exists to give people a font manager that is correct, small, private and
+fontina exists to give people a font manager that is correct, small, private and
 free, on every desktop, built from open standards so that nothing it produces
 locks anyone in.
 
@@ -35,8 +35,12 @@ features, when they come, are opt-in and live only in the desktop application.</
 <dd>Releases carry SHA-256 checksums, SLSA build provenance attestations and an SPDX
 software bill of materials. Nothing is built or uploaded by hand.</dd>
 <dt>Free</dt>
-<dd>MIT OR Apache-2.0, for the library, the command line and the application, with
-contributions accepted under the same terms and no contributor agreement.</dd>
+<dd>GPL-3.0-or-later, for the library, the command line and the application, so that
+nobody downstream can take these freedoms away from the next person. Contributions are
+accepted under the same terms, with no contributor agreement and no copyright
+assignment. The manual is under the GNU Free Documentation License. fontina answers the
+same question about your fonts: <code>list --free</code> shows the ones you may study,
+modify and pass on.</dd>
 </dl>
 
 ## Non-goals
@@ -54,5 +58,5 @@ page how to take part.
 
 ## The name
 
-"unifont" is a working name. It collides with GNU Unifont, the bitmap font, and will
+"fontina" is a working name. It collides with GNU Unifont, the bitmap font, and will
 change before the first release.

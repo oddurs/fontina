@@ -1,36 +1,36 @@
 ---
 layout: ../layouts/Page.astro
 title: Contributing
-description: "How to hack on unifont: workflow, conventions, and what makes a good change."
+description: "How to hack on fontina: workflow, conventions, and what makes a good change."
 source: site/src/pages/contributing.md
 ---
 
 Thank you. This page is the short form; the repository's
-[`CONTRIBUTING.md`](https://github.com/oddurs/unifont/blob/main/CONTRIBUTING.md) holds
-the git workflow and [`CLAUDE.md`](https://github.com/oddurs/unifont/blob/main/CLAUDE.md)
+[`CONTRIBUTING.md`](https://github.com/oddurs/fontina/blob/main/CONTRIBUTING.md) holds
+the git workflow and [`CLAUDE.md`](https://github.com/oddurs/fontina/blob/main/CLAUDE.md)
 the engineering rules that apply to every contributor, human or otherwise.
 
 ## Getting the source
 
 ```
-git clone https://github.com/oddurs/unifont
-cd unifont
+git clone https://github.com/oddurs/fontina
+cd fontina
 cargo build
 cargo test
 cargo clippy --all-targets -- -D warnings
 ```
 
-Rust 1.88 or newer. Set `UNIFONT_DB=/tmp/u.db` while developing so you do not touch
+Rust 1.88 or newer. Set `FONTINA_DB=/tmp/u.db` while developing so you do not touch
 your real index.
 
 ## Repository layout
 
 ```
-crates/unifont-core       parsing, metadata model, SQLite index, scan, CSS export,
+crates/fontina-core       parsing, metadata model, SQLite index, scan, CSS export,
                           health checks, HTML specimen
-crates/unifont-platform   per-OS font directories and the FontActivator trait
-crates/unifont-cli        the `unifont` binary
-schemas/                  JSON Schemas; regenerated with `unifont schema <name>`
+crates/fontina-platform   per-OS font directories and the FontActivator trait
+crates/fontina-cli        the `fontina` binary
+schemas/                  JSON Schemas; regenerated with `fontina schema <name>`
 fixtures/                 OFL-licensed test fonts, kept small
 docs/adr/                 architecture decision records
 site/                     this web site
@@ -87,4 +87,4 @@ sign.
 ## Conduct
 
 The project follows the
-[Contributor Covenant](https://github.com/oddurs/unifont/blob/main/CODE_OF_CONDUCT.md).
+[Contributor Covenant](https://github.com/oddurs/fontina/blob/main/CODE_OF_CONDUCT.md).

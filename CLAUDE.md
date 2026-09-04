@@ -1,19 +1,21 @@
-# unifont — working agreement for coding agents and contributors
+# fontina — working agreement for coding agents and contributors
 
-unifont is a lightweight, cross-platform, open-source font manager. Rust core, thin
+fontina is a lightweight, cross-platform font manager, and free software. Rust core, thin
 native shell, open standards end to end. Read `PLAN.md` for the architecture and the
 milestones; this file is the operating manual.
 
 ## Layout
 
 ```
-crates/unifont-core       parsing (fontations), metadata model, SQLite index, scan, CSS export,
-                          health checks (check.rs), HTML specimen (specimen.rs)
-crates/unifont-platform   per-OS font directories and the FontActivator trait
-crates/unifont-cli        the `unifont` binary; `src/ui/` is the ratatui TUI (M1)
-schemas/                  JSON Schemas (face, collection, cli-output); regenerate with `unifont schema <name>`
+crates/fontina-core       parsing (fontations), metadata model, SQLite index, scan, CSS export,
+                          health checks (check.rs), HTML specimen (specimen.rs),
+                          license freedom classification (freedom.rs)
+crates/fontina-platform   per-OS font directories and the FontActivator trait
+crates/fontina-cli        the `fontina` binary; `src/ui/` is the ratatui TUI (M1)
+schemas/                  JSON Schemas (face, collection, cli-output); regenerate with `fontina schema <name>`
 fixtures/                 OFL-licensed test fonts; keep total size small
 docs/adr/                 architecture decision records, one file per decision
+docs/fontina.texi         the manual (GFDL); man pages come from `fontina man`
 site/                     project web site and manual (Astro, static, no JS); deploys to GitHub Pages
 scripts/wt                worktree helper for parallel branches (see below)
 .worktrees/               one checkout per branch in flight; git-ignored
@@ -28,10 +30,10 @@ cargo insta review                # after intentional metadata changes
 cargo clippy --all-targets -- -D warnings
 cargo fmt --all
 cargo deny check                  # licenses and advisories (needs cargo-deny)
-./target/debug/unifont scan fixtures --db /tmp/u.db && ./target/debug/unifont list --db /tmp/u.db
+./target/debug/fontina scan fixtures --db /tmp/u.db && ./target/debug/fontina list --db /tmp/u.db
 ```
 
-Set `UNIFONT_DB` to keep an index out of the platform data directory while developing.
+Set `FONTINA_DB` to keep an index out of the platform data directory while developing.
 
 ## Rules that are not negotiable
 
@@ -47,27 +49,39 @@ Set `UNIFONT_DB` to keep an index out of the platform data directory while devel
   `catch_unwind` in `scan::parse_paths` as a last line of defence, not an excuse.
 - **Keep it light.** Adding a dependency needs a reason in the PR. Check binary size and
   idle memory against the budgets in `PLAN.md` §6 for anything touching the app.
+- **Free software, and it stays free.** The workspace is GPL-3.0-or-later (ADR 0007);
+  the manual is GFDL 1.3+. Every new source file gets the standard GPL notice, copied
+  from any existing one. A dependency must be GPLv3-compatible — `deny.toml` is where
+  that argument is settled, not the pull request. Never relicense anything permissively.
+- **Report restrictions, never enforce them.** `OS/2.fsType` and any similar flag is
+  data about the font, not permission to restrict the person running the program.
+  `freedom.rs` says why; keep it that way.
 - **No `Co-Authored-By` or session trailers** in commit messages.
 
 ## Conventions
 
 - Rust 2024 edition, MSRV 1.88 (`rust-version` in `Cargo.toml`). Format with rustfmt,
   zero clippy warnings.
-- Public types in `unifont-core::model` are the schema. Any change to them bumps
+- Public types in `fontina-core::model` are the schema. Any change to them bumps
   `SCHEMA_VERSION` if it is not backwards-compatible, and regenerates `schemas/face.json`.
   Every type printed with `--json` derives `JsonSchema` and is listed in
   `cli_output_schema()`; regenerate `schemas/cli-output.json` and `schemas/collection.json`
-  with `unifont schema cli-output` / `unifont schema collection` (CI diffs all three).
-- Snapshot tests in `crates/unifont-core/tests` cover every fixture. Add a fixture when a
+  with `fontina schema cli-output` / `fontina schema collection` (CI diffs all three).
+- Snapshot tests in `crates/fontina-core/tests` cover every fixture. Add a fixture when a
   new capability is parsed (a fixture is an OFL/Apache/UFL font under ~500 KB).
-- SQL lives in `crates/unifont-core/src/index`. Migrations are append-only entries in
+- SQL lives in `crates/fontina-core/src/index`. Migrations are append-only entries in
   `schema.rs`; never edit an applied migration. A migration that needs data from the
   stored metadata JSON gets a backfill function keyed on its index (see `face_ranges`).
 - Health checks in `check.rs` have stable `area/check` ids; never rename an id, add a
-  new one. Every check needs a fixture-backed test that triggers it.
+  new one. Every check needs a fixture-backed test that triggers it. A check that no
+  fixture can legitimately trigger (`license/nonfree`: we may not redistribute a nonfree
+  font) is triggered by mutating a parsed fixture, not by adding one.
+- The freedom of a license is derived from its SPDX identifier on every read, never
+  stored in the index, so the verdict tracks `freedom::FREE` rather than the day the
+  index was built. Keep it that way when adding filters.
 - The specimen (`specimen.rs`) is a single self-contained HTML file with no external
   requests; it is the reference implementation the desktop preview will reuse.
-- Platform-specific code is `#[cfg(target_os)]`-gated inside `unifont-platform`. Core
+- Platform-specific code is `#[cfg(target_os)]`-gated inside `fontina-platform`. Core
   and CLI stay platform-agnostic.
 - CLI output: human-readable by default, `--json` for machines, exit code 1 on error.
   Anything printed with `--json` must be a type that serialises stably.
@@ -75,7 +89,7 @@ Set `UNIFONT_DB` to keep an index out of the platform data directory while devel
 ## Git workflow
 
 `main` is protected: every change is a pull request, and GitHub merges it once the
-seven CI checks pass. The whole loop is:
+eight CI checks pass. The whole loop is:
 
 ```
 git checkout -b feat/<topic> main
@@ -128,7 +142,7 @@ that keep them out of each other's way:
   (`CLAUDE.md`, `README.md`, `Cargo.toml`, `main.rs`) conflict most; keep edits to them
   minimal and rebase promptly after another PR touching them merges.
 - **Generated files are regenerated, not hand-edited**: `schemas/*.json` with
-  `unifont schema <name>`, snapshots with `cargo insta review`.
+  `fontina schema <name>`, snapshots with `cargo insta review`.
 
 ## When working as an agent
 

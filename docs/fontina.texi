@@ -1,0 +1,282 @@
+\input texinfo   @c -*-texinfo-*-
+@c SPDX-License-Identifier: GFDL-1.3-or-later
+@c %**start of header
+@setfilename fontina.info
+@documentencoding UTF-8
+@settitle fontina manual
+@c %**end of header
+
+@copying
+This manual is for fontina, a font manager for the terminal.
+
+Copyright @copyright{} 2026 Oddur Sigurdsson.
+
+@quotation
+Permission is granted to copy, distribute and/or modify this document under the terms of
+the GNU Free Documentation License, Version 1.3 or any later version published by the
+Free Software Foundation; with no Invariant Sections, no Front-Cover Texts, and no
+Back-Cover Texts.  A copy of the license is included in the file
+@file{docs/COPYING.DOC}.
+@end quotation
+@end copying
+
+@titlepage
+@title fontina
+@subtitle A font manager for the terminal
+@author Oddur Sigurdsson
+@page
+@vskip 0pt plus 1filll
+@insertcopying
+@end titlepage
+
+@contents
+
+@ifnottex
+@node Top
+@top fontina
+
+@insertcopying
+@end ifnottex
+
+@menu
+* Introduction::        What the program is for.
+* Invoking fontina::    The command line.
+* Freedom::             Which of your fonts are free software.
+* Data you own::        Where things are kept and in what format.
+* Reporting bugs::      How to help.
+* GNU Free Documentation License::
+@end menu
+
+@node Introduction
+@chapter Introduction
+
+@command{fontina} reads the font files already on your disk, records what it finds in
+one SQLite file, and answers questions about them: which families you have, which cover
+a script or a particular string of text, which are duplicates, which are broken, and
+what each one's license permits you to do.
+
+It is built on three promises.
+
+@table @strong
+@item It does not touch what is not yours
+@command{fontina} never writes to a system font directory and never asks for elevation.
+Everything it installs or activates is per-user.
+
+@item Nothing leaves the machine
+No network connection, no accounts, no update checks, no crash reporting, no telemetry.
+Not disabled by default: absent.
+
+@item Your data stays yours, in formats you can read
+One SQLite file for the index, JSON with a published schema for every export, TOML for
+config, fontconfig XML on GNU/Linux.  Delete the binary and your fonts, your folders and
+your operating system's font registrations are exactly as you left them.
+@end table
+
+@command{fontina} is free software.  You may run it for any purpose, study how it works,
+change it, and redistribute copies with or without your changes, under the GNU General
+Public License version 3 or, at your option, any later version.  @xref{Freedom}, for
+what the program can tell you about the freedom of your fonts.
+
+@node Invoking fontina
+@chapter Invoking fontina
+
+@example
+fontina [--db PATH] COMMAND [OPTIONS] [ARGS...]
+@end example
+
+Every command accepts @option{--json}, which prints a stable document described by
+@code{fontina schema cli-output} instead of the human-readable form.  A script written
+against one release keeps working against the next: that is what the schema is for.
+
+@section Building an index
+
+@table @code
+@item fontina scan PATH@dots{}
+Index the fonts under one or more directories or files.
+@item fontina scan --system
+Index the operating system's font directories.
+@item fontina stats
+Index statistics and recent parse failures.
+@end table
+
+@section Searching
+
+@table @code
+@item fontina list [QUERY]
+List indexed faces.
+@item fontina families
+The same faces grouped by typographic family name.
+@item fontina facets
+Count matching faces per weight, width, style, script, license, freedom, vendor, tag,
+collection, activation state and source.
+@item fontina covers TEXT
+Faces whose character map covers every character of @var{TEXT}.
+@end table
+
+@noindent
+@code{list}, @code{families}, @code{facets} and @code{covers} share one set of filters:
+@option{--family}, @option{--variable}, @option{--color}, @option{--italic},
+@option{--script}, @option{--license}, @option{--free}, @option{--nonfree},
+@option{--freedom}, @option{--weight}, @option{--width}, @option{--vendor},
+@option{--tag}, @option{--collection}, @option{--active}, @option{--activation},
+@option{--container} and @option{--under}.
+
+@section Activating
+
+Everything here is per-user.  Nothing is written to a system font directory and nothing
+asks for elevation.
+
+@table @code
+@item fontina activate FACE@dots{}
+Make faces visible to other applications, in place.  Persistent for the user unless
+@option{--session}.  Exit status 2 when a conflict blocks it.
+@item fontina deactivate FACE@dots{}
+Undo it.
+@item fontina install FACE@dots{}
+Copy faces into the per-user font directory; @code{uninstall} removes those copies.
+@item fontina conflicts FACE@dots{}
+Faces that would clash with these once active: same PostScript name, or same family and
+style, already active or living in an OS font directory.
+@item fontina activations
+Everything fontina has activated or installed.  @code{restore} re-applies the record,
+for a login agent or after a reboot.
+@item fontina watch [PATH@dots{}]
+Follow the watched sources and keep the index current until interrupted.  One line per
+batch of changes, or one JSON object per line with @option{--json}.
+@end table
+
+@section Seeing the fonts
+
+@table @code
+@item fontina preview FACE@dots{}
+Real, shaped glyphs in the terminal — kitty, iTerm2 or sixel images, or half-blocks
+anywhere else — or a PNG.  Shaping is HarfBuzz-grade, so complex scripts are correct
+rather than approximated.
+@item fontina ui
+Browse the index: facets, families, faces, details and previews, keyboard first.
+@end table
+
+@section Looking at one font
+
+@table @code
+@item fontina info FACE
+Everything known about one face, named by index id or by file path.  A path that is not
+in the index is parsed on the spot.
+@item fontina glyphs FACE
+Character coverage by Unicode block.
+@item fontina license [FACE@dots{}]
+SPDX identifier, freedom verdict and the reason for it, embedding rights, reserved font
+names and copyright.
+@item fontina check PATH@dots{}
+Health checks over a face's metadata.  Exit status 1 if any check reports an error.
+@item fontina dupes
+Faces that are the same font in several files, matched across containers by a hash of
+the name and outline tables.
+@end table
+
+@section Getting fonts back out
+
+@table @code
+@item fontina css FACE@dots{}
+@code{@@font-face} rules, following CSS Fonts Level 4.
+@item fontina specimen FACE@dots{}
+A self-contained HTML specimen: waterfall, script samples, axis sliders, feature
+toggles, glyph map and side-by-side comparison.  The file makes no network requests, so
+it works from a local disk, from an archive, and in twenty years.
+@item fontina man
+Write the man pages, generated from the command definitions themselves so they cannot
+drift from @option{--help}.  @code{fontina completions SHELL} does the same for shell
+completions.
+@item fontina schema [face|collection|cli-output]
+A JSON Schema for the metadata model, a collection export, or every type
+@option{--json} prints.
+@end table
+
+@node Freedom
+@chapter Which of your fonts are free software
+
+A font is a work of practical use.  The question of whether you may study it, change it
+and pass it on is the same question that applies to a program, and it deserves the same
+answer: yes or no, with a reason.
+
+Most font managers will tell you a font's file size and its designer.  Very few will
+tell you whether you are allowed to modify it.  @command{fontina} does.  It reads the
+license the font declares in @code{name} IDs 13 and 14, maps it to an SPDX identifier,
+and judges that identifier against the FSF's list of free licenses.
+
+@table @code
+@item free
+The license grants all four freedoms: to run the font, to study it, to change it, and to
+redistribute it, changed or not.
+@item nonfree
+The license withholds at least one of them.
+@item unknown
+A license is stated, but it is not one that is known to be free.  The program says so
+and gives its reason rather than guessing; read the license yourself.
+@item unstated
+The font carries no license information at all.  No permission is stated, so in law none
+is granted, however the font may have been meant to be shared.
+@end table
+
+@example
+fontina list --free              # only the fonts you may build on
+fontina list --freedom unknown   # the ones worth reading the license of
+fontina license                  # every verdict, with its reason
+fontina facets                   # how much of the library is free
+@end example
+
+In @code{fontina list}, the fifth character of the @code{flags} column carries the same
+verdict: @code{F} free, @code{N} nonfree, @code{?} unknown, @code{-} unstated.
+
+@section On fsType
+
+@code{OS/2.fsType} is a set of bits in which a font file states what it would prefer
+other programs to allow when embedding it.  It is not a term of any license, and it is
+not enforceable by the file on the machine reading it.
+
+@command{fontina} reports those bits and never acts on them.  A font marked
+@dfn{Restricted License} still parses, still indexes, still previews and still exports.
+The health check @code{license/embedding} notes the value and says explicitly that it is
+reported and not enforced.  Treating a flag inside a data file as permission to restrict
+the person running the program would be the wrong way round.
+
+@node Data you own
+@chapter Where things are kept
+
+@table @asis
+@item The index
+One SQLite file.  On GNU/Linux, @file{$XDG_DATA_HOME/fontina/index.db}; elsewhere, the
+platform data directory.  @env{FONTINA_DB} or @option{--db} puts it anywhere you like.
+It holds no original data: everything in it was read from your font files, and
+@code{fontina scan} rebuilds it from disk in seconds.
+
+@item Exports
+JSON, validated against the schemas in @file{schemas/}.  @code{fontina schema} prints
+them.
+
+@item Configuration
+TOML.
+
+@item Activation, on GNU/Linux
+Symlinks under @file{$XDG_DATA_HOME/fonts}, declared to fontconfig in
+@file{~/.config/fontconfig/conf.d}.  Nothing that needs @command{fontina} to
+understand.
+@end table
+
+@node Reporting bugs
+@chapter Reporting bugs
+
+Report bugs on the project's issue tracker.  A useful report says what you ran, what you
+expected, and what happened; if a font file is involved, say what it is and whether its
+license permits you to attach it.
+
+Patches are welcome under the GNU General Public License version 3 or later.  There is no
+contributor licence agreement and no copyright assignment: you keep your copyright.
+
+@node GNU Free Documentation License
+@appendix GNU Free Documentation License
+
+The full text of the license for this manual is in @file{docs/COPYING.DOC}, and at
+@url{https://www.gnu.org/licenses/fdl-1.3.html}.
+
+@bye

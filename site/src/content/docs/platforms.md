@@ -5,8 +5,8 @@ order: 8
 ---
 
 Core and command line are platform-agnostic. Everything that differs by operating
-system is in one crate, `unifont-platform`, behind one trait, so that the behaviour
-described here is the same trait with three implementations. `unifont dirs` prints
+system is in one crate, `fontina-platform`, behind one trait, so that the behaviour
+described here is the same trait with three implementations. `fontina dirs` prints
 what the running binary believes the font directories are.
 
 The rules that hold on every platform: system font directories are never modified;
@@ -19,8 +19,8 @@ Font directories scanned with `--system`: `/usr/share/fonts`,
 and the legacy `~/.fonts`. The per-user directory is `$XDG_DATA_HOME/fonts`.
 
 Planned activation: a persistent install is a symlink into `$XDG_DATA_HOME/fonts`.
-A session activation is a symlink into `$XDG_DATA_HOME/fonts/unifont-active`,
-declared to fontconfig by a fragment in `~/.config/fontconfig/conf.d/50-unifont.conf`,
+A session activation is a symlink into `$XDG_DATA_HOME/fonts/fontina-active`,
+declared to fontconfig by a fragment in `~/.config/fontconfig/conf.d/50-fontina.conf`,
 and removed at logout. Deactivation removes the link. No fontconfig cache is
 rebuilt by hand; fontconfig notices the directory change itself.
 
@@ -52,7 +52,7 @@ writes the `HKCU` fonts key and broadcasts `WM_FONTCHANGE`. A session activation
 uses `AddFontResourceExW` without the private flag, re-applied at login by the
 optional agent. Enumeration through DirectWrite's font set.
 
-Caveat: some legacy applications only see machine-wide fonts. unifont will document
+Caveat: some legacy applications only see machine-wide fonts. fontina will document
 this rather than work around it, since the workaround is elevation.
 
 ## Paths in the index

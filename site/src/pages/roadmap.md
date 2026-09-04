@@ -1,11 +1,11 @@
 ---
 layout: ../layouts/Page.astro
 title: Roadmap
-description: "What exists, what is next, and what unifont will never do."
+description: "What exists, what is next, and what fontina will never do."
 source: site/src/pages/roadmap.md
 ---
 
-The authoritative plan is [`PLAN.md`](https://github.com/oddurs/unifont/blob/main/PLAN.md)
+The authoritative plan is [`PLAN.md`](https://github.com/oddurs/fontina/blob/main/PLAN.md)
 in the repository. This page is the summary.
 
 ## Done: foundations

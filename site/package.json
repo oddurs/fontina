@@ -1,9 +1,9 @@
 {
-  "name": "unifont-site",
+  "name": "fontina-site",
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Project web site and manual for unifont. Static HTML, no JavaScript shipped.",
+  "description": "Project web site and manual for fontina. Static HTML, no JavaScript shipped.",
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",

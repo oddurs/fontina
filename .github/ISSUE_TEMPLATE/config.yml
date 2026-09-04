@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/oddurs/unifont/security/advisories/new
+    url: https://github.com/oddurs/fontina/security/advisories/new
     about: Report privately. Please do not open a public issue for security problems.
   - name: Roadmap
-    url: https://github.com/oddurs/unifont/blob/main/PLAN.md
+    url: https://github.com/oddurs/fontina/blob/main/PLAN.md
     about: Check the plan before proposing a large feature.

@@ -8,13 +8,13 @@ const adrs = (await getCollection('adr')).sort((a, b) => a.id.localeCompare(b.id
 const title = (body = '') => body.match(/^#\s+(.+)$/m)?.[1] ?? '';
 const status = (body = '') => body.match(/\*\*Status:\*\*\s*(.+)$/m)?.[1] ?? '';
 ---
-<Base title="Architecture decision records" description="Why unifont is built the way it is: one record per decision, never edited after acceptance." source="docs/adr">
+<Base title="Architecture decision records" description="Why fontina is built the way it is: one record per decision, never edited after acceptance." source="docs/adr">
   <h1>Architecture decision records</h1>
   <p>
     One file per decision, numbered, never edited after acceptance; a change of mind is
     a new record that supersedes the old one. Each has the same three parts: context,
     decision, consequences. They are published here straight from
-    <a href="https://github.com/oddurs/unifont/tree/main/docs/adr"><code>docs/adr</code></a>
+    <a href="https://github.com/oddurs/fontina/tree/main/docs/adr"><code>docs/adr</code></a>
     in the repository.
   </p>
   <table>

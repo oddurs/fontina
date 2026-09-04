@@ -3,14 +3,14 @@ import Base from '../layouts/Base.astro';
 import { getCollection } from 'astro:content';
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const u = (p: string) => `${base}${p}`;
-const repo = 'https://github.com/oddurs/unifont';
+const repo = 'https://github.com/oddurs/fontina';
 const news = (await getCollection('news')).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf()).slice(0, 10);
 const day = (d: Date) => d.toISOString().slice(0, 10);
 
 // Prose is written as HTML strings: Astro drops the whitespace between text and a
 // tag at a line break, which runs words into links.
 const intro = `
-<p>unifont finds the fonts on a machine and in a user's own folders, reads what they
+<p>fontina finds the fonts on a machine and in a user's own folders, reads what they
 contain through <a href="https://github.com/googlefonts/fontations">fontations</a>,
 keeps it in a searchable <a href="${u('/docs/index-and-paths/')}">index</a>, and answers
 questions about it: which faces cover <a href="${u('/docs/getting-started/#looking')}">a
@@ -19,7 +19,7 @@ which file is a duplicate of which. It exports what it knows as
 <a href="${u('/docs/specimen/')}">CSS and HTML specimens</a> and as JSON with a
 <a href="${u('/docs/json-and-schemas/')}">published schema</a>. It is a Rust library first,
 a <a href="${u('/docs/cli/')}">command line</a> second, and a desktop application third.
-unifont is <a href="${u('/license/')}">free software</a>, free in the sense that it makes
+fontina is <a href="${u('/license/')}">free software</a>, free in the sense that it makes
 no network connections, collects nothing, asks for no privileges, and leaves the system
 font directories alone.</p>
 
@@ -29,14 +29,14 @@ work on GNU/Linux, macOS and Windows, and encourage everyone to
 <a href="${u('/bugs/')}">testing</a>. Our sources are readily and freely available via
 <a href="${repo}">Git</a>.</p>
 
-<p>Decisions about unifont are recorded as
+<p>Decisions about fontina are recorded as
 <a href="${u('/adr/')}">architecture decision records</a>, guided by the
 <a href="${u('/mission/')}">mission statement</a>.</p>
 `;
 
 const status = `
 <dl class="status">
-<dt><span class="version"><a href="${repo}/releases/tag/v0.0.1">unifont 0.0.1</a></span>
+<dt><span class="version"><a href="${repo}/releases/tag/v0.0.1">fontina 0.0.1</a></span>
   (<a href="${repo}/blob/main/CHANGELOG.md">changes</a>)</dt>
 <dd>Status: <a href="${u('/news/2026-09-03-project-started/')}">2026-09-03</a>
   (pre-release; core library and command line).
@@ -45,7 +45,7 @@ const status = `
   <a href="${repo}/issues?q=is%3Aissue+is%3Aopen+label%3Aregression">Regressions</a>.
   </div></dd>
 <dt><span class="version">Development:</span>
-  unifont 0.1 (<a href="${u('/roadmap/')}">roadmap</a>, <a href="${repo}/commits/main">changes</a>)</dt>
+  fontina 0.1 (<a href="${u('/roadmap/')}">roadmap</a>, <a href="${repo}/commits/main">changes</a>)</dt>
 <dd>Status: activation, watching and the terminal interface (general development).
   <div class="regress">
   <a href="${repo}/actions/workflows/ci.yml?query=branch%3Amain">CI on main</a>.
@@ -58,14 +58,14 @@ const status = `
 <a href="${repo}/releases">releases on GitHub</a>. There is no mailing list and nothing
 to sign up for.</p>
 
-<h2>Get unifont</h2>
+<h2>Get fontina</h2>
 <p class="smaller"><a href="${u('/download/')}">Binaries</a> for each release, with
 checksums and provenance, or <a href="${u('/download/#building-from-source')}">from
 source</a> with Rust 1.88 or newer.</p>
 `;
 ---
-<Base title="unifont" description="unifont is a free software font manager: a Rust library, a command line, and soon a desktop application. Open standards end to end." source="site/src/pages/index.astro">
-  <h1 class="no-margin-top">unifont, a font manager</h1>
+<Base title="fontina" description="fontina is a free software font manager: a Rust library, a command line, and soon a desktop application. Open standards end to end." source="site/src/pages/index.astro">
+  <h1 class="no-margin-top">fontina, a font manager</h1>
   <Fragment set:html={intro} />
   <hr />
   <div class="columns">
