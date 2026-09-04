@@ -618,6 +618,7 @@ dependencies = [
  "fontina-core",
  "fontina-platform",
  "ratatui",
+ "rusqlite",
  "serde",
  "serde_json",
 ]

@@ -128,11 +128,19 @@ pub fn apply(
             dirs.insert(p);
         } else if is_font_candidate(&p) {
             files.push(p);
-        } else if !p.exists() && p.extension().is_none() {
-            // A directory that went away (or was renamed): drop what was under it and
-            // rescan the root that held it so a rename's new name is picked up.
+        } else if !p.exists() {
+            // A path that went away. It cannot be stat'd any more, and its name proves
+            // nothing: `Fonts.old` is a directory with an extension, `LICENSE` a file
+            // without one. Ask the index instead — rows at or under the path mean it
+            // was a directory of fonts — and fall back to the name only when the index
+            // knew nothing about it. Drop what was under it and rescan the root that
+            // held it, so a rename's new name is picked up.
             let key = p.to_string_lossy().into_owned();
-            event.report.removed += index.remove_under(&key)?;
+            let removed = index.remove_under(&key)?;
+            if removed == 0 && p.extension().is_some() {
+                continue;
+            }
+            event.report.removed += removed;
             if let Some(root) = roots.iter().find(|r| p.starts_with(r)) {
                 dirs.insert(root.clone());
             }

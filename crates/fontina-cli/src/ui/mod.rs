@@ -136,6 +136,9 @@ pub struct App {
     preview_size: f32,
     detail: Option<FaceMetadata>,
     detail_id: Option<i64>,
+    /// The listing row for `detail_id`: tags and activation state, joined once per
+    /// selection rather than once per frame.
+    detail_summary: Option<FaceSummary>,
     preview: preview::Cache,
 }
 
@@ -169,6 +172,7 @@ impl App {
             preview_size: 28.0,
             detail: None,
             detail_id: None,
+            detail_summary: None,
             preview: preview::Cache::default(),
         };
         app.reload()?;
@@ -276,6 +280,10 @@ impl App {
             self.facet_list
                 .select(Some(first_selectable(&self.rows, 0)));
         }
+        // Anything the pane shows may have moved underneath it — a tag added, a face
+        // activated, a rescan — so the cached detail is dropped and read again.
+        self.detail = None;
+        self.detail_summary = None;
         self.refresh_detail()?;
         Ok(())
     }
@@ -313,15 +321,25 @@ impl App {
         }
     }
 
+    /// Load everything the detail pane shows, once per selection. The draw path runs on
+    /// every frame and only borrows what this leaves behind.
     fn refresh_detail(&mut self) -> Result<()> {
         let id = self.current_face_id();
-        if id != self.detail_id {
-            self.detail_id = id;
-            self.detail = match id {
-                Some(id) => self.index.get_face(id)?,
-                None => None,
-            };
+        if id == self.detail_id && self.detail.is_some() {
+            return Ok(());
         }
+        let face = match id {
+            Some(id) => self.index.get_face(id)?,
+            None => None,
+        };
+        self.detail_summary = match (id, &face) {
+            (Some(id), Some(_)) => self.index.summaries(&[id])?.into_iter().next(),
+            _ => None,
+        };
+        // A row that has gone since the listing was built leaves no detail, so it must
+        // leave no id either: the two always describe the same face.
+        self.detail_id = id.filter(|_| face.is_some());
+        self.detail = face;
         Ok(())
     }
 
@@ -873,7 +891,9 @@ impl App {
             .title(" Details ");
         let inner = block.inner(area);
         f.render_widget(block, area);
-        let Some(face) = self.detail.clone() else {
+        // Borrowed, never cloned: this runs on every frame, four times a second while
+        // the browser sits idle. `refresh_detail` is what queries the index.
+        let Some(face) = self.detail.as_ref() else {
             f.render_widget(Paragraph::new("Nothing selected."), inner);
             return;
         };
@@ -960,12 +980,7 @@ impl App {
         {
             lines.push(kv("designer", d.to_string()));
         }
-        let summary = self
-            .index
-            .summaries(&[self.detail_id.unwrap_or(0)])
-            .ok()
-            .and_then(|v| v.into_iter().next());
-        if let Some(s) = &summary {
+        if let Some(s) = self.detail_summary.as_ref() {
             if !s.tags.is_empty() {
                 lines.push(kv("tags", s.tags.join(", ")));
             }
@@ -1007,9 +1022,9 @@ impl App {
             .preview_text
             .clone()
             .or_else(|| face.names.sample_text.clone())
-            .unwrap_or_else(|| preview::sample_for(&face));
+            .unwrap_or_else(|| preview::sample_for(face));
         let lines = self.preview.lines(
-            &face,
+            face,
             &text,
             self.preview_size,
             preview_area.width as u32,
@@ -1197,5 +1212,56 @@ fn shell_quote(s: &str) -> String {
         s.to_string()
     } else {
         format!("'{}'", s.replace('\'', "'\\''"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An app over the fixture fonts, with nothing drawn.
+    fn app() -> App {
+        let mut index = Index::open_in_memory().unwrap();
+        let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures");
+        fontina_core::scan::scan(&mut index, &[fixtures], &Default::default()).unwrap();
+        App::new(index).unwrap()
+    }
+
+    #[test]
+    fn the_detail_summary_is_cached_alongside_the_face() {
+        let mut app = app();
+        assert!(app.detail.is_some(), "the first family is selected");
+        assert_eq!(app.detail_summary.as_ref().map(|s| s.id), app.detail_id);
+        // A new selection reloads both together.
+        app.list.select(Some(1));
+        app.refresh_detail().unwrap();
+        assert!(app.detail.is_some());
+        assert_eq!(app.detail_summary.as_ref().map(|s| s.id), app.detail_id);
+        // Redrawing does not: the same selection is a no-op.
+        let id = app.detail_id;
+        app.refresh_detail().unwrap();
+        assert_eq!(app.detail_id, id);
+        // A change to the index still reaches the pane, through the reload that
+        // follows every action.
+        app.index.tag(&[id.unwrap()], "favourite").unwrap();
+        app.reload().unwrap();
+        assert_eq!(
+            app.detail_summary.as_ref().unwrap().tags,
+            ["favourite"],
+            "the cache is dropped on reload"
+        );
+    }
+
+    #[test]
+    fn a_face_that_went_away_leaves_no_stale_id() {
+        let mut app = app();
+        let path = app.detail.as_ref().unwrap().file.path.clone();
+        // The listing still names the face, but the index no longer holds it.
+        assert!(app.index.remove_file(&path).unwrap());
+        app.detail_id = None;
+        app.refresh_detail().unwrap();
+        assert!(app.detail.is_none());
+        assert!(app.detail_id.is_none(), "a stale id outlived its face");
+        assert!(app.detail_summary.is_none());
     }
 }

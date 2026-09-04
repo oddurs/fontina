@@ -1941,7 +1941,7 @@ fn run_deactivate(cli: &Cli, targets: &[String], uninstall: bool, json: bool) ->
     Ok(())
 }
 
-#[derive(serde::Serialize, Default)]
+#[derive(Debug, Default, serde::Serialize)]
 struct RestoreReport {
     restored: usize,
     reinstalled: usize,
@@ -1951,34 +1951,7 @@ struct RestoreReport {
 fn run_restore(cli: &Cli, json: bool) -> Result<()> {
     let mut index = open_index(cli)?;
     let activator = fontina_platform::activator();
-    let mut report = RestoreReport::default();
-    for r in index.activations()? {
-        let path = std::path::Path::new(&r.face.path);
-        let result = match r.state {
-            ActivationState::Session => activator.activate(path, fontina_platform::Scope::Session),
-            ActivationState::User => activator.activate(path, fontina_platform::Scope::User),
-            ActivationState::Installed => {
-                match r
-                    .installed_path
-                    .as_deref()
-                    .filter(|p| std::path::Path::new(p).exists())
-                {
-                    Some(_) => Ok(()),
-                    None => activator.install(path).and_then(|p| {
-                        report.reinstalled += 1;
-                        let faces = index.file_faces(r.face.id).unwrap_or_default();
-                        index
-                            .set_activation(&faces, r.state, Some(&p.to_string_lossy()))
-                            .map_err(|e| fontina_platform::PlatformError::Os(e.to_string()))
-                    }),
-                }
-            }
-        };
-        match result {
-            Ok(()) => report.restored += 1,
-            Err(e) => report.failed.push((r.face.path.clone(), e.to_string())),
-        }
-    }
+    let report = restore_activations(&mut index, activator.as_ref())?;
     if json {
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
@@ -1993,6 +1966,54 @@ fn run_restore(cli: &Cli, json: bool) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Reapply every recorded activation with `activator`. A face is either restored or
+/// failed, never both, and a reinstall counts only once the index has been told where
+/// the new copy went.
+fn restore_activations(
+    index: &mut Index,
+    activator: &dyn fontina_platform::FontActivator,
+) -> Result<RestoreReport> {
+    let mut report = RestoreReport::default();
+    for r in index.activations()? {
+        let path = std::path::Path::new(&r.face.path);
+        let mut reinstalled = false;
+        let result = match r.state {
+            ActivationState::Session => activator.activate(path, fontina_platform::Scope::Session),
+            ActivationState::User => activator.activate(path, fontina_platform::Scope::User),
+            ActivationState::Installed => {
+                match r
+                    .installed_path
+                    .as_deref()
+                    .filter(|p| std::path::Path::new(p).exists())
+                {
+                    Some(_) => Ok(()),
+                    None => activator.install(path).and_then(|p| {
+                        // A database error here is a failure to record the install, not
+                        // an empty face list to write nothing for.
+                        let os = |e: fontina_core::Error| {
+                            fontina_platform::PlatformError::Os(e.to_string())
+                        };
+                        let faces = index.file_faces(r.face.id).map_err(os)?;
+                        index
+                            .set_activation(&faces, r.state, Some(&p.to_string_lossy()))
+                            .map_err(os)?;
+                        reinstalled = true;
+                        Ok(())
+                    }),
+                }
+            }
+        };
+        match result {
+            Ok(()) => {
+                report.restored += 1;
+                report.reinstalled += usize::from(reinstalled);
+            }
+            Err(e) => report.failed.push((r.face.path.clone(), e.to_string())),
+        }
+    }
+    Ok(report)
 }
 
 /// Which inline-image protocol the terminal speaks, from the environment.
@@ -2171,4 +2192,112 @@ pub(crate) fn face_key(face: &fontina_core::FaceMetadata) -> i64 {
     let h = &face.file.blake3;
     let n = i64::from_str_radix(&h[..15.min(h.len())], 16).unwrap_or(0);
     n.wrapping_mul(31).wrapping_add(face.index as i64)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use fontina_platform::{FontActivator, Scope};
+    use std::path::Path;
+
+    /// An activator that installs without touching the machine, and can break the index
+    /// while it does so — the one way, from outside the core, to make the write that
+    /// records an install fail.
+    struct Fake {
+        db: PathBuf,
+        /// Table to drop from a second connection while `install` runs.
+        breaks: Option<&'static str>,
+    }
+
+    impl FontActivator for Fake {
+        fn install(&self, file: &Path) -> fontina_platform::Result<PathBuf> {
+            if let Some(table) = self.breaks {
+                rusqlite::Connection::open(&self.db)
+                    .and_then(|c| c.execute_batch(&format!("DROP TABLE {table}")))
+                    .expect("second connection");
+            }
+            Ok(file.with_extension("installed"))
+        }
+        fn uninstall(&self, _installed: &Path) -> fontina_platform::Result<()> {
+            Ok(())
+        }
+        fn activate(&self, _file: &Path, _scope: Scope) -> fontina_platform::Result<()> {
+            Ok(())
+        }
+        fn deactivate(&self, _file: &Path) -> fontina_platform::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// An index over one fixture with its faces recorded as installed, but with no
+    /// installed path, so `restore` has to install them again.
+    fn installed_index(name: &str) -> (PathBuf, Index) {
+        let dir =
+            std::env::temp_dir().join(format!("fontina-restore-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("index.db");
+        let mut index = Index::open(&db).unwrap();
+        let font = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/Amiri-Regular.ttf");
+        fontina_core::scan::scan(&mut index, &[font], &ScanOptions::default()).unwrap();
+        let ids: Vec<i64> = index
+            .list(&FaceFilter::default())
+            .unwrap()
+            .iter()
+            .map(|f| f.id)
+            .collect();
+        assert_eq!(ids.len(), 1);
+        index
+            .set_activation(&ids, ActivationState::Installed, None)
+            .unwrap();
+        (db, index)
+    }
+
+    #[test]
+    fn restore_counts_a_reinstall_once_it_is_recorded() {
+        let (db, mut index) = installed_index("ok");
+        let report = restore_activations(&mut index, &Fake { db, breaks: None }).unwrap();
+        assert_eq!(report.restored, 1);
+        assert_eq!(report.reinstalled, 1);
+        assert!(report.failed.is_empty(), "{:?}", report.failed);
+        assert!(index.activations().unwrap()[0].installed_path.is_some());
+    }
+
+    #[test]
+    fn restore_does_not_count_a_reinstall_it_could_not_record() {
+        // The install succeeds, then writing where the copy went fails.
+        let (db, mut index) = installed_index("write");
+        let report = restore_activations(
+            &mut index,
+            &Fake {
+                db,
+                breaks: Some("activations"),
+            },
+        )
+        .unwrap();
+        assert_eq!(report.failed.len(), 1, "{report:?}");
+        assert_eq!(report.restored, 0, "{report:?}");
+        assert_eq!(
+            report.reinstalled, 0,
+            "a face counted as reinstalled and failed: {report:?}"
+        );
+    }
+
+    #[test]
+    fn restore_surfaces_a_database_error_when_looking_up_the_faces() {
+        // Reading the file's faces fails: that is a failure, not an empty face list to
+        // silently write nothing for.
+        let (db, mut index) = installed_index("read");
+        let report = restore_activations(
+            &mut index,
+            &Fake {
+                db,
+                breaks: Some("faces"),
+            },
+        )
+        .unwrap();
+        assert_eq!(report.failed.len(), 1, "{report:?}");
+        assert_eq!(report.restored, 0, "{report:?}");
+        assert_eq!(report.reinstalled, 0, "{report:?}");
+    }
 }
