@@ -573,19 +573,26 @@ fn watch_applies_file_and_directory_changes() {
         )
         .unwrap();
     });
-    std::thread::sleep(std::time::Duration::from_millis(500));
-    std::fs::copy(
-        fixtures().join("Nabla[EDPT,EHLT].ttf"),
-        roots[0].join("Nabla.ttf"),
-    )
-    .unwrap();
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    // The watcher runs on its own thread and nothing says when its stream is registered,
+    // so copy the file and, if no batch arrives within a couple of seconds, copy it
+    // again: a slow start on a loaded runner then cannot lose the only event, and a
+    // batch that parsed nothing (an FSEvents replay, or a file caught mid-copy) is just
+    // waited past.
+    let nabla = roots[0].join("Nabla.ttf");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
     loop {
-        let parsed = rx
-            .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
-            .expect("watcher reported the new file");
-        if parsed >= 1 {
-            break;
+        std::fs::copy(fixtures().join("Nabla[EDPT,EHLT].ttf"), &nabla).unwrap();
+        let wait = std::time::Duration::from_secs(2)
+            .min(deadline.saturating_duration_since(std::time::Instant::now()));
+        match rx.recv_timeout(wait) {
+            Ok(parsed) if parsed >= 1 => break,
+            Ok(_) => continue,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+                if std::time::Instant::now() < deadline =>
+            {
+                continue;
+            }
+            Err(e) => panic!("watcher never reported the new file: {e}"),
         }
     }
     handle.join().unwrap();
