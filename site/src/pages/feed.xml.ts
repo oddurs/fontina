@@ -6,8 +6,8 @@ export async function GET(context: APIContext) {
   const news = (await getCollection('news')).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
   const base = import.meta.env.BASE_URL.replace(/\/$/, '');
   return rss({
-    title: 'unifont news',
-    description: 'Announcements and release notes for unifont, a free software font manager.',
+    title: 'fontina news',
+    description: 'Announcements and release notes for fontina, a free software font manager.',
     site: context.site!,
     items: news.map((n) => ({
       title: n.data.title,

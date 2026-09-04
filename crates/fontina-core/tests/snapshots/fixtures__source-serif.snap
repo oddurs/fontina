@@ -1,0 +1,125 @@
+---
+source: crates/fontina-core/tests/fixtures.rs
+expression: "snapshot_view(&faces[0])"
+---
+{
+  "capabilities": {
+    "bitmap_strikes": false,
+    "color": [],
+    "hinting": false,
+    "kern_table": false,
+    "math": false,
+    "outlines": "cff"
+  },
+  "codepoints": 920,
+  "container": "otf",
+  "designer": "Frank Grießhammer",
+  "embedding": {
+    "bitmap_only": false,
+    "level": "installable",
+    "no_subsetting": false
+  },
+  "family": "Source Serif 4",
+  "features": {
+    "gpos": [
+      "kern",
+      "mark",
+      "mkmk",
+      "size"
+    ],
+    "gsub": [
+      "aalt",
+      "c2sc",
+      "case",
+      "ccmp",
+      "dnom",
+      "frac",
+      "liga",
+      "lnum",
+      "locl",
+      "numr",
+      "onum",
+      "ordn",
+      "pnum",
+      "sinf",
+      "smcp",
+      "ss01",
+      "ss02",
+      "subs",
+      "sups",
+      "tnum",
+      "zero"
+    ],
+    "scripts": [
+      {
+        "languages": [],
+        "tag": "DFLT"
+      },
+      {
+        "languages": [
+          "BGR ",
+          "MKD ",
+          "SRB "
+        ],
+        "tag": "cyrl"
+      },
+      {
+        "languages": [],
+        "tag": "grek"
+      },
+      {
+        "languages": [
+          "AZE ",
+          "CRT ",
+          "NLD ",
+          "TRK "
+        ],
+        "tag": "latn"
+      }
+    ]
+  },
+  "freedom": "free",
+  "glyph_count": 1464,
+  "index": 0,
+  "license": "OFL-1.1",
+  "postscript_name": "SourceSerif4-Regular",
+  "scripts": [
+    {
+      "codepoints": 444,
+      "script": "Latn"
+    },
+    {
+      "codepoints": 228,
+      "script": "Zyyy"
+    },
+    {
+      "codepoints": 150,
+      "script": "Cyrl"
+    },
+    {
+      "codepoints": 77,
+      "script": "Grek"
+    },
+    {
+      "codepoints": 21,
+      "script": "Zinh"
+    }
+  ],
+  "style": {
+    "css": {
+      "family": "Source Serif 4",
+      "format": "opentype",
+      "stretch": "100%",
+      "style": "normal",
+      "weight": "400"
+    },
+    "slope": {
+      "kind": "normal"
+    },
+    "weight": 400.0,
+    "width": 100.0
+  },
+  "subfamily": "Regular",
+  "units_per_em": 1000,
+  "variable": null
+}

@@ -9,7 +9,7 @@ benefit: truthful font previews. Meanwhile every feature the app needs (activati
 watched folders, tags, collections, facets) has to exist in the core and the CLI anyway.
 
 ## Decision
-M1 ships as a CLI plus a ratatui TUI (`unifont ui`). Previews are rendered in the
+M1 ships as a CLI plus a ratatui TUI (`fontina ui`). Previews are rendered in the
 terminal: harfrust for shaping, skrifa for outlines, a coverage rasteriser, and the kitty,
 iTerm2 and sixel image protocols with a half-block fallback. ADR 0003 (Tauri for a
 graphical shell) stays accepted but moves to M3, and only if the TUI leaves a real gap.

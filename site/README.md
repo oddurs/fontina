@@ -1,4 +1,4 @@
-# unifont web site
+# fontina web site
 
 The project site and manual: plain HTML, no JavaScript, one stylesheet. Built with
 [Astro](https://astro.build) so the manual can live in Markdown and the architecture

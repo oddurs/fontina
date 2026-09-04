@@ -1,6 +1,6 @@
 # See https://securitytxt.org/ and RFC 9116.
-Contact: https://github.com/oddurs/unifont/security/advisories/new
+Contact: https://github.com/oddurs/fontina/security/advisories/new
 Contact: mailto:oddurs@gmail.com
-Policy: https://github.com/oddurs/unifont/blob/main/SECURITY.md
+Policy: https://github.com/oddurs/fontina/blob/main/SECURITY.md
 Preferred-Languages: en
 Expires: 2027-09-03T00:00:00.000Z

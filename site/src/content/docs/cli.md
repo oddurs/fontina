@@ -1,27 +1,27 @@
 ---
 title: Command reference
-description: "unifont(1), in the form of a man page."
+description: "fontina(1), in the form of a man page."
 order: 3
 ---
 
-This chapter follows the layout of a manual page. `unifont help <command>` prints the
+This chapter follows the layout of a manual page. `fontina help <command>` prints the
 same information from the binary itself, and is always current for the version you
 have.
 
 ## NAME
 
-unifont: scan, search, inspect, check and export fonts.
+fontina: scan, search, inspect, check and export fonts.
 
 ## SYNOPSIS
 
 ```
-unifont [--db PATH] <command> [options] [arguments]
+fontina [--db PATH] <command> [options] [arguments]
 ```
 
 ## DESCRIPTION
 
-unifont indexes font files into a SQLite database and answers questions about them.
-The index is a single file; `--db` or the `UNIFONT_DB` environment variable selects
+fontina indexes font files into a SQLite database and answers questions about them.
+The index is a single file; `--db` or the `FONTINA_DB` environment variable selects
 it, otherwise it lives in the platform data directory. Every command that prints a
 report accepts `--json`; the output types are published in
 `schemas/cli-output.json`.
@@ -177,7 +177,7 @@ Accepted by `list`, `families` and `facets`; all of them combine.
 | `--vendor ID` | `OS/2` vendor id, `GOOG`, `ADBE` |
 | `--tag TAG` | faces carrying this tag |
 | `--collection NAME` | faces in this collection |
-| `--active[=BOOL]` | faces activated or installed through unifont |
+| `--active[=BOOL]` | faces activated or installed through fontina |
 | `--activation STATE` | `session`, `user` or `installed` |
 | `--container KIND` | `ttf`, `otf`, `ttc`, `woff` or `woff2` |
 | `--under PREFIX` | faces whose path starts with this prefix |
@@ -187,7 +187,7 @@ Accepted by `list`, `families` and `facets`; all of them combine.
 
 <dl>
 <dt><code>--db PATH</code></dt>
-<dd>Path to the index database. Defaults to <code>UNIFONT_DB</code>, then the
+<dd>Path to the index database. Defaults to <code>FONTINA_DB</code>, then the
 platform data directory.</dd>
 <dt><code>--json</code></dt>
 <dd>Machine-readable output. Available on every reporting command.</dd>
@@ -198,7 +198,7 @@ platform data directory.</dd>
 ## ENVIRONMENT
 
 <dl>
-<dt><code>UNIFONT_DB</code></dt>
+<dt><code>FONTINA_DB</code></dt>
 <dd>Path of the index database when <code>--db</code> is not given.</dd>
 <dt><code>XDG_DATA_HOME</code>, <code>XDG_CONFIG_HOME</code></dt>
 <dd>Honoured on Linux for the default index location and, in future, configuration.</dd>
@@ -219,32 +219,32 @@ do not fail the scan.
 Index the system fonts and your own, then look for a Cyrillic serif:
 
 ```
-unifont scan --system ~/Fonts
-unifont list --script Cyrl serif
+fontina scan --system ~/Fonts
+fontina list --script Cyrl serif
 ```
 
 Everything that is not under an open license:
 
 ```
-unifont list --license LicenseRef
+fontina list --license LicenseRef
 ```
 
 The bold weights of one family as CSS for a web project:
 
 ```
-unifont css $(unifont list --family "Source Serif 4" --weight 600-900 --json | jq '.[].id') --url-prefix /fonts/
+fontina css $(fontina list --family "Source Serif 4" --weight 600-900 --json | jq '.[].id') --url-prefix /fonts/
 ```
 
 A specimen comparing three candidates:
 
 ```
-unifont specimen 12 34 56 --text "Hamburgefonstiv" -o compare.html
+fontina specimen 12 34 56 --text "Hamburgefonstiv" -o compare.html
 ```
 
 Fail a build if any shipped font has an error:
 
 ```
-unifont check dist/fonts/* --min warn
+fontina check dist/fonts/* --min warn
 ```
 
 ## SEE ALSO

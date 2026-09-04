@@ -43,16 +43,16 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       # platform-tests register a fixture font with the OS (session scope, per-user) and
       # undo it; the runner is disposable.
-      - run: cargo test --workspace --features unifont-platform/platform-tests
+      - run: cargo test --workspace --features fontina-platform/platform-tests
       - name: smoke the CLI
         shell: bash
         run: |
-          cargo run -q -p unifont-cli -- --db "${RUNNER_TEMP}/u.db" scan fixtures
-          cargo run -q -p unifont-cli -- --db "${RUNNER_TEMP}/u.db" list --json | head -c 400
-          cargo run -q -p unifont-cli -- --db "${RUNNER_TEMP}/u.db" scan --system
-          cargo run -q -p unifont-cli -- --db "${RUNNER_TEMP}/u.db" activate --session family:Amiri
-          cargo run -q -p unifont-cli -- --db "${RUNNER_TEMP}/u.db" activations
-          cargo run -q -p unifont-cli -- --db "${RUNNER_TEMP}/u.db" deactivate family:Amiri
+          cargo run -q -p fontina-cli -- --db "${RUNNER_TEMP}/u.db" scan fixtures
+          cargo run -q -p fontina-cli -- --db "${RUNNER_TEMP}/u.db" list --json | head -c 400
+          cargo run -q -p fontina-cli -- --db "${RUNNER_TEMP}/u.db" scan --system
+          cargo run -q -p fontina-cli -- --db "${RUNNER_TEMP}/u.db" activate --session family:Amiri
+          cargo run -q -p fontina-cli -- --db "${RUNNER_TEMP}/u.db" activations
+          cargo run -q -p fontina-cli -- --db "${RUNNER_TEMP}/u.db" deactivate family:Amiri
 
   msrv:
     name: msrv
@@ -73,6 +73,16 @@ jobs:
       - uses: actions/checkout@v7
       - uses: EmbarkStudios/cargo-deny-action@v2
 
+  docs:
+    name: manual builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo apt-get update && sudo apt-get install -y texinfo
+      # A manual that is never built is a manual that rots.
+      - run: makeinfo --no-split -o /tmp/fontina.info docs/fontina.texi
+      - run: makeinfo --html --no-split -o /tmp/fontina.html docs/fontina.texi
+
   schema:
     name: schema is current
     runs-on: ubuntu-latest
@@ -82,5 +92,5 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: |
           for s in face collection cli-output; do
-            cargo run -q -p unifont-cli -- schema $s > /tmp/$s.json && diff -u schemas/$s.json /tmp/$s.json
+            cargo run -q -p fontina-cli -- schema $s > /tmp/$s.json && diff -u schemas/$s.json /tmp/$s.json
           done

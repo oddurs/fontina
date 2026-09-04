@@ -1,28 +1,28 @@
 ---
 layout: ../layouts/Page.astro
 title: Download
-description: "Release binaries, checksums, provenance verification, and building unifont from source."
+description: "Release binaries, checksums, provenance verification, and building fontina from source."
 source: site/src/pages/download.md
 ---
 
-unifont is pre-release software. Version 0.0.1 has the core library and the command
+fontina is pre-release software. Version 0.0.1 has the core library and the command
 line; see the [roadmap](../roadmap/) for what is next.
 
 ## Release binaries
 
 Every tagged release on
-[github.com/oddurs/unifont/releases](https://github.com/oddurs/unifont/releases)
+[github.com/oddurs/fontina/releases](https://github.com/oddurs/fontina/releases)
 carries an archive per platform:
 
 | Target | Archive |
 |---|---|
-| Linux x86_64 (glibc) | `unifont-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz` |
-| Linux aarch64 (glibc) | `unifont-vX.Y.Z-aarch64-unknown-linux-gnu.tar.gz` |
-| macOS Apple silicon | `unifont-vX.Y.Z-aarch64-apple-darwin.tar.gz` |
-| macOS Intel | `unifont-vX.Y.Z-x86_64-apple-darwin.tar.gz` |
-| Windows x86_64 | `unifont-vX.Y.Z-x86_64-pc-windows-msvc.zip` |
+| Linux x86_64 (glibc) | `fontina-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz` |
+| Linux aarch64 (glibc) | `fontina-vX.Y.Z-aarch64-unknown-linux-gnu.tar.gz` |
+| macOS Apple silicon | `fontina-vX.Y.Z-aarch64-apple-darwin.tar.gz` |
+| macOS Intel | `fontina-vX.Y.Z-x86_64-apple-darwin.tar.gz` |
+| Windows x86_64 | `fontina-vX.Y.Z-x86_64-pc-windows-msvc.zip` |
 
-Each archive holds one statically linked binary named `unifont` (or `unifont.exe`).
+Each archive holds one statically linked binary named `fontina` (or `fontina.exe`).
 Put it on your `PATH`. There is no installer and nothing else to install.
 
 ## Verifying a download
@@ -32,7 +32,7 @@ Three things are published beside every archive.
 1. **A SHA-256 checksum**, in `<archive>.sha256`:
 
    ```
-   sha256sum -c unifont-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz.sha256
+   sha256sum -c fontina-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz.sha256
    ```
 
 2. **A SLSA build provenance attestation**, signed by GitHub's Sigstore instance. It
@@ -40,10 +40,10 @@ Three things are published beside every archive.
    tagged commit, not on someone's laptop:
 
    ```
-   gh attestation verify unifont-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz --repo oddurs/unifont
+   gh attestation verify fontina-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz --repo oddurs/fontina
    ```
 
-3. **An SPDX software bill of materials**, `unifont-vX.Y.Z.spdx.json`, listing every
+3. **An SPDX software bill of materials**, `fontina-vX.Y.Z.spdx.json`, listing every
    crate compiled into the binary and its license.
 
 Nothing is signed by hand and nothing is uploaded by hand. If a release artifact does
@@ -57,16 +57,16 @@ parsing is pure Rust.
 Install the command line straight from the repository:
 
 ```
-cargo install --git https://github.com/oddurs/unifont unifont-cli
+cargo install --git https://github.com/oddurs/fontina fontina-cli
 ```
 
 Or clone and build:
 
 ```
-git clone https://github.com/oddurs/unifont
-cd unifont
+git clone https://github.com/oddurs/fontina
+cd fontina
 cargo build --release
-./target/release/unifont --version
+./target/release/fontina --version
 ```
 
 The test suite needs nothing beyond the repository; the fixture fonts are checked in:

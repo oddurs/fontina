@@ -1,16 +1,16 @@
 ---
 title: Health checks
-description: "what `unifont check` looks for, every check identifier, and the exit status rules."
+description: "what `fontina check` looks for, every check identifier, and the exit status rules."
 order: 5
 ---
 
-`unifont check` is a small, fast subset of what
+`fontina check` is a small, fast subset of what
 [fontbakery](https://github.com/fonttools/fontbakery) does: the checks that catch a
 broken or misdeclared font before it reaches a project, not the checks that judge
 its design. It runs on indexed faces or on any file.
 
 ```
-$ unifont check ~/Fonts/*.ttf
+$ fontina check ~/Fonts/*.ttf
 PASS  Amiri Regular  (/home/me/Fonts/Amiri-Regular.ttf#0)  0 error(s), 0 warning(s)
 1 face(s) checked, 0 failed
 ```
@@ -80,7 +80,7 @@ was found.
 
 It does not rasterise, so it cannot find overlapping contours, wrong-direction
 paths or missing glyph outlines. It does not judge vertical metrics against a
-family, spacing, or kerning quality. For those, run fontbakery. unifont's checks
+family, spacing, or kerning quality. For those, run fontbakery. fontina's checks
 are meant to be cheap enough to run on every scan.
 
 ## Adding a check

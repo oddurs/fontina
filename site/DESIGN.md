@@ -1,4 +1,4 @@
-# unifont web design system
+# fontina web design system
 
 Derived from the gcc.gnu.org stylesheet, kept where it is good and corrected where it
 is only old. The stylesheet `src/styles/site.css` implements exactly what is here,
@@ -121,7 +121,7 @@ square brackets; `dd` indented 3ex with tight vertical margins.
 
 ```
 <dl class="status">
-  <dt><span class="version"><a href="...">unifont 0.0.1</a></span> (<a href="...">changes</a>)</dt>
+  <dt><span class="version"><a href="...">fontina 0.0.1</a></span> (<a href="...">changes</a>)</dt>
   <dd>Status: <a href="...">2026-09-03</a> (pre-release). <div class="regress">...</div></dd>
 </dl>
 ```

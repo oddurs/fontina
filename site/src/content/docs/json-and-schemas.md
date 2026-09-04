@@ -31,9 +31,9 @@ validate <code>list</code>, <code>facets</code>, <code>check</code>, <code>dupes
 Print any of them from the binary you have, which is always the right version:
 
 ```
-unifont schema face
-unifont schema collection
-unifont schema cli-output
+fontina schema face
+fontina schema collection
+fontina schema cli-output
 ```
 
 ## Stability
@@ -50,25 +50,25 @@ unifont schema cli-output
 Ids of every variable font, for a shell loop:
 
 ```
-unifont list --variable --json | jq -r '.[].id'
+fontina list --variable --json | jq -r '.[].id'
 ```
 
 Families that cover Devanagari, with the number of faces in each:
 
 ```
-unifont families --script Deva --json | jq -r '.[] | "\(.family)\t\(.faces | length)"'
+fontina families --script Deva --json | jq -r '.[] | "\(.family)\t\(.faces | length)"'
 ```
 
 Fail a script if any font forbids embedding:
 
 ```
-unifont license --json | jq -e 'all(.[]; .embedding.level != "restricted_license")'
+fontina license --json | jq -e 'all(.[]; .embedding.level != "restricted_license")'
 ```
 
 Validate a collection file before importing it:
 
 ```
-unifont schema collection > collection.schema.json
+fontina schema collection > collection.schema.json
 check-jsonschema --schemafile collection.schema.json editorial.json
 ```
 

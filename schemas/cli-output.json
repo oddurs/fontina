@@ -28,7 +28,7 @@
       "type": "object"
     },
     "ActivationState": {
-      "description": "How a face was made available to the OS through unifont.",
+      "description": "How a face was made available to the OS through fontina.",
       "oneOf": [
         {
           "const": "session",
@@ -285,7 +285,7 @@
               "type": "null"
             }
           ],
-          "description": "Activation state recorded by unifont, if any."
+          "description": "Activation state recorded by fontina, if any."
         },
         "color": {
           "type": "boolean"
@@ -301,6 +301,11 @@
         },
         "family": {
           "type": "string"
+        },
+        "freedom": {
+          "$ref": "#/$defs/Freedom",
+          "default": "unstated",
+          "description": "Whether `license` grants the four freedoms. Derived on read, never stored."
         },
         "glyph_count": {
           "format": "uint16",
@@ -435,6 +440,13 @@
           "format": "int64",
           "type": "integer"
         },
+        "freedom": {
+          "description": "`free`, `nonfree`, `unknown` or `unstated`, derived from the license.",
+          "items": {
+            "$ref": "#/$defs/FacetCount"
+          },
+          "type": "array"
+        },
         "license": {
           "items": {
             "$ref": "#/$defs/FacetCount"
@@ -504,6 +516,7 @@
         "container",
         "script",
         "license",
+        "freedom",
         "vendor",
         "tag",
         "collection",
@@ -642,6 +655,31 @@
       ],
       "type": "object"
     },
+    "Freedom": {
+      "description": "Whether a license grants the four freedoms.",
+      "oneOf": [
+        {
+          "const": "free",
+          "description": "The license grants all four freedoms.",
+          "type": "string"
+        },
+        {
+          "const": "nonfree",
+          "description": "The license withholds at least one of them.",
+          "type": "string"
+        },
+        {
+          "const": "unknown",
+          "description": "A license is stated, but it is not one that is known to be free.",
+          "type": "string"
+        },
+        {
+          "const": "unstated",
+          "description": "The font carries no license information at all. No permission is stated, so in\nlaw none is granted, however the font was meant to be shared.",
+          "type": "string"
+        }
+      ]
+    },
     "ImportReport": {
       "properties": {
         "collection": {
@@ -757,7 +795,7 @@
           "type": "string"
         },
         "watch": {
-          "description": "Followed by `unifont watch`.",
+          "description": "Followed by `fontina watch`.",
           "type": "boolean"
         }
       },
@@ -884,6 +922,6 @@
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "Every type `unifont --json` prints, one definition each.",
-  "title": "unifont CLI output"
+  "description": "Every type `fontina --json` prints, one definition each.",
+  "title": "fontina CLI output"
 }

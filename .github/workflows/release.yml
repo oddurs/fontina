@@ -37,30 +37,30 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
-      - run: cargo build --release --locked -p unifont-cli --target ${{ matrix.target }}
+      - run: cargo build --release --locked -p fontina-cli --target ${{ matrix.target }}
 
       # Completions and man pages come from the binary itself, so they always match it.
       # Cross-built binaries cannot run here; the host build generates them instead.
       - name: Generate completions and man pages
         shell: bash
         run: |
-          cargo build --release --locked -p unifont-cli
-          gen=target/release/unifont; [ "${{ runner.os }}" = "Windows" ] && gen=target/release/unifont.exe
+          cargo build --release --locked -p fontina-cli
+          gen=target/release/fontina; [ "${{ runner.os }}" = "Windows" ] && gen=target/release/fontina.exe
           mkdir -p target/pkg/completions target/pkg/man
-          "$gen" completions bash > target/pkg/completions/unifont.bash
-          "$gen" completions zsh  > target/pkg/completions/_unifont
-          "$gen" completions fish > target/pkg/completions/unifont.fish
-          "$gen" completions powershell > target/pkg/completions/_unifont.ps1
+          "$gen" completions bash > target/pkg/completions/fontina.bash
+          "$gen" completions zsh  > target/pkg/completions/_fontina
+          "$gen" completions fish > target/pkg/completions/fontina.fish
+          "$gen" completions powershell > target/pkg/completions/_fontina.ps1
           "$gen" man --out-dir target/pkg/man
 
       - name: Package
         id: pkg
         shell: bash
         run: |
-          name="unifont-${{ github.event.release.tag_name }}-${{ matrix.target }}"
+          name="fontina-${{ github.event.release.tag_name }}-${{ matrix.target }}"
           mkdir -p "dist/$name"
-          bin=unifont; [ "${{ runner.os }}" = "Windows" ] && bin=unifont.exe
-          cp "target/${{ matrix.target }}/release/$bin" README.md LICENSE-MIT LICENSE-APACHE "dist/$name/"
+          bin=fontina; [ "${{ runner.os }}" = "Windows" ] && bin=fontina.exe
+          cp "target/${{ matrix.target }}/release/$bin" README.md COPYING docs/fontina.texi "dist/$name/"
           cp -r target/pkg/completions target/pkg/man "dist/$name/"
           cd dist
           if [ "${{ matrix.ext }}" = "zip" ]; then
@@ -89,8 +89,8 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           cargo install --locked cargo-deb cargo-generate-rpm
-          cargo deb --no-build --no-strip -p unifont-cli --target ${{ matrix.target }} -o dist/
-          cargo generate-rpm -p crates/unifont-cli --target ${{ matrix.target }} -o dist/
+          cargo deb --no-build --no-strip -p fontina-cli --target ${{ matrix.target }} -o dist/
+          cargo generate-rpm -p crates/fontina-cli --target ${{ matrix.target }} -o dist/
           ls -la dist/*.deb dist/*.rpm
       - name: Upload the packages
         if: runner.os == 'Linux'
@@ -112,9 +112,9 @@ jobs:
         with:
           path: .
           format: spdx-json
-          output-file: unifont-${{ github.event.release.tag_name }}.spdx.json
+          output-file: fontina-${{ github.event.release.tag_name }}.spdx.json
           upload-artifact: false
       - name: Upload to the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ github.event.release.tag_name }}" unifont-${{ github.event.release.tag_name }}.spdx.json --clobber
+        run: gh release upload "${{ github.event.release.tag_name }}" fontina-${{ github.event.release.tag_name }}.spdx.json --clobber

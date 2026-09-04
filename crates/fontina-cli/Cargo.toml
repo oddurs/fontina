@@ -1,0 +1,55 @@
+[package]
+name = "fontina-cli"
+description = "Command-line font manager: scan, search, inspect and export fonts"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[[bin]]
+name = "fontina"
+path = "src/main.rs"
+
+[dependencies]
+fontina-core.workspace = true
+fontina-platform.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+ratatui = { version = "0.30", default-features = false, features = ["crossterm", "std", "layout-cache"] }
+clap_complete = "4"
+clap_mangen = "0.3"
+
+# `cargo deb` and `cargo generate-rpm` (run in the release workflow after
+# `fontina completions` and `fontina man --out-dir` have filled target/pkg/).
+[package.metadata.deb]
+name = "fontina"
+section = "utils"
+priority = "optional"
+extended-description = "A lightweight, terminal-first font manager. Indexes fonts into a searchable SQLite database, previews them with real shaping in the terminal, activates and installs them per user, and organises them with tags and collections. No network, no telemetry."
+assets = [
+  ["target/release/fontina", "usr/bin/", "755"],
+  ["../../README.md", "usr/share/doc/fontina/README.md", "644"],
+  ["../../target/pkg/completions/fontina.bash", "usr/share/bash-completion/completions/fontina", "644"],
+  ["../../target/pkg/completions/_fontina", "usr/share/zsh/vendor-completions/_fontina", "644"],
+  ["../../target/pkg/completions/fontina.fish", "usr/share/fish/vendor_completions.d/fontina.fish", "644"],
+  ["../../target/pkg/man/*.1", "usr/share/man/man1/", "644"],
+]
+
+[package.metadata.generate-rpm]
+name = "fontina"
+summary = "Lightweight, terminal-first font manager"
+license = "GPL-3.0-or-later"
+assets = [
+  { source = "target/release/fontina", dest = "/usr/bin/fontina", mode = "755" },
+  { source = "README.md", dest = "/usr/share/doc/fontina/README.md", mode = "644", doc = true },
+  { source = "target/pkg/completions/fontina.bash", dest = "/usr/share/bash-completion/completions/fontina", mode = "644" },
+  { source = "target/pkg/completions/_fontina", dest = "/usr/share/zsh/site-functions/_fontina", mode = "644" },
+  { source = "target/pkg/completions/fontina.fish", dest = "/usr/share/fish/vendor_completions.d/fontina.fish", mode = "644" },
+  { source = "target/pkg/man/*.1", dest = "/usr/share/man/man1/", mode = "644", doc = true },
+]

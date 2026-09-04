@@ -1,26 +1,26 @@
 [workspace]
 resolver = "2"
 members = [
-  "crates/unifont-core",
-  "crates/unifont-platform",
-  "crates/unifont-cli",
+  "crates/fontina-core",
+  "crates/fontina-platform",
+  "crates/fontina-cli",
 ]
 
 [workspace.package]
 version = "0.0.1"
 edition = "2024"
 rust-version = "1.88"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/oddurs/unifont"
-homepage = "https://github.com/oddurs/unifont"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/oddurs/fontina"
+homepage = "https://github.com/oddurs/fontina"
 authors = ["Oddur Sigurdsson"]
 readme = "README.md"
 keywords = ["font", "opentype", "typography", "font-manager", "woff2"]
 categories = ["command-line-utilities", "text-processing", "multimedia"]
 
 [workspace.dependencies]
-unifont-core = { path = "crates/unifont-core" }
-unifont-platform = { path = "crates/unifont-platform" }
+fontina-core = { path = "crates/fontina-core" }
+fontina-platform = { path = "crates/fontina-platform" }
 
 skrifa = "0.46"
 read-fonts = "0.43"

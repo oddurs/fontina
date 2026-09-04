@@ -7,7 +7,7 @@ order: 6
 ## The HTML specimen
 
 ```
-unifont specimen 1 2 3 -o specimen.html
+fontina specimen 1 2 3 -o specimen.html
 ```
 
 writes one HTML file. It contains, for each face:
@@ -39,7 +39,7 @@ reference implementation it will reuse
 ## `@font-face` export
 
 ```
-unifont css 1 2 --url-prefix /fonts/ > fonts.css
+fontina css 1 2 --url-prefix /fonts/ > fonts.css
 ```
 
 emits one rule per face:

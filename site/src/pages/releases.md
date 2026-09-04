@@ -1,6 +1,6 @@
 ---
 layout: ../layouts/Page.astro
-title: unifont releases
+title: fontina releases
 description: "Release series, their support status, and the release timeline."
 source: site/src/pages/releases.md
 ---
@@ -8,7 +8,7 @@ source: site/src/pages/releases.md
 ## Download
 
 Releases may be downloaded from the
-[GitHub releases page](https://github.com/oddurs/unifont/releases); see
+[GitHub releases page](https://github.com/oddurs/fontina/releases); see
 [Download](../download/) for the archives per platform and how to verify them.
 There are no mirrors yet.
 
@@ -16,14 +16,14 @@ There are no mirrors yet.
 and the command line. There is no desktop application yet.*
 
 You can also retrieve our sources
-[using Git](https://github.com/oddurs/unifont).
+[using Git](https://github.com/oddurs/fontina).
 
 ## Support
 
 Only the latest release and the `main` branch receive fixes. Releases follow
 [semantic versioning](https://semver.org/) and are cut by
 [release-please](https://github.com/googleapis/release-please) from the commit
-history; the [changelog](https://github.com/oddurs/unifont/blob/main/CHANGELOG.md)
+history; the [changelog](https://github.com/oddurs/fontina/blob/main/CHANGELOG.md)
 is generated the same way. Nothing is released by hand.
 
 Security fixes are announced in the release notes and, for anything serious, on the
@@ -33,7 +33,7 @@ Security fixes are announced in the release notes and, for anything serious, on 
 
 <table class="padding5">
 <tr><th>Release</th><th>Release date</th><th>Notes</th></tr>
-<tr><td><a href="https://github.com/oddurs/unifont/releases/tag/v0.0.1">unifont 0.0.1</a></td><td>September 3, 2026</td><td>Core library and command line. Pre-release.</td></tr>
+<tr><td><a href="https://github.com/oddurs/fontina/releases/tag/v0.0.1">fontina 0.0.1</a></td><td>September 3, 2026</td><td>Core library and command line. Pre-release.</td></tr>
 </table>
 
 Planned series, from the [roadmap](../roadmap/):

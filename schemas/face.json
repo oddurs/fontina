@@ -278,6 +278,31 @@
       ],
       "type": "object"
     },
+    "Freedom": {
+      "description": "Whether a license grants the four freedoms.",
+      "oneOf": [
+        {
+          "const": "free",
+          "description": "The license grants all four freedoms.",
+          "type": "string"
+        },
+        {
+          "const": "nonfree",
+          "description": "The license withholds at least one of them.",
+          "type": "string"
+        },
+        {
+          "const": "unknown",
+          "description": "A license is stated, but it is not one that is known to be free.",
+          "type": "string"
+        },
+        {
+          "const": "unstated",
+          "description": "The font carries no license information at all. No permission is stated, so in\nlaw none is granted, however the font was meant to be shared.",
+          "type": "string"
+        }
+      ]
+    },
     "InstanceInfo": {
       "properties": {
         "coordinates": {
@@ -313,6 +338,11 @@
             "string",
             "null"
           ]
+        },
+        "freedom": {
+          "$ref": "#/$defs/Freedom",
+          "default": "unstated",
+          "description": "Whether `spdx` grants the four freedoms. Derived by `crate::freedom`; carried in\nthe exported JSON so a consumer need not repeat the judgement."
         },
         "reserved_font_names": {
           "description": "OFL Reserved Font Names declared in the copyright or license text.",
@@ -825,7 +855,7 @@
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "Everything unifont knows about one face.",
+  "description": "Everything fontina knows about one face.",
   "properties": {
     "capabilities": {
       "$ref": "#/$defs/Capabilities"

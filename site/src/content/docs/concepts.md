@@ -6,7 +6,7 @@ order: 2
 
 ## Face
 
-The unit of everything in unifont is the *face*: one font, in one file, at one index.
+The unit of everything in fontina is the *face*: one font, in one file, at one index.
 A `.ttf` holds one face. A `.ttc` collection holds several, numbered from zero. A
 variable font is one face with axes, not one face per instance.
 
@@ -21,7 +21,7 @@ pruned. Most commands take a *target*, which is any of:
 
 ## What is read
 
-For every face, unifont records, from the tables named:
+For every face, fontina records, from the tables named:
 
 | Area | Recorded | From |
 |---|---|---|
@@ -55,7 +55,7 @@ is the case that causes conflicts when both are installed.
 
 ## Containers
 
-unifont reads TrueType and CFF-flavoured OpenType (`.ttf`, `.otf`), collections
+fontina reads TrueType and CFF-flavoured OpenType (`.ttf`, `.otf`), collections
 (`.ttc`, `.otc`), WOFF 1.0 and WOFF 2.0. WOFF files are unwrapped to sfnt bytes and
 then parsed like anything else; see [ADR 0005](../../adr/0005-woff-decoding/). The
 container is recorded on the face and is a filter (`--container woff2`).
@@ -70,12 +70,12 @@ future `watch` command will follow for changes. A source can be forgotten with
 ## Tags
 
 A *tag* is a free-form label on a face. A face can carry any number. Tags are yours;
-unifont never assigns them. They are a filter (`--tag serif`) and a facet.
+fontina never assigns them. They are a filter (`--tag serif`) and a facet.
 
 ```
-$ unifont tag add serif family:Amiri 4
-$ unifont tag list
-$ unifont list --tag serif
+$ fontina tag add serif family:Amiri 4
+$ fontina tag list
+$ fontina list --tag serif
 ```
 
 ## Collections
@@ -87,9 +87,9 @@ PostScript name, then path, so a collection travels between machines whose fonts
 in different directories.
 
 ```
-$ unifont collection add Editorial family:Amiri 4
-$ unifont collection export Editorial > editorial.json
-$ unifont collection import editorial.json
+$ fontina collection add Editorial family:Amiri 4
+$ fontina collection export Editorial > editorial.json
+$ fontina collection import editorial.json
 ```
 
 ## Activation state

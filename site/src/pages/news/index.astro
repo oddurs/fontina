@@ -6,11 +6,11 @@ const u = (p: string) => `${base}${p}`;
 const news = (await getCollection('news')).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
 const rendered = await Promise.all(news.map(async (n) => ({ n, Content: (await render(n)).Content })));
 ---
-<Base title="News" description="Announcements and release notes for unifont, newest first." source="site/src/content/news">
-  <h1>unifont news</h1>
+<Base title="News" description="Announcements and release notes for fontina, newest first." source="site/src/content/news">
+  <h1>fontina news</h1>
   <p class="smaller">Also an <a href={u('/feed.xml')}>RSS feed</a>. Release notes for every version are on the
-    <a href="https://github.com/oddurs/unifont/releases">releases page</a> and in the
-    <a href="https://github.com/oddurs/unifont/blob/main/CHANGELOG.md">changelog</a>.</p>
+    <a href="https://github.com/oddurs/fontina/releases">releases page</a> and in the
+    <a href="https://github.com/oddurs/fontina/blob/main/CHANGELOG.md">changelog</a>.</p>
   {rendered.map(({ n, Content }) => (
     <article>
       <h2 id={n.id}><a href={u(`/news/${n.id}/`)}>{n.data.title}</a> <span class="small">[{n.data.date.toISOString().slice(0, 10)}]</span></h2>

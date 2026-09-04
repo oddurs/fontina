@@ -10,7 +10,7 @@ labels: enhancement
 
 **Proposal**
 
-<!-- What should unifont do? Which standard does it map to, if any (OpenType table, CSS descriptor, SPDX, XDG)? -->
+<!-- What should fontina do? Which standard does it map to, if any (OpenType table, CSS descriptor, SPDX, XDG)? -->
 
 **Scope**
 
