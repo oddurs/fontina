@@ -17,6 +17,9 @@ pull request with green CI.
 | `refactor/<topic>` | no behaviour change |
 
 Keep branches short-lived (days, not weeks). Rebase on `main` rather than merging it in.
+Use a worktree per branch when you have more than one in flight (`scripts/wt new
+feat/<topic>` creates `.worktrees/feat-<topic>`); `CLAUDE.md` has the etiquette for
+working next to other people and agents in the same repository.
 
 ## Commits
 

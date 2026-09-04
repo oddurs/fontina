@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Git worktree helper for working on several branches (or with several agents) at once.
+#
+#   scripts/wt new <branch> [base]   create .worktrees/<branch> on a new branch from base (default origin/main)
+#   scripts/wt ls                    list worktrees
+#   scripts/wt rm <branch>           remove the worktree (and the local branch if merged)
+#   scripts/wt prune                 drop worktrees whose directories are gone
+#
+# Each worktree is a full checkout with its own working tree and index, so `git add`,
+# `cargo build` and editors in one never see another's files. Slashes in branch names
+# become dashes in directory names: feat/watch -> .worktrees/feat-watch.
+
+set -euo pipefail
+root=$(git rev-parse --show-toplevel)
+dir_for() { echo "$root/.worktrees/${1//\//-}"; }
+
+case "${1:-}" in
+  new)
+    branch=${2:?branch name}; base=${3:-origin/main}
+    git -C "$root" fetch -q origin
+    git -C "$root" worktree add -q -b "$branch" "$(dir_for "$branch")" "$base"
+    echo "$(dir_for "$branch")"
+    ;;
+  ls) git -C "$root" worktree list ;;
+  rm)
+    branch=${2:?branch name}
+    git -C "$root" worktree remove "$(dir_for "$branch")"
+    git -C "$root" branch -d "$branch" 2>/dev/null || echo "branch $branch kept (not merged)"
+    ;;
+  prune) git -C "$root" worktree prune -v ;;
+  *) sed -n '2,12p' "$0"; exit 1 ;;
+esac

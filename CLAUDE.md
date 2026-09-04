@@ -14,6 +14,8 @@ crates/unifont-cli        the `unifont` binary; `src/ui/` is the ratatui TUI (M1
 schemas/                  JSON Schemas (face, collection, cli-output); regenerate with `unifont schema <name>`
 fixtures/                 OFL-licensed test fonts; keep total size small
 docs/adr/                 architecture decision records, one file per decision
+scripts/wt                worktree helper for parallel branches (see below)
+.worktrees/               one checkout per branch in flight; git-ignored
 ```
 
 ## Build, test, lint
@@ -93,6 +95,30 @@ That last command enables GitHub's native auto-merge; nothing else to do. Detail
   bump. Merging it (same `gh pr merge --squash`) tags the release and builds binaries.
 
 See `CONTRIBUTING.md` for the longer form.
+
+## Working alongside other agents
+
+Several agents (and the maintainer) work in this repository at the same time. The rules
+that keep them out of each other's way:
+
+- **One worktree per branch.** Never switch branches in a checkout someone else may be
+  using. `scripts/wt new feat/<topic>` gives you `.worktrees/feat-<topic>` with its own
+  working tree and index; do everything there (`cd` into it, or use `git -C` and
+  `cargo --manifest-path`). `scripts/wt rm feat/<topic>` when the PR has merged.
+- **Stage paths, never `git add -A` or `git add .`.** Untracked files in a checkout may
+  belong to someone else's work in progress. Before every push, check
+  `git diff --stat origin/main` shows only files your PR is about.
+- **Do not touch files outside your PR's scope**, even to tidy them. If something in
+  another area is wrong, say so in the PR description or open an issue.
+- **Rebase, don't merge**, and expect `main` to move: `git rebase origin/main` before
+  pushing. Auto-merge fires the moment CI is green, so never push a commit you would
+  not want on `main` a minute later, and fix a bad push with a new commit rather than
+  hoping to beat the merge.
+- **Each PR is one logical change** with the smallest diff that does it. Shared files
+  (`CLAUDE.md`, `README.md`, `Cargo.toml`, `main.rs`) conflict most; keep edits to them
+  minimal and rebase promptly after another PR touching them merges.
+- **Generated files are regenerated, not hand-edited**: `schemas/*.json` with
+  `unifont schema <name>`, snapshots with `cargo insta review`.
 
 ## When working as an agent
 
