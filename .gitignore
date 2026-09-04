@@ -8,8 +8,10 @@
 *.db
 *.db-wal
 *.db-shm
-# Agent worktrees (see CLAUDE.md, "Working alongside other agents")
+# Agent worktrees (see CLAUDE.md, "Working alongside other agents"). Some tools put
+# their own worktrees under .claude/; those are nobody's to commit either.
 /.worktrees/
+/.claude/worktrees/
 # The docs site lives in its own PRs; its build outputs and dependencies never belong in git.
 node_modules/
 /site/dist/

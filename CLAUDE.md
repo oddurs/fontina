@@ -105,16 +105,25 @@ that keep them out of each other's way:
 - **One worktree per branch.** Never switch branches in a checkout someone else may be
   using. `scripts/wt new feat/<topic>` gives you `.worktrees/feat-<topic>` with its own
   working tree and index; do everything there (`cd` into it, or use `git -C` and
-  `cargo --manifest-path`). `scripts/wt rm feat/<topic>` when the PR has merged.
+  `cargo --manifest-path`). `scripts/wt rm feat/<topic>` when the PR has merged. If your
+  tooling makes its own worktree elsewhere that is fine — it is ignored — but
+  `scripts/wt status` is how everyone else finds out it exists.
 - **Stage paths, never `git add -A` or `git add .`.** Untracked files in a checkout may
   belong to someone else's work in progress. Before every push, check
   `git diff --stat origin/main` shows only files your PR is about.
 - **Do not touch files outside your PR's scope**, even to tidy them. If something in
   another area is wrong, say so in the PR description or open an issue.
-- **Rebase, don't merge**, and expect `main` to move: `git rebase origin/main` before
-  pushing. Auto-merge fires the moment CI is green, so never push a commit you would
-  not want on `main` a minute later, and fix a bad push with a new commit rather than
-  hoping to beat the merge.
+- **Rebase, don't merge**, and expect `main` to move — several PRs an hour on a busy
+  day. `scripts/wt status` says how far behind every worktree is; `scripts/wt sync`
+  fetches and rebases one onto `origin/main`. Run `sync` before you push, and again
+  whenever CI looks wrong. Auto-merge fires the moment CI is green, so never push a
+  commit you would not want on `main` a minute later, and fix a bad push with a new
+  commit rather than hoping to beat the merge.
+- **A conflicted pull request gets no CI at all.** GitHub cannot build
+  `refs/pull/<n>/merge` for a PR that conflicts with `main`, so it creates no
+  `pull_request` workflow runs: the checks list shows only `enable`, and nothing says
+  why. If `ci` never appears, run `gh pr view <n> --json mergeable,mergeStateStatus`
+  before suspecting the workflow file, then `scripts/wt sync`.
 - **Each PR is one logical change** with the smallest diff that does it. Shared files
   (`CLAUDE.md`, `README.md`, `Cargo.toml`, `main.rs`) conflict most; keep edits to them
   minimal and rebase promptly after another PR touching them merges.
