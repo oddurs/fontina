@@ -31,6 +31,15 @@ jobs:
           config-file: .release-please-config.json
           manifest-file: .release-please-manifest.json
 
+      # A release created with the workflow token fires no `release` event, so the
+      # build that attaches binaries, checksums, provenance and the SBOM must be
+      # dispatched by hand. workflow_dispatch is the one event that token may raise.
+      - if: steps.rp.outputs.release_created == 'true'
+        name: Build the release artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run release.yml --ref main -f tag="${{ steps.rp.outputs.tag_name }}"
+
       # release-please bumps Cargo.toml but cannot rewrite the workspace entries in
       # Cargo.lock, and the CI runs GitHub creates for a bot-authored PR wait for
       # approval. Whenever a release branch exists: sync the lockfile, then approve the
