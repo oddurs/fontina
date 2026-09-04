@@ -68,7 +68,8 @@ jobs:
               exit 1
             fi
             if [ "$total" -gt 0 ] && [ "$pending" -eq 0 ]; then
-              gh pr merge "$PR" --squash --delete-branch
+              # REST merge needs no local checkout; the repo deletes head branches on merge.
+              gh api -X PUT "repos/$REPO/pulls/$PR/merge" -f merge_method=squash --jq '.message'
               exit 0
             fi
             sleep 30
