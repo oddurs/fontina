@@ -38,7 +38,7 @@ use crate::FileInfo;
 use crate::error::Result;
 use crate::freedom::{self, Freedom};
 use crate::model::FaceMetadata;
-use rusqlite::{Connection, OptionalExtension, Transaction, params};
+use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -158,6 +158,11 @@ impl Where {
     }
 }
 
+/// How long a write waits for another fontina process before giving up. Generous on
+/// purpose: the thing it waits for is usually one scan transaction committing, and
+/// failing is worse for a user than a pause.
+const BUSY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
 impl Index {
     /// Default location: the platform data directory for `fontina`.
     pub fn default_path() -> PathBuf {
@@ -183,6 +188,11 @@ impl Index {
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
+        // Several fontina processes share one index by design: `watch` runs as a user
+        // service while you tag something in `ui` and activate something else from the
+        // shell. Without a busy timeout the second writer fails instantly with "database
+        // is locked" instead of waiting the moment or two the first one needs.
+        conn.busy_timeout(BUSY_TIMEOUT)?;
         schema::migrate(&mut conn)?;
         Ok(Index { conn })
     }
@@ -191,8 +201,18 @@ impl Index {
         self.conn.path().unwrap_or(":memory:").to_string()
     }
 
+    /// Begin a write transaction.
+    ///
+    /// `BEGIN IMMEDIATE`, not the deferred default. A deferred transaction takes a read
+    /// lock and asks for the write lock later, and SQLite refuses that upgrade
+    /// immediately when another connection holds the write lock: it cannot wait without
+    /// risking deadlock, so the busy timeout does not apply and the caller sees
+    /// "database is locked" however long it was willing to wait. Taking the write lock up
+    /// front is what makes the timeout mean anything.
     pub fn begin(&mut self) -> Result<Transaction<'_>> {
-        Ok(self.conn.transaction()?)
+        Ok(self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?)
     }
 
     pub fn file_is_unchanged(&self, path: &str, size: u64, mtime: i64) -> Result<bool> {
@@ -319,7 +339,7 @@ impl Index {
         if missing.len() == paths.len() && paths.len() > 1 {
             return Ok(0);
         }
-        let tx = self.conn.transaction()?;
+        let tx = self.begin()?;
         for p in &missing {
             tx.execute("DELETE FROM files WHERE path = ?1", params![p])?;
         }

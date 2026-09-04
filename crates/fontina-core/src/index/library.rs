@@ -187,7 +187,7 @@ impl Index {
     /// Tag faces. Creates the tag when new. Returns how many faces were newly tagged.
     pub fn tag(&mut self, ids: &[i64], name: &str) -> Result<usize> {
         let name = valid_name("tag", name)?;
-        let tx = self.conn.transaction()?;
+        let tx = self.begin()?;
         tx.execute(
             "INSERT OR IGNORE INTO tags (name) VALUES (?1)",
             params![name],
@@ -210,7 +210,7 @@ impl Index {
 
     /// Remove a tag from faces. Returns how many faces lost it.
     pub fn untag(&mut self, ids: &[i64], name: &str) -> Result<usize> {
-        let tx = self.conn.transaction()?;
+        let tx = self.begin()?;
         let mut n = 0;
         for id in ids {
             n += tx.execute(
@@ -296,7 +296,7 @@ impl Index {
     /// Append faces to a collection (created when missing). Returns how many were new.
     pub fn add_to_collection(&mut self, name: &str, ids: &[i64]) -> Result<usize> {
         let cid = self.create_collection(name)?;
-        let tx = self.conn.transaction()?;
+        let tx = self.begin()?;
         let mut pos: i64 = tx.query_row(
             "SELECT COALESCE(MAX(position), -1) + 1 FROM collection_faces WHERE collection_id = ?1",
             params![cid],
@@ -321,7 +321,7 @@ impl Index {
         let Some(cid) = self.collection_id(name)? else {
             return Err(Error::Other(format!("no collection named {name:?}")));
         };
-        let tx = self.conn.transaction()?;
+        let tx = self.begin()?;
         let mut n = 0;
         for id in ids {
             n += tx.execute(
@@ -535,7 +535,7 @@ impl Index {
         state: ActivationState,
         installed_path: Option<&str>,
     ) -> Result<()> {
-        let tx = self.conn.transaction()?;
+        let tx = self.begin()?;
         for id in ids {
             tx.execute(
                 "INSERT INTO activations (face_id, scope, activated_at, installed_path) VALUES (?1, ?2, unixepoch(), ?3)
@@ -549,7 +549,7 @@ impl Index {
     }
 
     pub fn clear_activation(&mut self, ids: &[i64]) -> Result<usize> {
-        let tx = self.conn.transaction()?;
+        let tx = self.begin()?;
         let mut n = 0;
         for id in ids {
             n += tx.execute("DELETE FROM activations WHERE face_id = ?1", params![id])?;

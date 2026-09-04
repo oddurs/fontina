@@ -412,6 +412,64 @@ fn an_unavailable_directory_is_not_an_empty_one() {
 }
 
 #[test]
+fn a_second_writer_waits_instead_of_failing() {
+    // `fontina watch` is meant to run as a user service while you tag something in the
+    // browser and activate something else from a shell: three processes, one index. With
+    // the default deferred transaction and no busy timeout, whichever writer arrives
+    // second fails on the spot with "database is locked".
+    let dir = std::env::temp_dir().join(format!("fontina-busy-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let db = std::fs::canonicalize(&dir).unwrap().join("index.db");
+
+    let mut first = Index::open(&db).unwrap();
+    fontina_core::scan::scan(&mut first, &[fixtures()], &ScanOptions::default()).unwrap();
+
+    let (holding, held) = std::sync::mpsc::channel();
+    let db_for_thread = db.clone();
+    let holder = std::thread::spawn(move || {
+        let mut other = Index::open(&db_for_thread).unwrap();
+        let tx = other.begin().unwrap();
+        tx.execute("UPDATE files SET scanned_at = scanned_at", [])
+            .unwrap();
+        holding.send(()).unwrap();
+        // Long enough that a writer which does not wait cannot possibly succeed.
+        std::thread::sleep(std::time::Duration::from_millis(600));
+        drop(tx);
+    });
+
+    held.recv().unwrap();
+    let start = std::time::Instant::now();
+    // A scan is the case that actually broke: it reads (has this file changed?) and then
+    // writes, inside one transaction. A deferred transaction asks to upgrade its read
+    // lock at that point, and SQLite refuses an upgrade instantly when another connection
+    // is writing, without consulting the busy timeout, because waiting could deadlock.
+    // Only taking the write lock up front makes the timeout apply.
+    fontina_core::scan::scan(
+        &mut first,
+        &[fixtures()],
+        &ScanOptions {
+            force: true,
+            ..Default::default()
+        },
+    )
+    .expect("the second writer must wait, not fail");
+    let waited = start.elapsed();
+    holder.join().unwrap();
+    // A forced rescan replaces the rows, so the face has a new id.
+    let id = id_of(&first, "Amiri");
+    first.tag(&[id], "waited").unwrap();
+
+    assert!(
+        waited >= std::time::Duration::from_millis(300),
+        "it returned in {waited:?}, so it cannot have waited for the other writer"
+    );
+    let s = first.summaries(&[id]).unwrap().remove(0);
+    assert_eq!(s.tags, ["waited"]);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn conflicts_see_active_and_system_faces_only() {
     let mut index = indexed();
     let woff = index
