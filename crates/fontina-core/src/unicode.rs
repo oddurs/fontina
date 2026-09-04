@@ -54,6 +54,53 @@ pub fn coverage_from_codepoints(mut cps: Vec<u32>) -> Coverage {
     }
 }
 
+/// How to show one covered codepoint in a fixed grid of cells.
+///
+/// A coverage grid has to line up, and a great many codepoints a font legitimately
+/// covers will not line up on their own. Control characters move the cursor; format
+/// characters such as U+202E RIGHT-TO-LEFT OVERRIDE reverse everything after them on the
+/// line; combining marks stack onto whatever came before instead of taking a cell of
+/// their own; and CJK, Hangul and emoji take two cells rather than one.
+///
+/// `char::is_control` catches only the first of those four.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Cell {
+    /// What to print: the character itself, or `\u{FFFD}` when it has no standalone shape.
+    pub glyph: char,
+    /// Terminal columns `glyph` occupies, 1 or 2.
+    pub width: usize,
+}
+
+/// Decide how to show a codepoint in a grid.
+pub fn cell_for(cp: u32) -> Cell {
+    let Some(ch) = char::from_u32(cp) else {
+        return Cell {
+            glyph: '\u{FFFD}',
+            width: 1,
+        };
+    };
+    match unicode_width::UnicodeWidthChar::width(ch) {
+        // Two cells: CJK, Hangul, emoji and the rest of the East Asian Wide set.
+        Some(2) => Cell {
+            glyph: ch,
+            width: 2,
+        },
+        // One cell: an ordinary printable character.
+        Some(1) => Cell {
+            glyph: ch,
+            width: 1,
+        },
+        // Zero cells (combining marks, format characters) or none at all (controls).
+        // Both would corrupt the row, so the replacement character stands in for them:
+        // the codepoint is covered, and saying so honestly beats printing something that
+        // reorders the line.
+        _ => Cell {
+            glyph: '\u{FFFD}',
+            width: 1,
+        },
+    }
+}
+
 /// One Unicode block and the codepoints a face covers within it.
 #[derive(Debug, Clone, serde::Serialize, schemars::JsonSchema)]
 pub struct BlockCoverage {
@@ -212,6 +259,53 @@ pub fn bcp47_for_name_language(platform_id: u16, language_id: u16) -> Option<&'s
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_cell_never_lets_a_codepoint_break_the_row() {
+        // Ordinary printable characters stand for themselves.
+        assert_eq!(
+            cell_for(0x41),
+            Cell {
+                glyph: 'A',
+                width: 1
+            }
+        );
+        assert_eq!(
+            cell_for(0x0641),
+            Cell {
+                glyph: char::from_u32(0x0641).unwrap(),
+                width: 1
+            }
+        );
+
+        // East Asian Wide takes two cells.
+        assert_eq!(cell_for(0x4E2D).width, 2, "CJK is double width");
+        assert_eq!(cell_for(0xAC00).width, 2, "Hangul is double width");
+
+        // The four kinds that would corrupt a grid all stand aside, and every one of
+        // these is covered by a fixture in this repository.
+        for cp in [
+            0x0009, // Cc: tab, moves the cursor
+            0x200B, // Cf: zero-width space
+            0x200E, // Cf: left-to-right mark
+            0x202E, // Cf: right-to-left override, reverses the rest of the line
+            0x0651, // Mn: Arabic shadda, stacks onto the previous cell
+        ] {
+            let cell = cell_for(cp);
+            assert_eq!(cell.glyph, '\u{FFFD}', "U+{cp:04X} must not be printed raw");
+            assert_eq!(cell.width, 1);
+        }
+    }
+
+    #[test]
+    fn a_grid_of_cells_is_always_the_same_width() {
+        // Whatever the codepoint, a cell padded to two columns occupies two columns.
+        for cp in [0x41, 0x4E2D, 0x202E, 0x0651, 0x1F600] {
+            let cell = cell_for(cp);
+            assert!(cell.width == 1 || cell.width == 2);
+            assert!(cell.width <= 2, "a cell never overflows its two columns");
+        }
+    }
 
     /// U+2FE0..U+2FEF belongs to no Unicode block, so `glyph_map` synthesises one.
     #[test]

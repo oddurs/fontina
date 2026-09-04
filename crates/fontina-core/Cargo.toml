@@ -27,6 +27,7 @@ thiserror.workspace = true
 directories.workspace = true
 unicode-script.workspace = true
 unicode-blocks.workspace = true
+unicode-width.workspace = true
 base64.workspace = true
 time.workspace = true
 harfrust = "0.13"

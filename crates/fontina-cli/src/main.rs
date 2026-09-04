@@ -982,8 +982,7 @@ fn run() -> Result<()> {
                             let chars: Vec<char> = b
                                 .codepoints
                                 .iter()
-                                .filter_map(|&c| char::from_u32(c))
-                                .map(|c| if c.is_control() { '\u{FFFD}' } else { c })
+                                .map(|&c| fontina_core::unicode::cell_for(c).glyph)
                                 .collect();
                             for chunk in chars.chunks(64) {
                                 println!("  {}", chunk.iter().collect::<String>());
