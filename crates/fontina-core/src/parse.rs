@@ -24,7 +24,7 @@ use read_fonts::types::Tag;
 use read_fonts::{FileRef, FontRef, TableProvider};
 use skrifa::MetadataProvider;
 use skrifa::string::StringId;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Parse every face in an sfnt (single font or collection).
 pub fn parse_sfnt(sfnt: &[u8], file: &FileInfo) -> Result<Vec<FaceMetadata>> {
@@ -136,32 +136,33 @@ fn variable(font: &FontRef) -> Option<VariableInfo> {
     })
 }
 
+/// Caps on what a layout table may declare, so that import time stays bounded by
+/// something other than an attacker's imagination. OpenType registers a few hundred
+/// scripts and a few hundred languages; these are an order of magnitude beyond that.
+const MAX_SCRIPT_RECORDS: usize = 1024;
+const MAX_LANG_SYS: usize = 1024;
+
 fn features(font: &FontRef) -> Features {
     let mut gsub = BTreeSet::new();
     let mut gpos = BTreeSet::new();
-    let mut scripts: Vec<ScriptInfo> = Vec::new();
+    // A map, not a list scanned linearly. The old shape looked for the script with
+    // `iter_mut().find` and for the language with `contains`, so a file declaring twelve
+    // thousand script records cost minutes: a 241 KB font took 37 seconds to import. Both
+    // counts come straight off the wire as `u16`, so they are the attacker's to choose.
+    let mut scripts: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
 
     let mut add_scripts = |list: read_fonts::tables::layout::ScriptList| {
         let data = list.offset_data();
-        for rec in list.script_records() {
-            let tag = rec.script_tag().to_string();
-            let mut langs: Vec<String> = Vec::new();
+        // Records can all point at the same language list, so the work is not bounded by
+        // the file's size. These caps are: no real font comes close, the registry knows
+        // about a couple of hundred scripts, and a truncated tail of a pathological font
+        // is a better answer than a scan that never ends.
+        for rec in list.script_records().iter().take(MAX_SCRIPT_RECORDS) {
+            let langs = scripts.entry(rec.script_tag().to_string()).or_default();
             if let Ok(script) = rec.script(data) {
-                for ls in script.lang_sys_records() {
-                    langs.push(ls.lang_sys_tag().to_string());
+                for ls in script.lang_sys_records().iter().take(MAX_LANG_SYS) {
+                    langs.insert(ls.lang_sys_tag().to_string());
                 }
-            }
-            if let Some(existing) = scripts.iter_mut().find(|s| s.tag == tag) {
-                for l in langs {
-                    if !existing.languages.contains(&l) {
-                        existing.languages.push(l);
-                    }
-                }
-            } else {
-                scripts.push(ScriptInfo {
-                    tag,
-                    languages: langs,
-                });
             }
         }
     };
@@ -186,14 +187,17 @@ fn features(font: &FontRef) -> Features {
             add_scripts(sl);
         }
     }
-    for s in &mut scripts {
-        s.languages.sort();
-    }
-    scripts.sort_by(|a, b| a.tag.cmp(&b.tag));
+    // Both maps are ordered, so the sorting the old shape did by hand comes for free.
     Features {
         gsub: gsub.into_iter().collect(),
         gpos: gpos.into_iter().collect(),
-        scripts,
+        scripts: scripts
+            .into_iter()
+            .map(|(tag, languages)| ScriptInfo {
+                tag,
+                languages: languages.into_iter().collect(),
+            })
+            .collect(),
     }
 }
 

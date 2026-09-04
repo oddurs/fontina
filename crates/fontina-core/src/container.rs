@@ -54,6 +54,11 @@ fn saturate_u16(v: u32) -> u16 {
 }
 
 /// Rebuild an sfnt from a WOFF 1.0 file (W3C WOFF File Format 1.0, section 3).
+/// The largest table this will reconstruct, and so the largest allocation a WOFF file
+/// can ask for. Real tables are far smaller: a CJK `glyf` runs to a few tens of
+/// megabytes, and the whole of Noto CJK is under 20 MB.
+const MAX_TABLE_LEN: usize = 128 * 1024 * 1024;
+
 fn decode_woff1(bytes: &[u8]) -> Result<Vec<u8>> {
     if bytes.len() < 44 {
         return Err(Error::Woff("file too short".into()));
@@ -101,10 +106,28 @@ fn decode_woff1(bytes: &[u8]) -> Result<Vec<u8>> {
         let data = if comp_len == orig_len {
             comp.to_vec()
         } else {
-            let mut d = flate2::read::ZlibDecoder::new(comp);
-            let mut buf = Vec::with_capacity(orig_len);
-            d.read_to_end(&mut buf)
+            // `orig_len` is whatever the file claims, so it is neither a size to trust
+            // nor a capacity to reserve: a 64-byte WOFF declaring 0xFFFFFFFF once cost a
+            // 4 GB allocation before a single compressed byte was read. Refuse an
+            // implausible claim, then let the buffer grow with the bytes that actually
+            // arrive, stopping one past the declared length so a zlib bomb cannot run
+            // away either.
+            if orig_len > MAX_TABLE_LEN {
+                return Err(Error::Woff(format!(
+                    "table declares {orig_len} bytes, past the {MAX_TABLE_LEN} this reads"
+                )));
+            }
+            let mut buf = Vec::new();
+            flate2::read::ZlibDecoder::new(comp)
+                .take(orig_len as u64 + 1)
+                .read_to_end(&mut buf)
                 .map_err(|e| Error::Woff(format!("zlib: {e}")))?;
+            if buf.len() != orig_len {
+                return Err(Error::Woff(format!(
+                    "table decompressed to {} bytes, not the {orig_len} it declared",
+                    buf.len()
+                )));
+            }
             buf
         };
         out.extend_from_slice(&tag.to_be_bytes());
