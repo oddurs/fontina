@@ -25,7 +25,7 @@
 //! [`crate::specimen`] is the reference implementation of a specimen and the first
 //! consumer; the terminal UI is the second.
 
-use crate::model::{AxisInfo, FaceMetadata, Features};
+use crate::model::{AxisInfo, FaceMetadata, Features, InstanceInfo, VariableInfo};
 
 /// The Latin sample every view falls back to. One string, because a waterfall, a
 /// terminal preview and `fontina preview` showing three different pangrams for the same
@@ -286,6 +286,24 @@ pub fn preview_text(face: &FaceMetadata) -> &'static str {
     script_sample(script)
         .map(|(_, text)| opening(text, 48))
         .unwrap_or(DEFAULT_TEXT)
+}
+
+/// The named instance sitting exactly on these coordinates, if one does.
+///
+/// `coords` is in axis order, as [`InstanceInfo::coordinates`] is. The comparison is
+/// exact: both sides are user-space values that came from the font or from a control
+/// snapped to one, so coordinates that are merely close are a setting the reader chose,
+/// and calling that "Bold" would be a lie.
+pub fn matching_instance<'a>(v: &'a VariableInfo, coords: &[f32]) -> Option<&'a InstanceInfo> {
+    if coords.len() != v.axes.len() {
+        return None;
+    }
+    v.instances.iter().find(|inst| inst.coordinates == coords)
+}
+
+/// The coordinates a variable face starts at: every axis at its default.
+pub fn default_coords(v: &VariableInfo) -> Vec<f32> {
+    v.axes.iter().map(|a| a.default).collect()
 }
 
 #[cfg(test)]

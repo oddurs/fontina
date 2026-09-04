@@ -30,7 +30,10 @@ use skrifa::outline::{DrawSettings, OutlinePen};
 use skrifa::raw::{FontRef, TableProvider};
 
 /// What to render.
-#[derive(Debug, Clone)]
+///
+/// `PartialEq` is what lets a caller cache a rendering keyed on the options themselves,
+/// so a new field cannot be forgotten in a hand-written cache key.
+#[derive(Debug, Clone, PartialEq)]
 pub struct RenderOptions {
     /// Text; `\n` starts a new line.
     pub text: String,
