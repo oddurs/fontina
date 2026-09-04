@@ -270,12 +270,15 @@ Re-scoped on 2026-09-03 from a desktop app to CLI + TUI (ADR 0006).
 5. **Browse.** `fontina ui`: search, facets, families and faces, details, previews, tag
    and activate from the keyboard.
 6. **Ship.** Completions and man pages in archives; `.deb`/`.rpm` from the release
-   workflow. Still to do before 1.0: Homebrew formula, winget and Scoop manifests, AUR
-   `PKGBUILD`, and the rename.
+   workflow. The rename to `fontina` and the move to GPL-3.0-or-later landed in #25
+   (ADR 0007). Still to do before 1.0: Homebrew formula, winget and Scoop manifests,
+   AUR `PKGBUILD`.
 
 ### M2 — Typography
 - In the TUI: axis sliders with named-instance snapping, feature toggles, glyph map by
-  block with codepoint search, compare and waterfall views, license viewer.
+  block with codepoint search, compare and waterfall views, and a license viewer that
+  gives the freedom verdict and its reason, not only the SPDX identifier.
+- Laid out as pull requests in §10.
 - `check` grows toward fontbakery parity where it is cheap; stable ids never change.
 - Optional login agent packaging (systemd user unit, LaunchAgent, Run key), off by default.
 - Optional Google Fonts offline index, separately packaged, opt-in.
@@ -356,4 +359,41 @@ Each item was one pull request against `main`, in this order.
 
 What M2 starts from: the TUI has the plumbing for axis sliders and feature toggles
 (`render::RenderOptions`), `check` has stable ids, and `restore` is ready for a login
-agent. Package-manager manifests and the rename are the remaining "Ship" items.
+agent. The rename landed in #25; package-manager manifests are the remaining "Ship" item.
+
+---
+
+## 10. M2, concretely
+
+One pull request per item, in this order. Items 1–4 are the typography work and share a
+dependency: 1 gives 2–4 their helpers.
+
+Most of M2 is not new logic. `specimen.rs` already implements every one of these
+features in HTML, and it is the reference implementation (CLAUDE.md); the work is
+wiring core APIs the specimen already exercises into ratatui panes.
+
+1. `refactor(core)`: lift the specimen's typography helpers into the core — OpenType
+   feature labels, the waterfall size ladder, axis step calculation, named-instance
+   snapping. All four are private to `specimen.rs` today and the TUI needs the same
+   four; sharing them is what stops the two clients drifting apart.
+2. `feat(cli)`: axis sliders and feature toggles in the details pane, feeding
+   `render::RenderOptions`, which already carries `variations` and `features` and has
+   nothing setting them. Note the preview cache key is `(face, text, size, width)`; it
+   has to grow to include axes and features or a moved slider will not repaint.
+3. `feat(cli)`: glyph map by Unicode block with codepoint search, over the public
+   `unicode::glyph_map`, reusing the details pane's existing input mechanism.
+4. `feat(cli)`: waterfall and compare views — the size ladder for one face, the sample
+   text across several. `current_face_ids` already returns the selection.
+5. `feat(cli)`: the license viewer. The freedom verdict and its reason from
+   `freedom::assess`, embedding rights (reported, never enforced), reserved font names
+   and copyright; plus a `freedom` facet, so `--free` is reachable from the TUI.
+6. `feat(core)`: `check` toward fontbakery parity where it is cheap. Ids are additive —
+   the ones that exist keep their names — and every new check needs a fixture-backed
+   test that triggers it.
+7. `chore(platform)`: optional login agent packaging, a systemd user unit, a LaunchAgent
+   and a Run key entry, off by default, wrapping the `restore` M1 shipped.
+
+Held out until it is decided: the optional Google Fonts offline index. It cannot live in
+the core or the CLI, because neither makes network calls, so it wants its own crate, its
+own binary and its own package, with the index shipped as a file rather than fetched.
+Buildable, but a different kind of work from 1–7 and about as large as all of them.
