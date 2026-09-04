@@ -51,6 +51,7 @@ unifont install 42 --replace     # copy into the per-user font directory
 unifont restore                  # re-apply activations after a reboot (for a login agent)
 unifont preview 42 -t "Sphinx of black quartz" -a wght=700 -f smcp   # shaped glyphs, in the terminal
 unifont preview 42 -o specimen.png            # or as a PNG
+unifont ui                       # browse: facets, families, previews, tag and activate
 unifont dupes                    # same font in several files
 unifont css 42 --url-prefix /fonts/ > fonts.css
 unifont covers "Þórður át 12 blóðbergsbrauð"   # faces that can set this text
