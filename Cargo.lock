@@ -609,7 +609,7 @@ dependencies = [
 
 [[package]]
 name = "fontina-cli"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -624,7 +624,7 @@ dependencies = [
 
 [[package]]
 name = "fontina-core"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "ab_glyph_rasterizer",
  "base64",
@@ -651,7 +651,7 @@ dependencies = [
 
 [[package]]
 name = "fontina-platform"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "blake3",
  "core-foundation",
