@@ -1,0 +1,31 @@
+---
+import Base from '../../layouts/Base.astro';
+import { getCollection } from 'astro:content';
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const u = (p: string) => `${base}${p}`;
+const docs = (await getCollection('docs')).sort((a, b) => a.data.order - b.data.order);
+---
+<Base title="Manual" description="The unifont manual: installation, concepts, command reference, JSON output, health checks, specimens, platform notes." source="site/src/content/docs">
+  <h1>The unifont manual</h1>
+  <p class="meta">For unifont 0.0.1. This manual is maintained in the repository under <code>site/src/content/docs</code>; corrections are pull requests.</p>
+  <p>
+    This manual describes the <code>unifont</code> command line and the concepts behind
+    it. It is written to be read in order once and consulted by chapter after that.
+  </p>
+  <div class="toc">
+    <h2>Table of contents</h2>
+    <ol>
+      {docs.map((d) => (
+        <li><a href={u(`/docs/${d.id}/`)}>{d.data.title}</a>: {d.data.description}</li>
+      ))}
+    </ol>
+  </div>
+  <h2>Other documentation</h2>
+  <ul>
+    <li><code>unifont help &lt;command&gt;</code> prints the reference for any command.</li>
+    <li>The JSON Schemas for every export live in
+      <a href="https://github.com/oddurs/unifont/tree/main/schemas"><code>schemas/</code></a>.</li>
+    <li>The <a href={u('/adr/')}>architecture decision records</a> explain the choices the manual takes for granted.</li>
+    <li>The <a href={u('/faq/')}>FAQ</a> answers the questions this manual does not.</li>
+  </ul>
+</Base>

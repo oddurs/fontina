@@ -14,6 +14,7 @@ crates/unifont-cli        the `unifont` binary; `src/ui/` is the ratatui TUI (M1
 schemas/                  JSON Schemas (face, collection, cli-output); regenerate with `unifont schema <name>`
 fixtures/                 OFL-licensed test fonts; keep total size small
 docs/adr/                 architecture decision records, one file per decision
+site/                     project web site and manual (Astro, static, no JS); deploys to GitHub Pages
 scripts/wt                worktree helper for parallel branches (see below)
 .worktrees/               one checkout per branch in flight; git-ignored
 ```

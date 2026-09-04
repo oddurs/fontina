@@ -1,0 +1,32 @@
+---
+import Base from '../../layouts/Base.astro';
+import { getCollection } from 'astro:content';
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const u = (p: string) => `${base}${p}`;
+const adrs = (await getCollection('adr')).sort((a, b) => a.id.localeCompare(b.id));
+// Title is the first heading of the file; status is the "**Status:**" line.
+const title = (body = '') => body.match(/^#\s+(.+)$/m)?.[1] ?? '';
+const status = (body = '') => body.match(/\*\*Status:\*\*\s*(.+)$/m)?.[1] ?? '';
+---
+<Base title="Architecture decision records" description="Why unifont is built the way it is: one record per decision, never edited after acceptance." source="docs/adr">
+  <h1>Architecture decision records</h1>
+  <p>
+    One file per decision, numbered, never edited after acceptance; a change of mind is
+    a new record that supersedes the old one. Each has the same three parts: context,
+    decision, consequences. They are published here straight from
+    <a href="https://github.com/oddurs/unifont/tree/main/docs/adr"><code>docs/adr</code></a>
+    in the repository.
+  </p>
+  <table>
+    <thead><tr><th>No.</th><th>Decision</th><th>Status</th></tr></thead>
+    <tbody>
+      {adrs.map((a) => (
+        <tr>
+          <td>{a.id.slice(0, 4)}</td>
+          <td><a href={u(`/adr/${a.id}/`)}>{title(a.body).replace(/^\d+\s+[—-]\s+/, '')}</a></td>
+          <td>{status(a.body)}</td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</Base>
