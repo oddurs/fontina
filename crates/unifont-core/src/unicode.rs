@@ -38,6 +38,45 @@ pub fn coverage_from_codepoints(mut cps: Vec<u32>) -> Coverage {
     }
 }
 
+/// One Unicode block and the codepoints a face covers within it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BlockCoverage {
+    pub block: String,
+    pub start: u32,
+    pub end: u32,
+    /// Codepoints in the block that the face maps.
+    pub codepoints: Vec<u32>,
+    /// Size of the block, for a coverage ratio.
+    pub block_size: u32,
+}
+
+/// Group a face's covered codepoints by Unicode block, in codepoint order.
+pub fn glyph_map(ranges: &[[u32; 2]]) -> Vec<BlockCoverage> {
+    let mut out: Vec<BlockCoverage> = Vec::new();
+    for &[lo, hi] in ranges {
+        for cp in lo..=hi {
+            let Some(ch) = char::from_u32(cp) else {
+                continue;
+            };
+            let (name, start, end) = match unicode_blocks::find_unicode_block(ch) {
+                Some(b) => (b.name().to_string(), b.start(), b.end()),
+                None => ("Unassigned".to_string(), cp, cp),
+            };
+            match out.last_mut() {
+                Some(last) if last.block == name => last.codepoints.push(cp),
+                _ => out.push(BlockCoverage {
+                    block: name,
+                    start,
+                    end,
+                    codepoints: vec![cp],
+                    block_size: end - start + 1,
+                }),
+            }
+        }
+    }
+    out
+}
+
 /// Format merged ranges as a CSS `unicode-range` value.
 pub fn unicode_range_css(ranges: &[[u32; 2]]) -> String {
     ranges

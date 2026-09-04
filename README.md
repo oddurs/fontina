@@ -10,8 +10,9 @@ open standards end to end.
 > Working codename. "Unifont" collides with GNU Unifont and will be renamed before the
 > first release.
 
-**Status:** M0. The core library and CLI parse TTF, OTF, TTC, WOFF and WOFF2, build a
-searchable SQLite index, and export `@font-face` CSS. The desktop app and native
+**Status:** core library and CLI. They parse TTF, OTF, TTC, WOFF and WOFF2, build a
+searchable SQLite index, run health checks, answer "which fonts cover this text",
+export `@font-face` CSS and interactive HTML specimens. The desktop app and native
 activation backends are next; see [`PLAN.md`](PLAN.md) for the roadmap.
 
 ## Install
@@ -38,6 +39,11 @@ unifont list --license OFL       # by SPDX identifier
 unifont info 42                  # everything about a face
 unifont dupes                    # same font in several files
 unifont css 42 --url-prefix /fonts/ > fonts.css
+unifont covers "Þórður át 12 blóðbergsbrauð"   # faces that can set this text
+unifont check ~/Fonts/*.ttf      # health checks; exit 1 on errors
+unifont license                  # SPDX, embedding rights, reserved font names
+unifont glyphs 42 --block arabic # coverage by Unicode block
+unifont specimen 42 43 -o specimen.html   # waterfall, axis sliders, feature toggles, compare
 unifont schema                   # JSON Schema for the metadata
 ```
 

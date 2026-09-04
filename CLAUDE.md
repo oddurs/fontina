@@ -7,7 +7,8 @@ milestones; this file is the operating manual.
 ## Layout
 
 ```
-crates/unifont-core       parsing (fontations), metadata model, SQLite index, scan, CSS export
+crates/unifont-core       parsing (fontations), metadata model, SQLite index, scan, CSS export,
+                          health checks (check.rs), HTML specimen (specimen.rs)
 crates/unifont-platform   per-OS font directories and the FontActivator trait
 crates/unifont-cli        the `unifont` binary
 apps/desktop              Tauri 2 + Svelte 5 app (M1, not yet present)
@@ -55,7 +56,12 @@ Set `UNIFONT_DB` to keep an index out of the platform data directory while devel
 - Snapshot tests in `crates/unifont-core/tests` cover every fixture. Add a fixture when a
   new capability is parsed (a fixture is an OFL/Apache/UFL font under ~500 KB).
 - SQL lives in `crates/unifont-core/src/index`. Migrations are append-only entries in
-  `schema.rs`; never edit an applied migration.
+  `schema.rs`; never edit an applied migration. A migration that needs data from the
+  stored metadata JSON gets a backfill function keyed on its index (see `face_ranges`).
+- Health checks in `check.rs` have stable `area/check` ids; never rename an id, add a
+  new one. Every check needs a fixture-backed test that triggers it.
+- The specimen (`specimen.rs`) is a single self-contained HTML file with no external
+  requests; it is the reference implementation the desktop preview will reuse.
 - Platform-specific code is `#[cfg(target_os)]`-gated inside `unifont-platform`. Core
   and CLI stay platform-agnostic.
 - CLI output: human-readable by default, `--json` for machines, exit code 1 on error.

@@ -2,7 +2,8 @@ use crate::error::Result;
 use rusqlite::Connection;
 
 /// Ordered migrations. Index i applies when `PRAGMA user_version` == i.
-const MIGRATIONS: &[&str] = &[r#"
+const MIGRATIONS: &[&str] = &[
+    r#"
 CREATE TABLE files (
     id          INTEGER PRIMARY KEY,
     path        TEXT NOT NULL UNIQUE,
@@ -94,15 +95,43 @@ CREATE TABLE activations (
     activated_at INTEGER NOT NULL DEFAULT (unixepoch()),
     PRIMARY KEY (face_id)
 );
-"#];
+"#,
+    // 2: codepoint ranges per face, for "which fonts cover this text" queries.
+    r#"
+CREATE TABLE face_ranges (
+    face_id INTEGER NOT NULL REFERENCES faces(id) ON DELETE CASCADE,
+    lo      INTEGER NOT NULL,
+    hi      INTEGER NOT NULL
+);
+CREATE INDEX face_ranges_face ON face_ranges(face_id);
+"#,
+];
 
 pub fn migrate(conn: &mut Connection) -> Result<()> {
     let current: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
     for (i, sql) in MIGRATIONS.iter().enumerate().skip(current as usize) {
         let tx = conn.transaction()?;
         tx.execute_batch(sql)?;
+        if i == 1 {
+            backfill_ranges(&tx)?;
+        }
         tx.pragma_update(None, "user_version", (i + 1) as i64)?;
         tx.commit()?;
+    }
+    Ok(())
+}
+
+/// Populate `face_ranges` from the stored metadata JSON of an index created before v2.
+fn backfill_ranges(tx: &rusqlite::Transaction) -> Result<()> {
+    let rows: Vec<(i64, String)> = {
+        let mut stmt = tx.prepare("SELECT id, metadata FROM faces")?;
+        let it = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        it.collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    for (id, json) in rows {
+        if let Ok(face) = serde_json::from_str::<crate::model::FaceMetadata>(&json) {
+            super::insert_ranges(tx, id, &face.coverage.ranges)?;
+        }
     }
     Ok(())
 }

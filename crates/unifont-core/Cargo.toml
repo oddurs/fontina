@@ -25,6 +25,8 @@ schemars.workspace = true
 thiserror.workspace = true
 directories.workspace = true
 unicode-script.workspace = true
+unicode-blocks.workspace = true
+base64.workspace = true
 time.workspace = true
 
 [dev-dependencies]

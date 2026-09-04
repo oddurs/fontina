@@ -314,6 +314,13 @@
             "null"
           ]
         },
+        "reserved_font_names": {
+          "description": "OFL Reserved Font Names declared in the copyright or license text.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "spdx": {
           "description": "SPDX identifier or expression when recognisable, e.g. `OFL-1.1`. `LicenseRef-Unknown`\nwhen license text exists but is not recognised. Absent when the font carries none.",
           "type": [
