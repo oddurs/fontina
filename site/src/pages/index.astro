@@ -41,13 +41,17 @@ work on GNU/Linux, macOS and Windows, and encourage everyone to
 
 const status = `
 <dl class="status">
-<dt><span class="version">Released:</span> nothing yet</dt>
-<dd>The first tagged release will carry binaries, completions, man pages and Linux
-  packages; see <a href="${u('/releases/')}">Releases</a>. Until then,
-  <a href="${u('/download/')}">build from source</a>.</dd>
+<dt><span class="version"><a href="${repo}/releases/tag/v0.1.0">fontina 0.1.0</a></span>
+  (<a href="${repo}/blob/main/CHANGELOG.md">changes</a>)</dt>
+<dd>Status: <a href="${u('/news/2026-09-04-first-release/')}">2026-09-04</a>
+  (first release; pre-1.0, command output may still change).
+  <div class="regress">
+  <a href="${u('/download/')}">Binaries</a>.
+  <a href="${repo}/issues?q=is%3Aissue+is%3Aopen+label%3Abug">Open bugs</a>.
+  </div></dd>
 <dt><span class="version">Development:</span>
-  <a href="${repo}/commits/main">main</a>, 0.0.x
-  (<a href="${u('/roadmap/')}">roadmap</a>, <a href="${repo}/blob/main/CHANGELOG.md">changes</a>)</dt>
+  <a href="${repo}/commits/main">main</a>
+  (<a href="${u('/roadmap/')}">roadmap</a>, <a href="${repo}/commits/main">changes</a>)</dt>
 <dd>Status: <a href="${u('/news/2026-09-04-manage-in-the-terminal/')}">2026-09-04</a>,
   milestone M1 delivered: organise, activate, watch, preview, browse. Next is M2,
   typography in the browser.
