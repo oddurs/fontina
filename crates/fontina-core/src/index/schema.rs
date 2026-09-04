@@ -134,6 +134,17 @@ CREATE INDEX collection_faces_face ON collection_faces(face_id);
 
 pub fn migrate(conn: &mut Connection) -> Result<()> {
     let current: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+    // An index written by a newer fontina has columns and tables this build knows nothing
+    // about. Refusing is the only safe answer: silently operating on it would write rows
+    // that the newer build then has to interpret, and its migrations would already have
+    // been applied under a lower version number.
+    if current as usize > MIGRATIONS.len() {
+        return Err(crate::error::Error::Other(format!(
+            "index schema v{current} was written by a newer fontina; this build understands \
+             up to v{}. Upgrade fontina, or point --db (or FONTINA_DB) at another index.",
+            MIGRATIONS.len()
+        )));
+    }
     for (i, sql) in MIGRATIONS.iter().enumerate().skip(current as usize) {
         let tx = conn.transaction()?;
         tx.execute_batch(sql)?;
@@ -159,4 +170,31 @@ fn backfill_ranges(tx: &rusqlite::Transaction) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_index_from_a_newer_fontina_is_refused() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&mut conn).unwrap();
+        let applied: i64 = conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(applied as usize, MIGRATIONS.len());
+
+        conn.pragma_update(None, "user_version", applied + 1)
+            .unwrap();
+        let err = migrate(&mut conn).expect_err("a newer schema must be refused");
+        assert!(err.to_string().contains("newer fontina"), "{err}");
+    }
+
+    #[test]
+    fn migrating_is_idempotent() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&mut conn).unwrap();
+        migrate(&mut conn).unwrap();
+    }
 }
