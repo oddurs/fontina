@@ -49,7 +49,6 @@ const colour = [
 
   <h2 id="type">Type scale</h2>
   <p>Seven steps, ratio about 1.25, all in <code>rem</code> so they follow the reader's browser setting rather than overriding it.</p>
-  <div class="wide">
   <table>
     <tr><th>Token</th><th>Value</th><th>At 16px</th><th>Used for</th><th>Specimen</th></tr>
     {type.map(([token, value, px, use]) => (
@@ -59,7 +58,6 @@ const colour = [
       </tr>
     ))}
   </table>
-  </div>
   <p>
     Body text is <code>--text-base</code> at <code>--leading</code> 1.6.
     <span class="small">Small is <code>--text-sm</code>.</span>
@@ -73,7 +71,6 @@ const colour = [
 
   <h2 id="space">Spacing scale</h2>
   <p>One 4px step, doubled and halved. Every margin and padding in the stylesheet is one of these eight.</p>
-  <div class="wide">
   <table>
     <tr><th>Token</th><th>Value</th><th /></tr>
     {space.map(([token, px]) => (
@@ -83,11 +80,9 @@ const colour = [
       </tr>
     ))}
   </table>
-  </div>
 
   <h2 id="colour">Colour</h2>
   <p>Three inks, three grounds, two lines and one accent. Colour carries hierarchy; it never carries meaning on its own.</p>
-  <div class="wide">
   <table>
     <tr><th /><th>Token</th><th>Value</th><th>Use</th></tr>
     {colour.map(([token, value, use]) => (
@@ -97,7 +92,6 @@ const colour = [
       </tr>
     ))}
   </table>
-  </div>
 
   <h2 id="buttons">Buttons</h2>
   <p>One button, three intents, two sizes. An <code>&lt;a&gt;</code> and a <code>&lt;button&gt;</code> are drawn identically.</p>
@@ -171,14 +165,12 @@ const colour = [
 
   <h2 id="table">Table</h2>
   <p>Rules between rows, not around cells: the data is the grid.</p>
-  <div class="wide">
   <table>
     <tr><th>Id</th><th>Level</th><th>Finding</th></tr>
     <tr><td><code>name/family</code></td><td>error</td><td>no family name</td></tr>
     <tr><td><code>hinting/none</code></td><td>info</td><td>TrueType outlines without hinting programs</td></tr>
     <tr><td><code>license/nonfree</code></td><td>warn</td><td>licence is not a free software licence</td></tr>
   </table>
-  </div>
 
   <h2 id="code">Code</h2>
   <pre>$ fontina list --script Arab

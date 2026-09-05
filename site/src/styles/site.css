@@ -20,9 +20,11 @@
   --text-sm: 0.875rem;    /* 14px  nav, meta, tables, code */
   --text-base: 1rem;      /* 16px  body */
   --text-md: 1.125rem;    /* 18px  h3, lead paragraph */
-  --text-lg: 1.375rem;    /* 22px  h2 */
-  --text-xl: 1.75rem;     /* 28px  section opener */
-  --text-2xl: 2.25rem;    /* 36px  h1 */
+  /* The top three steps interpolate rather than snap: a 36px h1 is right on a
+     desktop column and too loud on a phone. The scale still names the endpoints. */
+  --text-lg: clamp(1.25rem, 1.16rem + 0.38vw, 1.375rem);   /* 20 -> 22px  h2 */
+  --text-xl: clamp(1.5rem, 1.34rem + 0.7vw, 1.75rem);      /* 24 -> 28px  opener */
+  --text-2xl: clamp(1.75rem, 1.35rem + 1.75vw, 2.25rem);   /* 28 -> 36px  h1 */
 
   --leading-tight: 1.25;  /* headings */
   --leading-snug: 1.45;   /* dense lists, code, nav */
@@ -88,6 +90,9 @@ html {
 
 body {
   font-family: var(--font-sans);
+  /* A bare URL in prose is longer than a phone is wide; break it rather than let
+     it widen the page. Code and tables scroll instead, and are exempt below. */
+  overflow-wrap: break-word;
   font-size: var(--text-base);
   line-height: var(--leading);
   font-weight: var(--weight-normal);
@@ -181,18 +186,33 @@ a:focus-visible {
 }
 
 /* ----------------------------------------------------------------- Frame */
-/* Off-screen until it is tabbed to, which is the only time it is wanted. */
+/* Clipped until it is tabbed to, which is the only time it is wanted. Clipped
+   rather than pushed off-canvas: a negative offset can extend the scrollable area
+   and give the page a horizontal scrollbar nothing appears to be causing. */
 .skip {
   position: absolute;
-  left: -9999px;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.skip:focus {
+  width: auto;
+  height: auto;
+  margin: 0;
+  overflow: visible;
+  clip-path: none;
   top: var(--space-2);
+  left: var(--space-4);
   padding: var(--space-2) var(--space-3);
   background: var(--bg);
   border: 1px solid var(--accent);
   border-radius: var(--radius);
   z-index: 1;
 }
-.skip:focus { left: var(--space-4); }
 
 .frame {
   display: flex;
@@ -220,15 +240,44 @@ a:focus-visible {
 .navcol .home a:link, .navcol .home a:visited { color: var(--ink); }
 
 @media (max-width: 60rem) {
-  .frame { flex-direction: column; align-items: stretch; gap: var(--space-6); }
+  .frame {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-6);
+    margin-top: var(--space-5);
+  }
+  /* Stacked, the nav stops being a column and becomes a footer of link groups.
+     Six groups in one list is three screens of scrolling on a phone, so they flow
+     into as many columns as the width allows. */
   .navcol {
     flex-basis: auto;
     width: 100%;
     position: static;
     max-height: none;
+    overflow: visible;
+    padding: var(--space-5) 0 0;
     border-top: 1px solid var(--line);
-    padding-top: var(--space-5);
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+    gap: var(--space-5);
   }
+  .navcol .home { grid-column: 1 / -1; margin-bottom: 0; }
+  .navitem { margin-bottom: 0; }
+}
+
+/* A phone holds less; give the page back the margins it was spending. */
+@media (max-width: 30rem) {
+  body { padding: 0 var(--space-3); }
+  .frame { margin-top: var(--space-4); }
+  h2 { margin-top: var(--space-6); }
+  h3 { margin-top: var(--space-5); }
+  .columns { gap: var(--space-5); }
+}
+
+/* A finger is not a mouse pointer: give it something to hit. */
+@media (pointer: coarse) {
+  .navbody a { padding-top: var(--space-2); padding-bottom: var(--space-2); }
+  .btn { padding: var(--space-4) var(--space-5); }
 }
 
 /* -------------------------------------------------------------- Nav item */
@@ -400,8 +449,21 @@ dl.status .regress {
 }
 
 /* ----------------------------------------------------------------- Table */
-/* Rules between rows, not around cells: the data is the grid. */
-table { border-collapse: collapse; font-size: var(--text-sm); width: 100%; }
+/* Rules between rows, not around cells: the data is the grid.
+
+   Every table carries its own horizontal scroll rather than relying on a wrapper.
+   Markdown emits a bare <table> and cannot be given one, so nine tables in the
+   manual had nothing to stop them pushing the page sideways on a narrow screen.
+   `width: max-content` lets a small table stay its own size and a wide one scroll
+   inside the column, which is the rule the design has always claimed to follow. */
+table {
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+}
 th, td {
   border-bottom: 1px solid var(--line);
   padding: var(--space-2) var(--space-3);
@@ -416,10 +478,9 @@ th {
 }
 tr:last-child td { border-bottom: 0; }
 td code { white-space: nowrap; }
-.wide { overflow-x: auto; margin: 0 0 var(--space-4); }
 
 /* ------------------------------------------------------------------ Code */
-pre, code, kbd, samp { font-family: var(--font-mono); }
+pre, code, kbd, samp { font-family: var(--font-mono); overflow-wrap: normal; }
 pre {
   background: var(--bg-inset);
   border: 1px solid var(--line);

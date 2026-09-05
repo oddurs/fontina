@@ -32,13 +32,18 @@ rather than overriding it.
 
 | Token | Value | At 16px | Used for |
 |---|---|---|---|
-| `--text-2xl` | `2.25rem` | 36px | `h1` |
-| `--text-xl` | `1.75rem` | 28px | a section opener |
-| `--text-lg` | `1.375rem` | 22px | `h2` |
+| `--text-2xl` | `clamp(1.75rem, …, 2.25rem)` | 28 → 36px | `h1` |
+| `--text-xl` | `clamp(1.5rem, …, 1.75rem)` | 24 → 28px | a section opener |
+| `--text-lg` | `clamp(1.25rem, …, 1.375rem)` | 20 → 22px | `h2` |
 | `--text-md` | `1.125rem` | 18px | `h3`, `.lead` |
 | `--text-base` | `1rem` | 16px | body |
 | `--text-sm` | `0.875rem` | 14px | nav, meta, tables, code |
 | `--text-xs` | `0.75rem` | 12px | labels, badges |
+
+The top three steps interpolate with the viewport rather than snapping at a
+breakpoint: a 36px `h1` is right at the top of a desktop column and too loud on a
+phone. The scale still names both endpoints, and the four steps below `--text-lg` do
+not move — body text should be the size the reader asked for.
 
 Leading is `--leading` 1.6 for prose, `--leading-snug` 1.45 for nav, dense lists and
 code, `--leading-tight` 1.25 for headings. Sans needs more air than the serif did;
@@ -108,8 +113,18 @@ with hairlines, and a shadow would be the one soft edge on an otherwise sharp pa
 The frame is a flex row of `.main` and `.navcol`, centred. Prose inside `.main` is
 capped at `--measure` so a line stays readable even when a table beside it is wide.
 The nav column is sticky, so it stays in reach down a long manual chapter, and scrolls
-inside itself if it is taller than the window. Under `60rem` the columns stack and the
-nav column takes a top hairline and stops being sticky.
+inside itself if it is taller than the window.
+
+Three things happen as the page narrows. Under `60rem` the columns stack, the nav takes
+a top hairline and stops being sticky, and — because six groups in a single list is
+three screens of scrolling on a phone — its groups flow into as many columns as fit.
+Under `30rem` the page takes back the margins it was spending: smaller body padding, a
+shorter gap above the frame, tighter heading rhythm. And where the pointer is coarse,
+nav links and buttons grow their vertical padding, because a finger is not a mouse.
+
+Nothing may scroll the page sideways. Tables and `pre` scroll inside themselves; prose
+breaks a long word rather than widening the column, and code is exempt from that so a
+path is never broken mid-token.
 
 Links are not underlined at rest; the colour carries them, and a page dense with links
 is not a page of stripes. Hover deepens the colour and underlines. Keyboard focus draws
@@ -267,14 +282,20 @@ The GNU copyright box, unboxed: a rule across the frame and then the small print
 ### Table
 
 ```html
-<div class="wide"><table>...</table></div>
+<table>...</table>
 ```
 
 Rules between rows, not around cells — the data is the grid, and a border on every cell
 was drawing the same information twice. The header row is semibold `--ink-soft` over a
-`--line-strong` rule; the last row drops its rule. Code in a cell does not wrap. The
-stylesheet applies this to every table, so Markdown gets it for free; `.wide` gives a
-table its own horizontal scroll so the page never scrolls sideways.
+`--line-strong` rule; the last row drops its rule. Code in a cell does not wrap.
+
+Every table carries its own horizontal scroll, as `display: block` with
+`width: max-content` and `max-width: 100%`: a narrow table stays its own size, a wide
+one scrolls inside the column. That is not decoration. Markdown emits a bare `<table>`
+and cannot be handed a wrapper, so the nine tables in the manual previously had nothing
+stopping them pushing the whole page sideways on a phone. There is no `.wide` helper
+any more; it existed only to do this by hand, and by hand it was never applied to the
+Markdown that needed it most.
 
 ### Code
 
@@ -302,8 +323,8 @@ pass over the emitted HTML; neither is done here.
 ### Helpers
 
 `.lead` (an opening paragraph at `--text-md` in `--ink-soft`), `.label` (the uppercase
-micro label), `.small`, `.smaller`, `.soft`, `.faint`, `.highlight`, `.wide`,
-and `.skip`, the skip link that sits off-screen until it is tabbed to. Nothing else.
+micro label), `.small`, `.smaller`, `.soft`, `.faint`, `.highlight`, and
+`.skip`, the skip link, clipped until it is tabbed to. Nothing else.
 
 ## Print
 
