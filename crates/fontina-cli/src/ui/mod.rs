@@ -35,7 +35,7 @@ use fontina_core::render::RenderOptions;
 use fontina_core::{ActivationState, FaceFilter, FaceMetadata, FaceSummary, Facets, Family, Index};
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap};
 use std::collections::BTreeMap;
@@ -1313,9 +1313,7 @@ impl App {
             .take(visible)
             .map(|(i, b)| {
                 let style = if i == selected {
-                    Style::default()
-                        .fg(Color::Cyan)
-                        .add_modifier(Modifier::BOLD)
+                    self.theme.accent().add_modifier(Modifier::BOLD)
                 } else {
                     Style::default()
                 };
@@ -1363,7 +1361,7 @@ impl App {
             for &cp in row {
                 let cell = fontina_core::unicode::cell_for(cp);
                 let style = if Some(cp) == found {
-                    Style::default().fg(Color::Black).bg(Color::Cyan)
+                    self.theme.cursor()
                 } else {
                     Style::default()
                 };

@@ -98,6 +98,19 @@ impl Theme {
         }
     }
 
+    /// The one thing on the screen the reader is being pointed *at*: a codepoint a
+    /// search just found, sitting in a grid of several hundred others.
+    ///
+    /// Reversed rather than coloured when there is no colour, because the whole job of
+    /// this style is to be the one cell an eye lands on, and a cell that merely goes
+    /// bold in a grid of glyphs is not that.
+    pub fn cursor(&self) -> Style {
+        match self.depth {
+            Depth::None => Style::default().add_modifier(Modifier::REVERSED),
+            _ => Style::default().fg(Color::Black).bg(Color::Cyan),
+        }
+    }
+
     /// Present, and not what you are reading: labels, keys, the row of hints.
     ///
     /// Under `NO_COLOR` this is deliberately plain rather than dim. There is no
@@ -254,6 +267,7 @@ mod tests {
             theme.warn(),
             theme.bad(),
             theme.good(),
+            theme.cursor(),
         ] {
             assert!(style.fg.is_none(), "a role set a colour under NO_COLOR");
             assert!(style.bg.is_none(), "a role set a background under NO_COLOR");
