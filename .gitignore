@@ -1,4 +1,9 @@
 /target
+# Build directories from side-by-side benchmark runs (`CARGO_TARGET_DIR=target-x`), and
+# any binary left beside them. A 6.5 MB `fontina-old` reached main this way.
+/target-*
+/fontina-old
+/fontina.exe
 **/*.rs.bk
 *.pending-snap
 .DS_Store
