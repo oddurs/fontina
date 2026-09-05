@@ -26,9 +26,11 @@
 //! through `SHGetKnownFolderPath`, which no environment variable can redirect — so the
 //! tests that write anything skip there and say so.
 //!
-//! Several of these assert behaviour that is wrong. They are written as
-//! characterisation tests, named for the defect and commented with what the right
-//! answer would be, so that the fix has a failing assertion waiting for it.
+//! The rule the file tests is one sentence: fontina replaces and removes a file that
+//! fontina wrote, unedited, and nothing else. A foreign file, a hand-edited unit, a
+//! directory and a symbolic link — dangling or not — are all refused by name and left
+//! exactly as they were, and `status` takes the same look at the path as the two halves
+//! that write, so the three cannot disagree about what is there.
 
 use fontina_platform::agent;
 use std::ffi::OsString;
@@ -204,101 +206,107 @@ fn a_second_install_repoints_the_agent_without_saying_what_it_replaced() {
 
 // ----- files fontina did not write -----
 
-/// DEFECT: `install` overwrites whatever is at the agent's path.
+/// `install` refuses a file fontina did not write, and leaves it byte for byte.
 ///
-/// `fs::write` truncates. There is no check that fontina wrote the file it is about to
-/// replace, so a file somebody else put there — a unit of their own that happens to
-/// carry this name, a leftover from another tool — is destroyed without a word.
-///
-/// This is the same class as the defect where `install` adopted a font the user had
-/// placed in their own font directory: `lib.rs` grew `copy_slot`, `is_copy_slot` and
-/// `present_by_hand` to stop it for fonts, and `agent.rs` has no equivalent. What it
-/// should do is refuse, the way `install` refuses an identical font already present by
-/// hand, and name the file it will not touch.
+/// `fs::write` truncates, and there was no check that fontina wrote the file it was
+/// about to replace, so a unit somebody else put there under this name was destroyed
+/// without a word. This is the same class as the defect where `install` adopted a font
+/// the user had placed in their own font directory by hand; `lib.rs` answered it with
+/// `copy_slot`/`is_copy_slot`, and the answer here is a marker line in the file, read
+/// back by `agent::Ownership`.
 #[test]
-fn install_overwrites_a_file_fontina_did_not_write() {
+fn install_refuses_a_file_fontina_did_not_write() {
     let Some(_h) = home("foreign-install") else {
         return;
     };
     let path = agent_path();
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    std::fs::write(
-        &path,
-        "# not fontina's. Somebody's own unit, hand written.\n",
-    )
-    .unwrap();
+    let theirs = "# not fontina's. Somebody's own unit, hand written.\n";
+    std::fs::write(&path, theirs).unwrap();
 
-    let plan = agent::install(&exe(), &args()).expect("today it succeeds");
-    assert_eq!(
-        read(&path),
-        plan.contents,
-        "their file was replaced by ours"
-    );
+    let err = agent::install(&exe(), &args()).unwrap_err();
+    let said = err.to_string();
+    assert!(said.contains("did not write"), "{said}");
     assert!(
-        !read(&path).contains("Somebody's own unit"),
-        "and their content is gone"
+        said.contains(&path.display().to_string()),
+        "and it names the file, so the reader can go and look: {said}"
+    );
+    assert_eq!(read(&path), theirs, "their file is untouched");
+    assert_eq!(
+        agent::status().unwrap().ownership,
+        agent::Ownership::Foreign
     );
 }
 
-/// DEFECT: `uninstall` deletes whatever is at the agent's path.
+/// `uninstall` leaves a file fontina did not write where it is, and says why.
 ///
-/// It computes the path from [`agent::plan`], throws the contents away and calls
-/// `remove_file`. A file fontina never wrote is deleted and reported as a successful
-/// uninstall. It should leave a file it does not recognise alone and say why.
+/// It used to compute the path from [`agent::plan`], throw the contents away and call
+/// `remove_file`: somebody else's file deleted, and reported as a successful uninstall.
 #[test]
-fn uninstall_deletes_a_file_fontina_did_not_write() {
+fn uninstall_refuses_a_file_fontina_did_not_write() {
     let Some(_h) = home("foreign-uninstall") else {
         return;
     };
     let path = agent_path();
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    std::fs::write(&path, "# not fontina's\n").unwrap();
+    let theirs = "# not fontina's\n";
+    std::fs::write(&path, theirs).unwrap();
 
-    assert!(
-        agent::uninstall().expect("today it succeeds"),
-        "reported as a removal"
-    );
-    assert!(!path.exists(), "somebody else's file is gone");
+    let err = agent::uninstall().unwrap_err();
+    let said = err.to_string();
+    assert!(said.contains("did not write"), "{said}");
+    assert!(said.contains(&path.display().to_string()), "{said}");
+    assert_eq!(read(&path), theirs, "somebody else's file is still there");
 }
 
-/// DEFECT: uninstall cannot tell "mine, unchanged" from "mine, edited".
+/// "Mine, unchanged" is removed; "mine, edited" is refused, and the edit survives.
 ///
 /// Somebody adds a line to the unit — an `Environment=`, a `Nice=`, an `ExecStartPre=`
-/// that waits for their network share to mount — and `uninstall` throws it away exactly
-/// as it throws away the file it wrote itself. The two calls are indistinguishable in
-/// their result, which is the whole problem: there is nothing for a caller to warn on.
-///
-/// `install` already returns the bytes it wrote, so recognising them later is a matter
-/// of comparing, or of recording a hash the way `blake3` is already used for font slot
-/// names. What it should do is refuse, or at the very least report that what it removed
-/// was not what it installed.
+/// that waits for their network share to mount — and `uninstall` used to throw it away
+/// exactly as it threw away the file it wrote itself, the two calls indistinguishable in
+/// their result. Refusing rather than removing-and-warning is the choice made here: the
+/// edit is theirs, fontina cannot put it back, and one `rm` clears the refusal for
+/// somebody who did mean to lose it.
 #[test]
-fn uninstall_cannot_tell_a_hand_edited_unit_from_an_untouched_one() {
+fn uninstall_removes_an_untouched_unit_and_refuses_a_hand_edited_one() {
     let Some(_h) = home("edited") else { return };
 
-    // Untouched.
+    // Untouched: removed, and reported as a removal.
     let plan = agent::install(&exe(), &args()).unwrap();
-    let untouched = agent::uninstall().unwrap();
+    assert_eq!(agent::status().unwrap().ownership, agent::Ownership::Ours);
+    assert!(agent::uninstall().unwrap(), "fontina's own file, unedited");
+    assert!(!plan.path.exists());
 
-    // Edited by hand.
+    // Edited by hand: refused, and the edit is still there afterwards.
     agent::install(&exe(), &args()).unwrap();
     let edit = format!("{}# waits for /srv to mount\n", plan.contents);
     std::fs::write(&plan.path, &edit).unwrap();
-    assert_ne!(read(&plan.path), plan.contents, "the edit is really there");
-    let edited = agent::uninstall().unwrap();
-
     assert_eq!(
-        untouched, edited,
-        "the same answer for both, so nothing downstream can warn about the edit"
+        agent::status().unwrap().ownership,
+        agent::Ownership::Edited,
+        "fontina wrote it and can tell it has changed since"
     );
-    assert!(!plan.path.exists(), "and the edit was thrown away silently");
+    let err = agent::uninstall().unwrap_err();
+    let said = err.to_string();
+    assert!(said.contains("edited since"), "{said}");
+    assert_eq!(read(&plan.path), edit, "the edit was not thrown away");
+
+    // An install over it is refused for the same reason, so the edit cannot be lost
+    // by the other half either.
+    assert!(agent::install(&exe(), &args()).is_err());
+    assert_eq!(read(&plan.path), edit);
+
+    // And once the reader has dealt with it themselves, both halves are ordinary again.
+    std::fs::remove_file(&plan.path).unwrap();
+    assert!(!agent::uninstall().unwrap(), "nothing left to remove");
+    assert!(agent::install(&exe(), &args()).is_ok());
 }
 
 /// A directory where the agent's file goes is refused by both halves, and survives.
 ///
-/// This one is right, and worth holding still: `fs::write` and `remove_file` both fail
-/// on a directory, so the error is the filesystem's rather than fontina's, and nothing
-/// inside is lost.
+/// `fs::write` and `remove_file` both fail on a directory anyway, so this always held;
+/// what is new is that the error is fontina's and says whose the directory is, instead
+/// of being whatever the filesystem happened to return.
 #[test]
 fn a_directory_at_the_agents_path_is_refused_by_both_halves() {
     let Some(_h) = home("directory") else { return };
@@ -306,97 +314,110 @@ fn a_directory_at_the_agents_path_is_refused_by_both_halves() {
     std::fs::create_dir_all(&path).unwrap();
     std::fs::write(path.join("keep.txt"), "someone's file\n").unwrap();
 
-    assert!(
-        agent::install(&exe(), &args()).is_err(),
-        "a directory is not overwritten"
-    );
-    assert!(agent::uninstall().is_err(), "and it is not removed either");
+    let err = agent::install(&exe(), &args()).unwrap_err();
+    assert!(err.to_string().contains("a directory"), "{err}");
+    let err = agent::uninstall().unwrap_err();
+    assert!(err.to_string().contains("a directory"), "{err}");
     assert!(path.is_dir());
     assert_eq!(read(&path.join("keep.txt")), "someone's file\n");
 
-    // `status` reports it as installed, because `Path::exists` is true for a directory.
-    // Harmless on its own, but it is the reason a reader is told the agent is there
-    // while every attempt to remove it fails.
-    assert!(agent::status().unwrap().installed);
+    // And `status` no longer calls it an installed agent. `Path::exists` is true for a
+    // directory, which is how a reader used to be told the agent was there while every
+    // attempt to remove it failed; `installed` now means fontina's own file, and
+    // `ownership` is what says what is in the way instead.
+    let status = agent::status().unwrap();
+    assert!(!status.installed);
+    assert_eq!(status.ownership, agent::Ownership::Foreign);
 }
 
-/// DEFECT: `install` writes *through* a symlink at the agent's path.
+/// A symbolic link at the agent's path is refused, never followed, and never unlinked.
 ///
 /// `fs::write` follows symlinks, so a link at the agent's path — left by a dotfile
-/// manager, or by a previous version of somebody's own setup — makes `install`
-/// overwrite the file at the far end, wherever that is. The agent's own path is still a
-/// symlink afterwards, so `uninstall` removes the link and leaves the clobbered file
-/// behind for good.
+/// manager, or by a previous version of somebody's own setup — used to make `install`
+/// overwrite the file at the far end, wherever that was; the path stayed a link, so
+/// `uninstall` then removed the link and left the clobbered file behind for good.
 ///
-/// It should refuse anything at that path that is not a regular file fontina wrote, and
-/// where it does write, replace the link rather than follow it.
+/// Refusing rather than replacing the link is the choice: the link is somebody's, so is
+/// its target, and fontina can reconstruct neither. Both halves now look with
+/// `symlink_metadata`, which does not follow.
 #[test]
-fn install_writes_through_a_symlink_and_clobbers_the_file_at_the_far_end() {
+fn install_refuses_a_symlink_at_the_agents_path_and_never_follows_it() {
     let Some(h) = home("symlink") else { return };
     let path = agent_path();
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let victim = h.root.join("important.conf");
-    std::fs::write(&victim, "somebody's configuration\n").unwrap();
+    let theirs = "somebody's configuration\n";
+    std::fs::write(&victim, theirs).unwrap();
     symlink(&victim, &path);
 
-    let plan = agent::install(&exe(), &args()).expect("today it succeeds");
+    let err = agent::install(&exe(), &args()).unwrap_err();
+    assert!(err.to_string().contains("a symbolic link"), "{err}");
     assert_eq!(
         read(&victim),
-        plan.contents,
-        "the unit was written into a file outside the agent's own path: {}",
+        theirs,
+        "nothing was written at the far end: {}",
         victim.display()
     );
-    assert!(
-        !read(&victim).contains("somebody's configuration"),
-        "their file is gone"
-    );
+
+    let err = agent::uninstall().unwrap_err();
+    assert!(err.to_string().contains("a symbolic link"), "{err}");
     assert!(
         std::fs::symlink_metadata(&path)
             .unwrap()
             .file_type()
             .is_symlink(),
-        "and the agent's path is still only a link to it"
+        "the link is left for whoever put it there"
     );
-
-    assert!(agent::uninstall().unwrap());
-    assert!(!path.exists(), "the link went");
-    assert!(
-        victim.exists(),
-        "the file it clobbered stays behind, with nothing left pointing at it"
+    assert_eq!(
+        agent::status().unwrap().ownership,
+        agent::Ownership::Foreign
     );
 }
 
-/// DEFECT: a broken symlink is invisible to `status` and removable by `uninstall`.
+/// `status` and `uninstall` give one answer about a broken symbolic link.
 ///
-/// `status` asks `Path::exists`, which follows the link and answers false; `uninstall`
-/// calls `remove_file`, which does not follow and removes it. So fontina reports that no
-/// agent is installed and then removes one. Worse, `install` over a dangling link
-/// creates the file at the far end — a path of somebody else's choosing.
+/// `status` used to ask `Path::exists`, which follows the link and answers false, while
+/// `uninstall` called `remove_file`, which does not follow and removed it: fontina
+/// reported that no agent was installed and then removed one. Both now take the same
+/// look, with `symlink_metadata`, and the answer they share is that no agent of
+/// fontina's is installed and nothing at that path is fontina's to touch.
 #[test]
-fn status_and_uninstall_disagree_about_a_broken_symlink() {
+fn status_and_uninstall_agree_about_a_broken_symlink() {
     let Some(h) = home("dangling") else { return };
     let path = agent_path();
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let missing = h.root.join("gone/service.conf");
     symlink(&missing, &path);
 
+    let status = agent::status().unwrap();
     assert!(
-        !agent::status().unwrap().installed,
-        "status follows the link and sees nothing"
+        !status.installed,
+        "a dangling link is not an agent that will run at login"
     );
-    assert!(
-        agent::uninstall().unwrap(),
-        "uninstall does not follow it, and removes what status said was not there"
+    assert_eq!(
+        status.ownership,
+        agent::Ownership::Foreign,
+        "and the link is seen, rather than followed and found to be nothing"
     );
 
-    // And the other way round: installing over a dangling link writes at the far end.
-    symlink(&missing, &path);
+    let err = agent::uninstall().unwrap_err();
+    assert!(err.to_string().contains("a symbolic link"), "{err}");
+    assert!(
+        std::fs::symlink_metadata(&path)
+            .unwrap()
+            .file_type()
+            .is_symlink(),
+        "and it removes nothing status said was not there"
+    );
+
+    // The other way round: an install over a dangling link does not create the file at
+    // the far end, a path of somebody else's choosing.
     std::fs::create_dir_all(missing.parent().unwrap()).unwrap();
-    let plan = agent::install(&exe(), &args()).expect("today it succeeds");
-    assert_eq!(
-        read(&missing),
-        plan.contents,
-        "the unit landed at {}, not at the agent's path",
+    let err = agent::install(&exe(), &args()).unwrap_err();
+    assert!(err.to_string().contains("a symbolic link"), "{err}");
+    assert!(
+        !missing.exists(),
+        "nothing was written at {}",
         missing.display()
     );
 }
