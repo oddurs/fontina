@@ -1,5 +1,6 @@
 ---
 source: crates/fontina-cli/src/ui/mod.rs
+assertion_line: 3243
 expression: drawn
 ---
 ┌ glyph map — / to search, m or Esc to close ──────────────────────────────────────────────────────────────────────────┐
@@ -37,4 +38,4 @@ expression: drawn
 │                                                                                                                      │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
  1699 codepoints in 20 block(s)   (fontina glyphs 1)
- / search  ⇥ facets  ⏎ open  ⌫ back  t tag  c collection  a/A activate  d deactivate  i install  u uninstall  e text  +/
+ / search  ⇥ pane  ⏎ open  ⌫ back  t tag  c collection  a/A activate  d deactivate  i install  u uninstall  ? help

@@ -1,0 +1,29 @@
+---
+source: crates/fontina-cli/src/ui/mod.rs
+assertion_line: 3457
+expression: drawn
+---
+┌ 5 families ──────────────────────────────────────────────┐
+│Amiri                                               1     │
+│Bricolage Grotesque                                 1 V   │
+│Inter                                               2     │
+│Nabla                                               1 VC  │
+│Source Serif 4                                      1     │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+ $ fontina families
+ / search  ⇥ pane  ⏎ open  ⌫ back  t tag  ? help

@@ -2,7 +2,7 @@
 id: 4
 title: Three panes, two panes, one pane
 type: feat
-status: backlog
+status: done
 milestone: tui-craft
 created: 2026-09-05
 updated: 2026-09-05

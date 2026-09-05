@@ -23,6 +23,7 @@
 
 mod controls;
 mod glyphs;
+mod layout;
 mod preview;
 mod sheet;
 
@@ -115,8 +116,11 @@ struct FacetRow {
 enum Focus {
     Facets,
     List,
-    /// The axis and feature controls, only reachable when the face offers any.
-    Controls,
+    /// The face pane. Beside the others it is a readout and Tab only stops on it when
+    /// the face offers axes or features to move; alone on a narrow screen it is the
+    /// only view of a face there is, so it always takes focus. `layout::Shape` decides
+    /// which of those is true, and `controls_active` is how the keys tell them apart.
+    Detail,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -151,6 +155,9 @@ pub struct App {
     status: String,
     help: bool,
     preview_text: Option<String>,
+    /// First line of the help the overlay is showing. Only ever non-zero on a terminal
+    /// too short to hold all of it at once.
+    help_scroll: u16,
     preview_size: f32,
     detail: Option<FaceMetadata>,
     detail_id: Option<i64>,
@@ -171,6 +178,13 @@ pub struct App {
     sheet: Option<sheet::Sheet>,
     /// Terminal lines the sheet had on the last frame, so a PageDown moves by a screen.
     sheet_visible: usize,
+    /// How many panes the last frame had room for.
+    ///
+    /// Read by the key handler, written by the drawing: Tab has to cycle through the
+    /// panes that are actually on the screen, and only the frame knows how wide the
+    /// terminal was. A resize therefore reaches the keys one frame late, which is a
+    /// frame the reader spends letting go of the mouse.
+    shape: layout::Shape,
     preview: preview::Cache,
     /// How the browser registers a font with the operating system.
     ///
@@ -222,6 +236,7 @@ impl App {
             input: None,
             status: String::new(),
             help: false,
+            help_scroll: 0,
             preview_text: None,
             preview_size: 28.0,
             detail: None,
@@ -232,6 +247,7 @@ impl App {
             glyph_cols: 16,
             sheet: None,
             sheet_visible: 20,
+            shape: layout::Shape::Three,
             preview: preview::Cache::default(),
             activator,
         };
@@ -422,11 +438,43 @@ impl App {
             };
         }
         self.detail_id = next_id;
-        if self.focus == Focus::Controls && self.controls.is_empty() {
+        if self.focus == Focus::Detail && !self.detail_takes_focus() {
             self.focus = Focus::List;
         }
         self.detail = face;
         Ok(())
+    }
+
+    /// Whether the face pane is somewhere Tab can stop at this width.
+    fn detail_takes_focus(&self) -> bool {
+        self.shape.detail_takes_focus(!self.controls.is_empty())
+    }
+
+    /// Whether a key that moves an axis or toggles a feature should do so.
+    ///
+    /// The face pane takes focus on a narrow terminal whether or not the face has
+    /// anything to adjust, so "the focus is in the face pane" and "the controls are
+    /// listening" stopped being the same question.
+    fn controls_active(&self) -> bool {
+        self.focus == Focus::Detail && !self.controls.is_empty()
+    }
+
+    /// Tab: through the panes this width has, in the order they are drawn.
+    fn cycle_focus(&mut self) {
+        self.focus = match self.focus {
+            Focus::Facets => Focus::List,
+            Focus::List if self.detail_takes_focus() => Focus::Detail,
+            Focus::List | Focus::Detail => Focus::Facets,
+        }
+    }
+
+    /// Which pane the layout should show, for a focus that may be in the controls.
+    fn pane(&self) -> layout::Pane {
+        match self.focus {
+            Focus::Facets => layout::Pane::Facets,
+            Focus::List => layout::Pane::List,
+            Focus::Detail => layout::Pane::Detail,
+        }
     }
 
     // ----- events -----
@@ -459,7 +507,20 @@ impl App {
             return Ok(Flow::Continue);
         }
         if self.help {
-            self.help = false;
+            // On a short terminal the help does not fit, so the keys that move
+            // everything else move it too. Everything else closes it, which is what a
+            // reader who pressed `?` by accident will try first.
+            match key.code {
+                KeyCode::Down | KeyCode::Char('j') => {
+                    // Saturating, not wrapping: the soak test holds a key down for
+                    // hundreds of presses and a debug build panics on the overflow.
+                    self.help_scroll = self.help_scroll.saturating_add(1)
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.help_scroll = self.help_scroll.saturating_sub(1)
+                }
+                _ => self.help = false,
+            }
             return Ok(Flow::Continue);
         }
         // Ctrl-C still quits from anywhere; a full-screen mode takes every other key,
@@ -489,18 +550,15 @@ impl App {
                     return Ok(Flow::Quit);
                 }
             }
-            KeyCode::Char('?') => self.help = true,
+            KeyCode::Char('?') => {
+                self.help = true;
+                self.help_scroll = 0;
+            }
             KeyCode::Char('m') => self.open_glyphs(),
             KeyCode::Char('w') => self.open_sheet(sheet::Kind::Waterfall)?,
             KeyCode::Char('C') => self.open_sheet(sheet::Kind::Compare)?,
             KeyCode::Char('s') => self.open_specimen()?,
-            KeyCode::Tab => {
-                self.focus = match self.focus {
-                    Focus::Facets => Focus::List,
-                    Focus::List if !self.controls.is_empty() => Focus::Controls,
-                    Focus::List | Focus::Controls => Focus::Facets,
-                }
-            }
+            KeyCode::Tab => self.cycle_focus(),
             KeyCode::Char('/') => self.start_input(InputKind::Search, self.query.clone()),
             KeyCode::Char('e') => {
                 let text = self.preview_text.clone().unwrap_or_default();
@@ -535,31 +593,33 @@ impl App {
             KeyCode::End | KeyCode::Char('G') => self.jump(usize::MAX)?,
             // In the controls the arrows move an axis, so they cannot also open a
             // family; Space and Enter still toggle the row under the cursor.
-            KeyCode::Right | KeyCode::Char('l') if self.focus == Focus::Controls => {
+            KeyCode::Right | KeyCode::Char('l') if self.controls_active() => {
                 self.controls.adjust(1);
             }
-            KeyCode::Left | KeyCode::Char('h') if self.focus == Focus::Controls => {
+            KeyCode::Left | KeyCode::Char('h') if self.controls_active() => {
                 self.controls.adjust(-1);
             }
-            KeyCode::Char('L') if self.focus == Focus::Controls => {
+            KeyCode::Char('L') if self.controls_active() => {
                 self.controls.adjust(10);
             }
-            KeyCode::Char('H') if self.focus == Focus::Controls => {
+            KeyCode::Char('H') if self.controls_active() => {
                 self.controls.adjust(-10);
             }
-            KeyCode::Char('n') if self.focus == Focus::Controls => {
+            KeyCode::Char('n') if self.controls_active() => {
                 self.controls.cycle_instance(1);
             }
-            KeyCode::Char('p') if self.focus == Focus::Controls => {
+            KeyCode::Char('p') if self.controls_active() => {
                 self.controls.cycle_instance(-1);
             }
-            KeyCode::Char('0') if self.focus == Focus::Controls => self.controls.reset(),
+            KeyCode::Char('0') if self.controls_active() => self.controls.reset(),
             KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Right | KeyCode::Char('l') => {
                 match self.focus {
                     Focus::Facets => self.toggle_facet()?,
                     Focus::List => self.open_family()?,
-                    Focus::Controls => {
-                        self.controls.toggle();
+                    Focus::Detail => {
+                        if self.controls_active() {
+                            self.controls.toggle();
+                        }
                     }
                 }
             }
@@ -890,7 +950,7 @@ impl App {
                 }
                 self.facet_list.select(Some(next));
             }
-            Focus::Controls => self.controls.move_cursor(delta),
+            Focus::Detail => self.controls.move_cursor(delta),
         }
         Ok(())
     }
@@ -911,7 +971,7 @@ impl App {
                         .select(Some(first_selectable(&self.rows, i)));
                 }
             }
-            Focus::Controls => {
+            Focus::Detail => {
                 let last = self.controls.len().saturating_sub(1);
                 self.controls
                     .move_cursor(to.min(last) as i32 - self.controls.cursor() as i32);
@@ -1108,17 +1168,27 @@ impl App {
                 Constraint::Length(1),
             ])
             .split(area);
-        let columns = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Length(26),
-                Constraint::Percentage(40),
-                Constraint::Min(30),
-            ])
-            .split(vertical[0]);
-        self.draw_facets(f, columns[0]);
-        self.draw_list(f, columns[1]);
-        self.draw_detail(f, columns[2]);
+        self.shape = layout::Shape::for_width(area.width);
+        // The focus can outlive the pane it was in: drag a window narrow while the
+        // cursor sits in the controls and the face pane stops taking focus. Settle
+        // that before the split, so the frame draws the pane the focus ends up in.
+        if self.focus == Focus::Detail && !self.detail_takes_focus() {
+            self.focus = Focus::List;
+        }
+        let panes = layout::split(vertical[0], self.pane());
+        // Beneath first, overlay last: at two panes the facets are drawn over the list.
+        if let Some(area) = panes.list {
+            self.draw_list(f, area);
+        }
+        if let Some(area) = panes.detail {
+            self.draw_detail(f, area);
+        }
+        if let Some(area) = panes.facets {
+            if panes.overlay {
+                f.render_widget(Clear, area);
+            }
+            self.draw_facets(f, area, panes.overlay);
+        }
         self.draw_status(f, vertical[1]);
         self.draw_keys(f, vertical[2]);
         if self.sheet.is_some() {
@@ -1300,7 +1370,7 @@ impl App {
         }
     }
 
-    fn draw_facets(&mut self, f: &mut ratatui::Frame, area: Rect) {
+    fn draw_facets(&mut self, f: &mut ratatui::Frame, area: Rect, overlay: bool) {
         let items: Vec<ListItem> = self
             .rows
             .iter()
@@ -1336,7 +1406,13 @@ impl App {
                 Block::default()
                     .borders(Borders::ALL)
                     .border_style(self.border(self.focus == Focus::Facets))
-                    .title(format!(" {} faces ", self.facets.faces)),
+                    // A pane drawn over another has to say how to put it back, because
+                    // nothing else on the screen explains where the list went.
+                    .title(if overlay {
+                        format!(" {} faces — ⇥ closes ", self.facets.faces)
+                    } else {
+                        format!(" {} faces ", self.facets.faces)
+                    }),
             )
             .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
         f.render_stateful_widget(list, area, &mut self.facet_list);
@@ -1406,7 +1482,7 @@ impl App {
     fn draw_detail(&mut self, f: &mut ratatui::Frame, area: Rect) {
         let block = Block::default()
             .borders(Borders::ALL)
-            .border_style(self.border(false))
+            .border_style(self.border(self.focus == Focus::Detail))
             .title(" Details ");
         let inner = block.inner(area);
         f.render_widget(block, area);
@@ -1573,7 +1649,7 @@ impl App {
     /// Axes as `tag  value` with a bar, features as a checkbox, the selected row
     /// highlighted when the pane has focus.
     fn draw_controls(&self, f: &mut ratatui::Frame, area: Rect, face: &FaceMetadata) {
-        let focused = self.focus == Focus::Controls;
+        let focused = self.focus == Focus::Detail;
         let mut lines: Vec<Line> = Vec::new();
         let title = match self.controls.instance_name(face) {
             Some(name) => format!("axes & features — {name}"),
@@ -1653,18 +1729,18 @@ impl App {
     }
 
     fn draw_keys(&self, f: &mut ratatui::Frame, area: Rect) {
-        let keys = " / search  ⇥ facets  ⏎ open  ⌫ back  t tag  c collection  a/A activate  d deactivate  i install  u uninstall  e text  +/- size  s specimen  R rescan  ? help  q quit";
         f.render_widget(
-            Paragraph::new(Span::styled(keys, Style::default().fg(Color::DarkGray))),
+            Paragraph::new(Span::styled(
+                layout::keys(area.width),
+                Style::default().fg(Color::DarkGray),
+            )),
             area,
         );
     }
 
     fn draw_help(&self, f: &mut ratatui::Frame, area: Rect) {
-        let text = "\
- fontina ui
-
- Move        j/k ↑/↓ PgUp/PgDn g/G        Tab cycles facets, list, controls
+        let text = "
+ Move        j/k ↑/↓ PgUp/PgDn g/G        Tab cycles the panes
  Filter      / type to search  Esc clears   Enter/Space toggles a facet   x clears all
  Families    Enter opens a family, Backspace/Esc closes it
  Organise    t tag the selection   c add it to a collection
@@ -1678,27 +1754,57 @@ impl App {
              the selection stands for. j/k scroll, +/- resize a comparison
  Specimen    s writes an HTML specimen for the selection and opens it in your
              browser, for the things a terminal cannot show honestly
+ Panes       Three side by side at {three} columns and up; under that the facets
+             move over the list and Tab opens them; under {two}, one pane at a
+             time, the others still a Tab away
  Index       R rescans every source (fontina scan --prune)
  Quit        q
 
  The status line shows the CLI command for what you see. Everything here is a command.
 
  any key to close";
+        // The widths the panes change at are stated rather than described, so the
+        // help cannot drift from the layout it is describing.
+        let text = text
+            .replace("{three}", &layout::THREE.to_string())
+            .replace("{two}", &layout::TWO.to_string());
+        let text = text.as_str();
         let w = 90.min(area.width);
-        let h = 26.min(area.height);
+        // Lines the text will take once the box has wrapped it, which on a narrow
+        // terminal is more than the lines it was written as.
+        let body = w.saturating_sub(2);
+        let total: u16 = text
+            .lines()
+            .map(|l| wrapped_rows(&Line::from(l), body))
+            .sum();
+        let h = (total + 2).min(area.height);
         let rect = Rect::new(
             area.x + (area.width - w) / 2,
             area.y + (area.height - h) / 2,
             w,
             h,
         );
+        // A help box that does not fit says so and says what to do about it, rather
+        // than quietly ending three keys early on the one screen where a reader is
+        // looking for a key they cannot find.
+        let shown = h.saturating_sub(2);
+        let scroll = self.help_scroll.min(total.saturating_sub(shown));
+        let title = if total > shown {
+            format!(" fontina ui — {}/{} lines, j/k scrolls ", shown, total)
+        } else {
+            " fontina ui ".into()
+        };
         f.render_widget(Clear, rect);
         f.render_widget(
-            Paragraph::new(text).block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Cyan)),
-            ),
+            Paragraph::new(text)
+                .wrap(Wrap { trim: false })
+                .scroll((scroll, 0))
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(Color::Cyan))
+                        .title(title),
+                ),
             rect,
         );
     }
@@ -2360,7 +2466,7 @@ mod tests {
                 "{whence}: the cached summary belongs to another face"
             );
         }
-        if app.focus == Focus::Controls {
+        if app.focus == Focus::Detail {
             assert!(
                 !app.controls.is_empty(),
                 "{whence}: focus sits on a controls pane the face does not have"
@@ -2590,7 +2696,7 @@ mod tests {
         let variable_len = app.controls.len();
 
         // Move an axis, then look at a different face: the setting does not follow it.
-        app.focus = Focus::Controls;
+        app.focus = Focus::Detail;
         // This face's default sits at the top of its first axis, so the headroom is
         // downward — which is itself worth pinning: `adjust` at a bound is a no-op.
         assert!(!app.controls.adjust(1), "already at the axis maximum");
@@ -2615,7 +2721,7 @@ mod tests {
     fn focus_never_rests_on_controls_a_face_does_not_have() {
         let mut app = app();
         select_family(&mut app, "Bricolage");
-        app.focus = Focus::Controls;
+        app.focus = Focus::Detail;
         assert!(!app.controls.is_empty());
 
         let path = app.detail.as_ref().unwrap().file.path.clone();
@@ -2629,7 +2735,7 @@ mod tests {
         );
         assert_ne!(
             app.focus,
-            Focus::Controls,
+            Focus::Detail,
             "focus must leave a pane that no longer exists"
         );
     }
@@ -2641,7 +2747,7 @@ mod tests {
     fn an_action_on_the_selected_face_keeps_its_axes_and_toggles() {
         let mut app = app();
         select_family(&mut app, "Bricolage");
-        app.focus = Focus::Controls;
+        app.focus = Focus::Detail;
         assert!(app.controls.adjust(-4));
         app.controls.move_cursor(app.controls.len() as i32);
         assert!(app.controls.toggle(), "the last row is a feature");
@@ -2658,7 +2764,7 @@ mod tests {
             features,
             "the toggles survived a reload"
         );
-        assert_eq!(app.focus, Focus::Controls, "and so did the focus");
+        assert_eq!(app.focus, Focus::Detail, "and so did the focus");
     }
 
     /// The pane is drawn from `Controls::rows`, so a rendering check is really a check
@@ -3039,7 +3145,7 @@ mod tests {
     fn the_render_options_carry_what_the_reader_set() {
         let mut app = app();
         select_family(&mut app, "Bricolage");
-        app.focus = Focus::Controls;
+        app.focus = Focus::Detail;
         app.controls.adjust(-3);
         let opts = app.render_options("Ag".into(), 80);
         assert_eq!(opts.variations, app.controls.variations());
@@ -3149,7 +3255,7 @@ mod tests {
     fn the_controls_pane_offers_the_axes_of_a_variable_face() {
         let mut app = app();
         select_family(&mut app, "Bricolage");
-        app.focus = Focus::Controls;
+        app.focus = Focus::Detail;
         assert!(!app.controls.is_empty(), "a variable face offers controls");
         let drawn = stable_frame(&mut app, 120, 36);
         assert!(drawn.contains("wght"), "the weight axis is named: {drawn}");
@@ -3270,26 +3376,224 @@ mod tests {
         }
     }
 
-    #[test]
-    fn a_standard_eighty_column_terminal_still_shows_every_pane() {
-        let mut app = app();
-        let drawn = stable_frame(&mut app, 80, 24);
-        assert_eq!(drawn.lines().count(), 24, "one row per terminal line");
+    /// Every row a frame draws fits the terminal it was drawn into.
+    ///
+    /// Run at each breakpoint and at both sides of each one, because a layout bug
+    /// shows up as a row one column too long and a terminal answers that by wrapping,
+    /// which moves every row below it.
+    fn no_row_overflows(app: &mut App, width: u16, height: u16) {
+        let drawn = stable_frame(app, width, height);
+        assert_eq!(drawn.lines().count(), height as usize, "one row per line");
         for (n, row) in drawn.lines().enumerate() {
             assert!(
-                row.chars().count() <= 80,
-                "row {n} is {} columns wide on an 80-column terminal",
+                row.chars().count() <= width as usize,
+                "row {n} is {} columns on a {width}-column terminal: {row}",
                 row.chars().count()
             );
         }
+    }
+
+    #[test]
+    fn no_width_a_terminal_can_be_makes_the_browser_overflow_it() {
+        let mut app = app();
+        for width in [40, 59, 60, 75, 76, 80, 99, 100, 120, 200] {
+            no_row_overflows(&mut app, width, 24);
+        }
+    }
+
+    /// Wide: the browser as designed, three panes side by side.
+    #[test]
+    fn the_third_pane_appears_at_the_width_that_can_afford_it() {
+        let mut app = app();
+        let drawn = stable_frame(&mut app, layout::THREE, 24);
+        assert!(drawn.contains("faces"), "the facet pane is there: {drawn}");
+        assert!(drawn.contains("families"), "and the list");
+        assert!(drawn.contains("Details"), "and the face");
+        insta::assert_snapshot!(drawn);
+    }
+
+    /// Medium: the pane the browser exists for gets the room, and the facets wait.
+    ///
+    /// This is the width the item was filed at. Three panes here left the face pane
+    /// twenty-two columns and a path wrapped over four lines; two panes leave it
+    /// fifty, which is a path on one line and a preview underneath it.
+    #[test]
+    fn an_eighty_column_terminal_gives_the_face_pane_room_to_be_read() {
+        let mut app = app();
+        select_family(&mut app, "Amiri");
+        let drawn = stable_frame(&mut app, 80, 24);
+        assert!(drawn.contains("Details"), "{drawn}");
         assert!(
-            drawn.contains("$ fontina families"),
-            "the status line still says what the screen is"
+            !drawn.contains(" faces "),
+            "the facet pane is a Tab away, not on the screen"
         );
+        let file = drawn
+            .lines()
+            .find(|l| l.contains("file "))
+            .expect("the face names its file");
         assert!(
-            drawn.contains(".ttf") || drawn.contains(".otf"),
-            "the file name keeps its extension: the text block is sized by wrapped rows"
+            file.contains("Amiri-Regular.ttf"),
+            "the path fits on its own row rather than wrapping: {file}"
         );
         insta::assert_snapshot!(drawn);
+    }
+
+    #[test]
+    fn the_facets_come_over_the_list_when_there_is_no_room_beside_it() {
+        let mut app = app();
+        app.focus = Focus::Facets;
+        let drawn = stable_frame(&mut app, 80, 24);
+        assert!(
+            drawn.contains("⇥ closes"),
+            "a pane over another says how to put it back: {drawn}"
+        );
+        assert!(
+            drawn.contains("Details"),
+            "and it only covers the list, not the face"
+        );
+        insta::assert_snapshot!(drawn);
+    }
+
+    /// Narrow: one pane, and the others a Tab away.
+    #[test]
+    fn a_sixty_column_terminal_shows_one_pane_at_a_time() {
+        let mut app = app();
+        let drawn = stable_frame(&mut app, 60, 24);
+        assert!(
+            drawn.contains("families"),
+            "the list has the focus: {drawn}"
+        );
+        assert!(
+            !drawn.contains("Details"),
+            "and nothing else is competing for the width"
+        );
+        insta::assert_snapshot!(drawn);
+
+        // list, face, facets, and round again.
+        app.cycle_focus();
+        app.cycle_focus();
+        let facets = stable_frame(&mut app, 60, 24);
+        assert!(
+            facets.contains(" faces "),
+            "Tab reaches the facets: {facets}"
+        );
+        assert!(
+            !facets.contains("5 families"),
+            "and the list is not under them: {facets}"
+        );
+    }
+
+    /// The reason the face pane had to become a place the focus can rest: at sixty
+    /// columns it is the only way to see a face at all, and a font browser that cannot
+    /// show anyone a font has stopped being one.
+    #[test]
+    fn one_pane_at_a_time_can_still_reach_the_face() {
+        let mut app = app();
+        select_family(&mut app, "Amiri");
+        // A face with nothing to adjust, which is the case the rule is about: with
+        // controls the pane took focus already.
+        app.controls = controls::Controls::default();
+
+        // Drawn once so the browser knows how wide the terminal is. `frame` rather
+        // than `stable_frame` throughout: the stable one blanks the sample text on the
+        // app so that a snapshot cannot depend on the rasteriser, and the preview is
+        // what this test is looking for. It takes no snapshot, so it can draw for real.
+        frame(&mut app, 60, 24);
+        app.cycle_focus();
+        assert_eq!(app.focus, Focus::Detail, "Tab reaches it from the list");
+        let drawn = frame(&mut app, 60, 24);
+        assert!(
+            drawn.contains("Amiri"),
+            "the face is on the screen: {drawn}"
+        );
+        assert!(drawn.contains('▀'), "with its preview under it");
+
+        // And beside the others it is a readout again: Tab skips a pane where nothing
+        // the reader presses would do anything.
+        frame(&mut app, 120, 36);
+        app.focus = Focus::List;
+        app.cycle_focus();
+        assert_eq!(app.focus, Focus::Facets, "no stop on an inert face pane");
+    }
+
+    /// A focus can outlive its pane: a terminal dragged narrow takes the face pane's
+    /// seat away while the cursor is in it.
+    #[test]
+    fn narrowing_the_terminal_moves_a_focus_that_has_nowhere_left_to_be() {
+        let mut app = app();
+        select_family(&mut app, "Amiri");
+        app.controls = controls::Controls::default();
+        stable_frame(&mut app, 60, 24);
+        app.focus = Focus::Detail;
+        stable_frame(&mut app, 120, 36);
+        assert_eq!(
+            app.focus,
+            Focus::List,
+            "a face with no controls cannot hold the focus beside the other panes"
+        );
+    }
+
+    /// The third acceptance criterion: a value that did not fit says so.
+    ///
+    /// The lists cut with an ellipsis, and the face pane wraps rather than cutting, so
+    /// the failure this guards against is a row that simply ends. Every family in the
+    /// fixtures is short enough to fit, so the test makes one that is not.
+    #[test]
+    fn a_name_too_long_for_its_pane_is_cut_visibly() {
+        let mut app = app();
+        let long = "Bricolage Grotesque Extremely Wide Display Titling".to_string();
+        app.families[0].name = long.clone();
+        for width in [60, 80, 120] {
+            let drawn = stable_frame(&mut app, width, 24);
+            assert!(
+                drawn.contains('…') || drawn.contains(&long),
+                "{width}: the name was cut with nothing to show for it: {drawn}"
+            );
+        }
+    }
+
+    /// The key line used to be one long string, cut by the terminal wherever it ran
+    /// out — which under 170 columns took `? help` with it.
+    #[test]
+    fn the_key_line_keeps_the_key_that_finds_the_others() {
+        let mut app = app();
+        for width in [40, 60, 80, 120, 200] {
+            let drawn = stable_frame(&mut app, width, 24);
+            let keys = drawn.lines().next_back().unwrap();
+            assert!(
+                keys.ends_with("? help"),
+                "{width} columns: {keys:?} does not say where the rest are"
+            );
+        }
+    }
+
+    /// The help is the one screen a reader reaches when they are already lost, so it
+    /// is the last place to end three lines early without saying so.
+    #[test]
+    fn the_help_says_when_it_does_not_fit_and_scrolls_when_it_does_not() {
+        let mut app = app();
+        app.help = true;
+        let tall = stable_frame(&mut app, 100, 40);
+        assert!(tall.contains("any key to close"), "all of it fits: {tall}");
+        assert!(!tall.contains("j/k scrolls"), "so it says nothing about it");
+
+        let short = stable_frame(&mut app, 100, 20);
+        assert!(
+            short.contains("j/k scrolls"),
+            "a box that cannot hold its text says so: {short}"
+        );
+        assert!(!short.contains("any key to close"), "because it is cut off");
+
+        app.on_key(event::KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE))
+            .unwrap();
+        assert!(app.help, "j scrolls the help rather than closing it");
+        assert_ne!(
+            stable_frame(&mut app, 100, 20),
+            short,
+            "and the box moved when it did"
+        );
+        app.on_key(event::KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE))
+            .unwrap();
+        assert!(!app.help, "anything else still closes it");
     }
 }
