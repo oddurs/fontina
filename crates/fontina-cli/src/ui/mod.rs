@@ -152,8 +152,18 @@ pub struct App {
     /// `Some(name)` while a family is open.
     open_family: Option<String>,
     focus: Focus,
+    /// The cursor in the families or faces list. Only its selection is used: the pane
+    /// windows the data itself before ratatui sees it, so the widget's own offset
+    /// would be an answer to a question nobody asks it.
     list: ListState,
     facet_list: ListState,
+    /// First row each of those panes drew on the last frame.
+    ///
+    /// Held here rather than derived from the selection, because a list scrolled
+    /// halfway down and then filtered should stay where the reader left it, and
+    /// because it is what tells the next frame which rows to build.
+    list_offset: usize,
+    facet_offset: usize,
     input: Option<Input>,
     status: String,
     help: bool,
@@ -238,6 +248,8 @@ impl App {
             focus: Focus::List,
             list: ListState::default(),
             facet_list: ListState::default(),
+            list_offset: 0,
+            facet_offset: 0,
             input: None,
             status: String::new(),
             help: false,
@@ -1386,8 +1398,14 @@ impl App {
     }
 
     fn draw_facets(&mut self, f: &mut ratatui::Frame, area: Rect, overlay: bool) {
-        let items: Vec<ListItem> = self
-            .rows
+        let win = layout::window(
+            self.rows.len(),
+            self.facet_list.selected().unwrap_or(0),
+            pane_rows(area),
+            self.facet_offset,
+        );
+        self.facet_offset = win.start;
+        let items: Vec<ListItem> = self.rows[win.clone()]
             .iter()
             .map(|r| {
                 if r.header {
@@ -1430,14 +1448,21 @@ impl App {
                     }),
             )
             .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
-        f.render_stateful_widget(list, area, &mut self.facet_list);
+        f.render_stateful_widget(list, area, &mut windowed(self.facet_list.selected(), &win));
     }
 
     fn draw_list(&mut self, f: &mut ratatui::Frame, area: Rect) {
         let width = area.width.saturating_sub(2) as usize;
+        let win = layout::window(
+            self.list_len(),
+            self.list.selected().unwrap_or(0),
+            pane_rows(area),
+            self.list_offset,
+        );
+        self.list_offset = win.start;
         let items: Vec<ListItem> = if let Some(fam) = &self.open_family {
             let _ = fam;
-            self.faces
+            self.faces[win.clone()]
                 .iter()
                 .map(|face| {
                     let flags = format!(
@@ -1460,7 +1485,7 @@ impl App {
                 })
                 .collect()
         } else {
-            self.families
+            self.families[win.clone()]
                 .iter()
                 .map(|fam| {
                     let flags = format!(
@@ -1491,7 +1516,7 @@ impl App {
                     .title(title),
             )
             .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
-        f.render_stateful_widget(list, area, &mut self.list);
+        f.render_stateful_widget(list, area, &mut windowed(self.list.selected(), &win));
     }
 
     fn draw_detail(&mut self, f: &mut ratatui::Frame, area: Rect) {
@@ -2006,6 +2031,24 @@ fn activation_mark(a: Option<ActivationState>) -> &'static str {
         Some(ActivationState::Installed) => "i",
         None => " ",
     }
+}
+
+/// Rows a bordered pane has for its list.
+fn pane_rows(area: Rect) -> usize {
+    area.height.saturating_sub(2) as usize
+}
+
+/// A `ListState` for a pane that has already been handed only the rows it draws: the
+/// widget starts at the top of what it was given, and the cursor is wherever the
+/// selection falls inside that.
+///
+/// A fresh one each frame, deliberately. ratatui's own scrolling is what this whole
+/// change is replacing, and a state that remembered an offset from a differently sized
+/// window would be that scrolling coming back through a side door.
+fn windowed(selected: Option<usize>, win: &std::ops::Range<usize>) -> ListState {
+    let mut state = ListState::default();
+    state.select(selected.filter(|i| win.contains(i)).map(|i| i - win.start));
+    state
 }
 
 fn truncate(s: &str, n: usize) -> String {
@@ -3307,6 +3350,100 @@ mod tests {
             plain.contains('█') || plain.contains('▄') || plain.contains('▀'),
             "and it is drawn as shape rather than dropped: {plain}"
         );
+    }
+
+    /// A library of `n` families, made by cloning the fixtures' own.
+    ///
+    /// Straight into the field rather than through the index: what is being measured
+    /// and asserted here is the drawing, and an index of ten thousand rows would put
+    /// SQLite in the middle of a question that is not about SQLite.
+    fn with_families(app: &mut App, n: usize) {
+        let one = app.families[0].clone();
+        app.families = (0..n)
+            .map(|i| {
+                let mut f = one.clone();
+                f.name = format!("Family {i:05}");
+                f
+            })
+            .collect();
+        app.open_family = None;
+    }
+
+    /// The change itself: a pane draws a screenful whether it is holding six rows or
+    /// ten thousand, and the window it drew is the window it says it drew.
+    #[test]
+    fn a_pane_draws_a_screenful_however_much_it_is_holding() {
+        let mut app = app();
+        with_families(&mut app, 10_000);
+        app.list.select(Some(0));
+
+        let drawn = stable_frame(&mut app, 120, 36);
+        assert_eq!(app.list_offset, 0, "it opens at the top");
+        assert!(drawn.contains("Family 00000"), "{drawn}");
+        assert!(
+            !drawn.contains("Family 00100"),
+            "a pane thirty rows tall drew the hundredth row"
+        );
+
+        // Down the list: the cursor stays on the screen and the window follows it.
+        app.jump(9_999).unwrap();
+        let drawn = stable_frame(&mut app, 120, 36);
+        assert!(drawn.contains("Family 09999"), "the last family: {drawn}");
+        assert!(!drawn.contains("Family 00000"), "and not the first as well");
+        assert!(
+            app.list_offset > 9_900,
+            "the window followed the cursor to the end, not to {}",
+            app.list_offset
+        );
+    }
+
+    /// A reader who scrolled somewhere and then narrowed the search should still be
+    /// where they were, and a filter that shortens the list past the offset should
+    /// bring the pane back rather than leave it looking at nothing.
+    #[test]
+    fn a_filter_leaves_the_pane_where_the_reader_left_it() {
+        let mut app = app();
+        with_families(&mut app, 1_000);
+        app.list.select(Some(500));
+        stable_frame(&mut app, 120, 36);
+        let (offset, selected) = (app.list_offset, app.list.selected());
+        assert!(offset > 400, "the pane scrolled to the cursor");
+
+        // Nothing about the list changed, so nothing about the view should either.
+        stable_frame(&mut app, 120, 36);
+        assert_eq!((app.list_offset, app.list.selected()), (offset, selected));
+
+        // And a list that shrinks under the offset comes back into view rather than
+        // drawing an empty pane.
+        with_families(&mut app, 12);
+        app.list.select(Some(0));
+        let drawn = stable_frame(&mut app, 120, 36);
+        assert_eq!(app.list_offset, 0, "{drawn}");
+        assert!(drawn.contains("Family 00000"), "{drawn}");
+    }
+
+    /// What it costs to draw a frame, at the three scales the item asks about.
+    ///
+    /// Ignored by default: it is a measurement rather than an assertion, and a number
+    /// from a shared runner is not one worth failing a build over. `cargo test -p
+    /// fontina-cli --bins -- --ignored --nocapture what_a_frame_costs`.
+    #[test]
+    #[ignore = "a measurement, not an assertion"]
+    fn what_a_frame_costs_at_a_hundred_a_thousand_and_ten_thousand() {
+        for n in [100usize, 1_000, 10_000] {
+            let mut app = app();
+            with_families(&mut app, n);
+            app.list.select(Some(n / 2));
+            app.preview_text = Some(" ".into());
+            frame(&mut app, 120, 36);
+            let start = std::time::Instant::now();
+            const FRAMES: u32 = 200;
+            for _ in 0..FRAMES {
+                frame(&mut app, 120, 36);
+            }
+            let per = start.elapsed().as_secs_f64() * 1000.0 / f64::from(FRAMES);
+            println!("{n:>6} families: {per:.3} ms per frame");
+        }
     }
 
     #[test]

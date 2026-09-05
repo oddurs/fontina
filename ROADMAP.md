@@ -23,7 +23,7 @@ What the browser looks like. A font manager whose list is set in the fonts it li
 
 ## tui-speed — TUI 2 — Speed
 
-`··········` 0% · 0 of 4 done
+`###·······` 25% · 1 of 4 done
 
 Instant on a library that is not the fixtures. Ten thousand faces, no perceptible lag on any keystroke, and a budget in CI that says so.
 
@@ -33,9 +33,9 @@ Instant on a library that is not the fixtures. Ten thousand faces, no perceptibl
 - [ ] [`0007`](https://github.com/oddurs/fontina/blob/main/cairn/items/0007-cache-a-rasterised-preview-by-face-size-and-axes.md) Cache a rasterised preview by face, size and axes <sup>perf · p1 · ui</sup>
 - [ ] [`0008`](https://github.com/oddurs/fontina/blob/main/cairn/items/0008-a-frame-budget-at-ten-thousand-faces-enforced-in-ci.md) A frame budget at ten thousand faces, enforced in CI <sup>test · p1 · ui</sup>
 
-### ready to start
+### done
 
-- [ ] [`0005`](https://github.com/oddurs/fontina/blob/main/cairn/items/0005-draw-only-the-rows-that-are-on-screen.md) Draw only the rows that are on screen <sup>perf · p0 · ui</sup>
+- [x] [`0005`](https://github.com/oddurs/fontina/blob/main/cairn/items/0005-draw-only-the-rows-that-are-on-screen.md) Draw only the rows that are on screen <sup>perf · p0 · ui</sup>
 
 ## tui-depth — TUI 3 — Depth
 
