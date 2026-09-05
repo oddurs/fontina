@@ -240,7 +240,13 @@ fn a_path_or_a_name_is_never_cut_short_to_fit_its_column() {
         .root
         .join("a-directory-with-a-deliberately-long-name-to-fill-the-column");
     std::fs::create_dir_all(&deep).unwrap();
-    let deep_str = deep.to_string_lossy().into_owned();
+    // Canonical, because that is the form a source is stored and printed in: on macOS
+    // the temporary directory is reached through a symlink, and on Windows canonicalising
+    // adds the `\\?\` prefix.
+    let deep_str = std::fs::canonicalize(&deep)
+        .unwrap_or_else(|_| deep.clone())
+        .to_string_lossy()
+        .into_owned();
     assert!(
         fontina_core::unicode::columns(&deep_str) > 60,
         "the path has to be longer than the column: {deep_str}"
