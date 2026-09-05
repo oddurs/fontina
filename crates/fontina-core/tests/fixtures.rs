@@ -380,7 +380,8 @@ fn covering_finds_faces_for_text_and_migrates_old_indexes() {
         // list grows with each one; a migration that forgets it fails here loudly, which
         // is the point.
         conn.execute_batch(
-            "DROP TABLE face_ranges;
+            "DROP INDEX face_scripts_script_nocase;
+             DROP TABLE face_ranges;
              DROP TABLE face_scripts;
              DROP TABLE face_languages;
              DROP INDEX faces_fixed_pitch;

@@ -808,7 +808,8 @@ fn a_font_is_monospaced_when_it_says_it_is() {
         )
         .unwrap();
         conn.execute_batch(
-            "DROP INDEX faces_fixed_pitch;
+            "DROP INDEX face_scripts_script_nocase;
+             DROP INDEX faces_fixed_pitch;
              ALTER TABLE faces DROP COLUMN is_fixed_pitch;
              PRAGMA user_version = 6;",
         )
@@ -929,10 +930,12 @@ fn an_older_index_learns_its_languages_without_a_rescan() {
     {
         let conn = rusqlite::Connection::open(&db).unwrap();
         conn.execute_batch(
-                "DROP TABLE face_languages; DROP INDEX faces_fixed_pitch; ALTER TABLE faces DROP COLUMN is_fixed_pitch;
+            "DROP INDEX face_scripts_script_nocase;
+                 DROP TABLE face_languages;
+                 DROP INDEX faces_fixed_pitch; ALTER TABLE faces DROP COLUMN is_fixed_pitch;
                  PRAGMA user_version = 5;",
-            )
-            .unwrap();
+        )
+        .unwrap();
     }
     let idx = Index::open(&db).unwrap();
     let found = idx
@@ -942,6 +945,51 @@ fn an_older_index_learns_its_languages_without_a_rescan() {
         })
         .unwrap();
     assert_eq!(found.len(), 1, "read out of the stored metadata");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The script filter must use its index, and only the plan can say whether it does.
+///
+/// Migration 5 added `face_scripts` because `faces.scripts LIKE '%,Arab,%'` scanned an
+/// unindexed column. The filter then compared `COLLATE NOCASE` while the index was on the
+/// column's default collation, so SQLite could not use it and the query scanned
+/// `face_scripts` instead — the same fault, moved to a new table, and invisible to every
+/// test that only checked the answers.
+///
+/// So this asserts the plan, not the rows.
+#[test]
+fn the_script_filter_searches_its_index_rather_than_scanning() {
+    let dir = std::env::temp_dir().join(format!("fontina-plan-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let db = dir.join("index.db");
+    {
+        let mut idx = Index::open(&db).unwrap();
+        fontina_core::scan::scan(&mut idx, &[fixtures()], &ScanOptions::default()).unwrap();
+    }
+    let conn = rusqlite::Connection::open(&db).unwrap();
+    let plan: Vec<String> = {
+        let mut stmt = conn
+            .prepare(
+                "EXPLAIN QUERY PLAN
+                 SELECT 1 FROM faces f WHERE f.id IN (
+                     SELECT fs.face_id FROM face_scripts fs
+                     WHERE fs.script = 'Latn' COLLATE NOCASE AND fs.codepoints >= 1)",
+            )
+            .unwrap();
+        stmt.query_map([], |r| r.get::<_, String>(3))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap()
+    };
+    let over_scripts: Vec<&String> = plan.iter().filter(|l| l.contains(" fs")).collect();
+    assert!(!over_scripts.is_empty(), "{plan:?}");
+    assert!(
+        over_scripts
+            .iter()
+            .all(|l| l.contains("USING INDEX face_scripts_script")),
+        "the script lookup is scanning: {plan:?}"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -1204,7 +1252,8 @@ fn a_face_whose_metadata_will_not_parse_keeps_its_static_weight() {
     {
         let conn = rusqlite::Connection::open(&db).unwrap();
         conn.execute_batch(
-            "DROP TABLE face_scripts;
+            "DROP INDEX face_scripts_script_nocase;
+             DROP TABLE face_scripts;
              DROP TABLE face_languages;
              DROP INDEX faces_fixed_pitch;
              ALTER TABLE faces DROP COLUMN is_fixed_pitch;
@@ -1260,7 +1309,8 @@ fn an_older_index_learns_the_ranges_without_a_rescan() {
         // Make the file look like a v3 index: the columns gone, the version rolled back.
         let conn = rusqlite::Connection::open(&db).unwrap();
         conn.execute_batch(
-            "DROP TABLE face_scripts;
+            "DROP INDEX face_scripts_script_nocase;
+             DROP TABLE face_scripts;
              DROP TABLE face_languages;
              DROP INDEX faces_fixed_pitch;
              ALTER TABLE faces DROP COLUMN is_fixed_pitch;
