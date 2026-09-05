@@ -215,6 +215,26 @@ Health checks over a face's metadata.  Exit status 1 if any check reports an err
 @item fontina dupes
 Faces that are the same font in several files, matched across containers by a hash of
 the name and outline tables.
+@item fontina variants FACE
+Faces whose character coverage overlaps this one's, most alike first, with the score and
+the metrics side by side.
+
+The declared family is often the wrong unit for ``these belong together'', and no
+standard says what the right one is.  @command{fontina} does not store a guess: this asks
+about one face and answers from the coverage already indexed, so when it is wrong it is
+wrong once rather than permanently.  The score is Jaccard over the two character sets ---
+shared divided by combined --- and @option{--min} is a floor on it.
+
+Covering the same characters is not the same as being the same design, so the four
+numbers that decide it are printed beside the score: units per em, ascender, descender
+and spacing.  High overlap with @code{same} metrics is another cut of one typeface; high
+overlap with @code{differ} is two fonts that happen to serve the same languages.  You draw
+that line.
+
+@code{dupes} and @code{variants} are the same axis at different costs.  Exact identity is
+hash equality, so @code{dupes} can sweep the whole library in one pass; similarity is
+pairwise, so a sweep would be quadratic and @code{variants} answers about a target
+instead.
 @end table
 
 @section Tags your desktop can see

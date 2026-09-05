@@ -793,6 +793,43 @@
       ],
       "type": "object"
     },
+    "Related": {
+      "description": "One candidate from [`Index::related`], with the numbers that say what the overlap\nmeans.\n\nThe score is printed rather than thresholded away, and the metrics stand beside it,\nbecause \"covers the same characters\" is not the same as \"is the same design\". High\noverlap with identical metrics is a variant of one typeface; high overlap with\ndifferent metrics is two fonts that happen to serve the same languages. The reader\ndraws that line, the way `freedom` reports a verdict and its reason rather than\nfiltering silently.",
+      "properties": {
+        "face": {
+          "$ref": "#/$defs/FaceSummary"
+        },
+        "metrics_agree": {
+          "description": "True when units per em, ascender, descender and fixed pitch all agree with the\ntarget — the four numbers that decide whether identical coverage means identical\ndesign.",
+          "type": "boolean"
+        },
+        "overlap": {
+          "description": "Jaccard similarity of the two codepoint sets: `|A ∩ B| / |A ∪ B|`, 0.0 to 1.0.",
+          "format": "double",
+          "type": "number"
+        },
+        "shared": {
+          "description": "Codepoints both cover.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "union": {
+          "description": "Codepoints either covers.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "face",
+        "overlap",
+        "shared",
+        "union",
+        "metrics_agree"
+      ],
+      "type": "object"
+    },
     "ScanFailure": {
       "properties": {
         "error": {

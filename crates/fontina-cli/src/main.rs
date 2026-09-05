@@ -183,6 +183,25 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Faces whose character coverage overlaps a target's, most alike first.
+    ///
+    /// The declared family is often the wrong unit for "these belong together", and
+    /// nothing here stores a guess about what the right one is: this asks about one face
+    /// and answers from the coverage already indexed. The score and the metrics are
+    /// printed together, because covering the same characters is not the same as being
+    /// the same design — you draw that line, not fontina.
+    ///
+    /// `dupes` sweeps the whole library for exact identity, which is one pass over a
+    /// hash. Similarity is pairwise, so it answers about a target instead.
+    Variants {
+        /// A face id, `family:<name>`, or an indexed file path.
+        target: String,
+        /// Only candidates overlapping at least this much, 0.0 to 1.0.
+        #[arg(long, default_value = "0.5")]
+        min: f64,
+        #[arg(long)]
+        json: bool,
+    },
     /// Emit `@font-face` rules for faces by id, or for every face in a file.
     Css {
         /// Face ids or font file paths.
@@ -920,6 +939,30 @@ fn run() -> Result<()> {
                 }
             }
         }
+        Command::Variants { target, min, json } => {
+            if !(0.0..=1.0).contains(min) {
+                bail!("--min is a similarity between 0.0 and 1.0, not {min}");
+            }
+            let index = open_index(&cli)?;
+            let ids = resolve_ids(&index, target)?;
+            let Some(&id) = ids.first() else {
+                bail!("{target} matches no indexed face");
+            };
+            if ids.len() > 1 {
+                eprintln!(
+                    "{target} matches {} faces; asking about the first ({id})",
+                    ids.len()
+                );
+            }
+            let related = index.related(id, *min)?;
+            if *json {
+                println!("{}", serde_json::to_string_pretty(&related)?);
+            } else if related.is_empty() {
+                println!("nothing overlaps it by {min} or more");
+            } else {
+                print_variants(&index, id, &related)?;
+            }
+        }
         Command::Dupes { json } => {
             let index = open_index(&cli)?;
             let groups = index.duplicates()?;
@@ -1541,6 +1584,51 @@ fn print_table(faces: &[FaceSummary]) {
     // BufWriter swallows a failed flush in its destructor, and a closed pipe is the
     // ordinary way this ends; `die_on_broken_pipe` has already made that a signal.
     let _ = out.flush();
+}
+
+/// The candidates, with the four numbers that say whether the overlap means anything.
+fn print_variants(index: &Index, target: i64, related: &[fontina_core::Related]) -> Result<()> {
+    let of = |id: i64| -> Result<(String, String)> {
+        let face = index
+            .summaries(&[id])?
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("face {id} vanished mid-query"))?;
+        Ok((
+            format!("{} {}", face.family, face.subfamily),
+            face.path.clone(),
+        ))
+    };
+    let (name, _) = of(target)?;
+    println!("faces overlapping {name} (#{target}):");
+    let w = related
+        .iter()
+        .map(|r| r.face.family.chars().count() + r.face.subfamily.chars().count() + 1)
+        .max()
+        .unwrap_or(20)
+        .clamp(20, 44);
+    println!(
+        "  {:>6}  {:<w$}  {:>7}  {:>7}  {:<8}  path",
+        "id", "face", "overlap", "shared", "metrics"
+    );
+    for r in related {
+        println!(
+            "  {:>6}  {:<w$}  {:>6.2}%  {:>7}  {:<8}  {}",
+            r.face.id,
+            truncate(&format!("{} {}", r.face.family, r.face.subfamily), w),
+            r.overlap * 100.0,
+            r.shared,
+            if r.metrics_agree { "same" } else { "differ" },
+            r.face.path
+        );
+    }
+    println!(
+        "{} face(s). `same` metrics means units per em, ascender, descender and spacing \
+         all agree; high overlap with `differ` is two fonts that serve the same \
+         languages, not two cuts of one typeface.",
+        related.len()
+    );
+    Ok(())
 }
 
 /// One axis of a face for the table: the number it is, or the range it can be set to.
