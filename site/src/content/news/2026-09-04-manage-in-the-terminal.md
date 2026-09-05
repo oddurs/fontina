@@ -1,5 +1,6 @@
 ---
 title: The font manager, in the terminal
+description: "Milestone M1 is delivered: organise, activate, watch, preview and browse fonts from the terminal."
 date: 2026-09-04
 ---
 
