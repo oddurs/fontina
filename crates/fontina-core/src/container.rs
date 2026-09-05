@@ -26,12 +26,41 @@ pub fn unwrap(container: Container, bytes: &[u8]) -> Result<Cow<'_, [u8]>> {
     match container {
         Container::Ttf | Container::Otf | Container::Ttc => Ok(Cow::Borrowed(bytes)),
         Container::Woff => decode_woff1(bytes).map(Cow::Owned),
-        Container::Woff2 => {
-            let mut cursor = Cursor::new(bytes);
-            woff2_patched::convert_woff2_to_ttf(&mut cursor)
-                .map(Cow::Owned)
-                .map_err(|e| Error::Woff(format!("woff2: {e:?}")))
-        }
+        Container::Woff2 => decode_woff2(bytes).map(Cow::Owned),
+    }
+}
+
+/// WOFF2, through the one decoder in the tree that is not ours.
+///
+/// WOFF 1.0 is unwrapped by hand a few lines below, and every hostile shape the fuzzer
+/// has found in it has been fixed there. WOFF 2.0 is brotli plus a glyf transform, and
+/// is delegated (ADR 0005) — which means its arithmetic is not ours to fix, and it does
+/// arithmetic on lengths a hostile file chooses. `woff2-patched` 0.4.0 computes the
+/// bbox stream size as `bboxStreamSize - bboxBitmapSize`, and a file that declares the
+/// first smaller than the second underflows it
+/// (`fuzz/regressions/woff2-bbox-stream-underflow.woff2.gz`).
+///
+/// A release build survives that: the value wraps to something near `u32::MAX`, and the
+/// decoder's own "is the table long enough" guard then rejects it as truncated. Where
+/// `overflow-checks` are on — a debug build, `cargo test`, and every fuzz target — it
+/// panics instead, and `load_bytes` is a public function that must return.
+///
+/// So the call is contained here rather than relied upon to behave. This is the second
+/// `catch_unwind` in the crate and, unlike the one in `scan::parse_paths`, it is not a
+/// last line of defence: it is the boundary with foreign code whose arithmetic we
+/// cannot correct in this tree. Reported upstream; when a fixed release exists, this
+/// wrapper goes and the regression input stays.
+fn decode_woff2(bytes: &[u8]) -> Result<Vec<u8>> {
+    let decoded = std::panic::catch_unwind(|| {
+        let mut cursor = Cursor::new(bytes);
+        woff2_patched::convert_woff2_to_ttf(&mut cursor)
+    });
+    match decoded {
+        Ok(Ok(sfnt)) => Ok(sfnt),
+        Ok(Err(e)) => Err(Error::Woff(format!("woff2: {e:?}"))),
+        Err(_) => Err(Error::Woff(
+            "woff2: decoder panicked on malformed input".into(),
+        )),
     }
 }
 

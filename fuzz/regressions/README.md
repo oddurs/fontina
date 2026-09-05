@@ -32,4 +32,25 @@ an unfixed input would fail the required CI test job on every pull request, and 
 loads its whole corpus before it fuzzes anything, so a known-bad seed aborts the run at
 startup and nothing gets fuzzed at all. The test prints them so they cannot be forgotten.
 
-It is empty. Both of its inputs were fixed in #51 and moved up into the table above.
+Both of its original inputs were fixed in #51 and moved up into the table above. One
+input is here now:
+
+`woff2-bbox-stream-underflow.woff2.gz` is the first WOFF **2.0** finding, and the first in
+code that is not ours. `woff2-patched` 0.4.0 computes the bbox stream size as
+`bboxStreamSize - bboxBitmapSize`, where the first is read off the wire and the second is
+derived from `numGlyphs`; a file declaring the first smaller than the second underflows
+the subtraction. A release build survives it, because the wrapped value then fails the
+decoder's own length guard and comes back as `Truncated` — but with `overflow-checks` on,
+which is every debug build, every `cargo test` and every fuzz target, it panics instead.
+12 KB; it is a brotli stream, so it neither minimises nor compresses much.
+
+It is here rather than in the table because the defect is not fixed. WOFF 2.0 decoding is
+delegated (ADR 0005), 0.4.0 is the newest release, and the arithmetic is not ours to
+correct in this tree. What *is* fixed is the blast radius: `container::decode_woff2` now
+contains the call, so `load_bytes` returns `Err` where it used to unwind, and
+`tests/woff2_containment.rs` holds that. That is not enough to seed the input, because
+`libfuzzer-sys` installs a panic hook that aborts before unwinding — deliberately, so a
+caught panic still counts as a finding — so a seeded copy would abort every fuzzing run at
+startup and a contained panic is still a crash to the fuzzer. Until upstream fixes the
+subtraction, a fuzzing run can rediscover this input and fail; that is the cost of the
+dependency and it is written down here rather than worked around.
