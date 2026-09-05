@@ -1563,6 +1563,17 @@ fn resolve_faces(cli: &Cli, target: &str) -> Result<Vec<fontina_core::FaceMetada
             .collect::<std::result::Result<Vec<_>, _>>()
             .map_err(Into::into);
     }
+    if split_face_index(target).is_some() {
+        // One face of a collection, named the way a listing prints it. `resolve_ids`
+        // knows how to read that; this only has to turn the ids into faces.
+        let index = open_index(cli)?;
+        let ids = resolve_ids(&index, target)?;
+        return ids
+            .iter()
+            .filter_map(|id| index.get_face(*id).transpose())
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(Into::into);
+    }
     let path = PathBuf::from(target);
     if !path.exists() {
         if let Ok(id) = target.parse::<i64>() {
@@ -1931,6 +1942,23 @@ fn print_info(f: &fontina_core::FaceMetadata) {
     println!();
 }
 
+/// A target that names one face of a file: `path#index`, the way a listing prints it.
+///
+/// A collection is several faces in one file, so the listing has to say which face a row
+/// is, and the obvious thing to do with a line of output is paste it back. Without this
+/// that gives "no such file, and not a face id" for a path the reader is looking at.
+///
+/// A file whose own name ends in `#1` wins: the split happens only when the whole target
+/// is not a file and the part before the `#` is.
+fn split_face_index(target: &str) -> Option<(&str, u32)> {
+    if std::path::Path::new(target).exists() {
+        return None;
+    }
+    let (path, index) = target.rsplit_once('#')?;
+    let index = index.parse().ok()?;
+    std::path::Path::new(path).exists().then_some((path, index))
+}
+
 /// Face ids for a target that must already be indexed: a numeric id, `family:<name>`, or
 /// a file path.
 fn resolve_ids(index: &Index, target: &str) -> Result<Vec<i64>> {
@@ -1943,6 +1971,23 @@ fn resolve_ids(index: &Index, target: &str) -> Result<Vec<i64>> {
             bail!("no indexed family named {family:?}");
         }
         return Ok(faces.into_iter().map(|f| f.id).collect());
+    }
+    if let Some((file, want)) = split_face_index(target) {
+        let canonical = std::fs::canonicalize(file)?;
+        let ids = index.ids_for_path(&canonical.to_string_lossy())?;
+        if ids.is_empty() {
+            bail!("{file} is not indexed; run `fontina scan` on it first");
+        }
+        let mine: Vec<i64> = index
+            .summaries(&ids)?
+            .into_iter()
+            .filter(|s| s.index == want)
+            .map(|s| s.id)
+            .collect();
+        if mine.is_empty() {
+            bail!("{file} has no face {want}");
+        }
+        return Ok(mine);
     }
     let path = PathBuf::from(target);
     if path.exists() {
