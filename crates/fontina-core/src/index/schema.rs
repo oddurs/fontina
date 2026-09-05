@@ -175,6 +175,13 @@ CREATE TABLE face_languages (
 );
 CREATE INDEX face_languages_tag ON face_languages(tag COLLATE NOCASE);
 "#,
+    // 7: whether the font says it is monospaced. `post.isFixedPitch` has been parsed and
+    // stored since M0 and reached neither a filter nor a facet, and on a working
+    // developer's library it is the most useful single division there is.
+    r#"
+ALTER TABLE faces ADD COLUMN is_fixed_pitch INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX faces_fixed_pitch ON faces(is_fixed_pitch);
+"#,
 ];
 
 pub fn migrate(conn: &mut Connection) -> Result<()> {
@@ -206,6 +213,9 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
         }
         if i == 5 {
             backfill_languages(&tx)?;
+        }
+        if i == 6 {
+            backfill_fixed_pitch(&tx)?;
         }
         tx.pragma_update(None, "user_version", (i + 1) as i64)?;
         tx.commit()?;
@@ -283,6 +293,26 @@ fn backfill_languages(tx: &rusqlite::Transaction) -> Result<()> {
     for (id, json) in rows {
         if let Ok(face) = serde_json::from_str::<crate::model::FaceMetadata>(&json) {
             super::insert_languages(tx, id, &face)?;
+        }
+    }
+    Ok(())
+}
+
+/// Populate `faces.is_fixed_pitch` from the stored metadata of an index before v7.
+///
+/// The `DEFAULT 0` is right for a row this cannot read: "the font did not say so" is
+/// exactly what a missing or unreadable `post` table means, and it is what the filter
+/// would have concluded anyway.
+fn backfill_fixed_pitch(tx: &rusqlite::Transaction) -> Result<()> {
+    let rows: Vec<(i64, String)> = {
+        let mut stmt = tx.prepare("SELECT id, metadata FROM faces")?;
+        let it = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        it.collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    let mut stmt = tx.prepare("UPDATE faces SET is_fixed_pitch = ?2 WHERE id = ?1")?;
+    for (id, json) in rows {
+        if let Ok(face) = serde_json::from_str::<crate::model::FaceMetadata>(&json) {
+            stmt.execute(rusqlite::params![id, face.metrics.is_fixed_pitch])?;
         }
     }
     Ok(())

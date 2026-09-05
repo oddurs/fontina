@@ -383,6 +383,8 @@ fn covering_finds_faces_for_text_and_migrates_old_indexes() {
             "DROP TABLE face_ranges;
              DROP TABLE face_scripts;
              DROP TABLE face_languages;
+             DROP INDEX faces_fixed_pitch;
+             ALTER TABLE faces DROP COLUMN is_fixed_pitch;
              ALTER TABLE activations DROP COLUMN installed_path;
              ALTER TABLE sources DROP COLUMN kind;
              DROP INDEX faces_vendor; DROP INDEX face_tags_tag; DROP INDEX collection_faces_face;

@@ -21,11 +21,13 @@ expression: drawn
 │  variable            2 ││                                              ││  ss01 [ ] Stylistic set 1                  │
 │Color                   ││                                              ││  ss02 [ ] Stylistic set 2                  │
 │  color               1 ││                                              ││  ss03 [ ] Stylistic set 3                  │
-│Script                  ││                                              ││  ss04 [ ] Stylistic set 4                  │
-│  Latn                6 ││                                              ││  ss05 [ ] Stylistic set 5                  │
-│  Arab                1 ││                                              ││  ss06 [ ] Stylistic set 6                  │
-│  Zyyy                6 ││                                              ││  ss07 [ ] Stylistic set 7                  │
-│  Cyrl                1 ││                                              ││  ss08 [ ] Stylistic set 8                  │
+│Spacing                 ││                                              ││  ss04 [ ] Stylistic set 4                  │
+│  proportional        6 ││                                              ││  ss05 [ ] Stylistic set 5                  │
+│Script                  ││                                              ││  ss06 [ ] Stylistic set 6                  │
+│  Latn                6 ││                                              ││  ss07 [ ] Stylistic set 7                  │
+│  Arab                1 ││                                              ││  ss08 [ ] Stylistic set 8                  │
+│  Zyyy                6 ││                                              ││                                            │
+│  Cyrl                1 ││                                              ││                                            │
 │  Zinh                6 ││                                              ││                                            │
 │  Grek                2 ││                                              ││                                            │
 │Language                ││                                              ││                                            │
@@ -33,8 +35,6 @@ expression: drawn
 │  CAT                 3 ││                                              ││                                            │
 │  TRK                 3 ││                                              ││                                            │
 │  AZE                 2 ││                                              ││                                            │
-│  CRT                 2 ││                                              ││                                            │
-│  ARA                 1 ││                                              ││                                            │
 └────────────────────────┘└──────────────────────────────────────────────┘└────────────────────────────────────────────┘
  $ fontina families
  / search  ⇥ facets  ⏎ open  ⌫ back  t tag  c collection  a/A activate  d deactivate  i install  u uninstall  e text  +/

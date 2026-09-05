@@ -625,6 +625,119 @@ fn an_opentype_claim_and_a_name_record_are_not_the_same_claim() {
     );
 }
 
+/// What `post.isFixedPitch` says, reported and never second-guessed.
+///
+/// §12: a font whose advance widths contradict its own flag is a health check, not a
+/// filter that quietly disagrees with the file. So the filter reads the flag, and the
+/// only monospace claim in these tests is one written into a font's own metadata.
+///
+/// No fixture is monospaced — the positive case is made by mutating a parsed fixture,
+/// the way `license/nonfree` is triggered, and then driving it through the real backfill.
+#[test]
+fn a_font_is_monospaced_when_it_says_it_is() {
+    let index = indexed();
+    let count = |mono: Option<bool>| {
+        index
+            .list(&FaceFilter {
+                monospace: mono,
+                ..Default::default()
+            })
+            .unwrap()
+            .len()
+    };
+    assert_eq!(count(None), 6);
+    assert_eq!(count(Some(false)), 6, "none of the fixtures claims to be");
+    assert_eq!(count(Some(true)), 0);
+
+    let facets = index.facets(&FaceFilter::default()).unwrap();
+    let spacing: std::collections::BTreeMap<&str, i64> = facets
+        .spacing
+        .iter()
+        .map(|c| (c.value.as_str(), c.count))
+        .collect();
+    assert_eq!(spacing.get("proportional"), Some(&6));
+    assert!(!spacing.contains_key("monospace"), "{spacing:?}");
+    assert!(
+        index
+            .list(&FaceFilter::default())
+            .unwrap()
+            .iter()
+            .all(|f| !f.monospace),
+        "and the summary agrees with the filter"
+    );
+
+    // A font that does claim it. The claim is written into the stored metadata and read
+    // back by the v7 backfill, which is the code path a real library will take.
+    let dir = std::env::temp_dir().join(format!("fontina-mono-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let db = dir.join("v6.db");
+    {
+        let mut idx = Index::open(&db).unwrap();
+        fontina_core::scan::scan(
+            &mut idx,
+            &[fixtures().join("Amiri-Regular.ttf")],
+            &ScanOptions::default(),
+        )
+        .unwrap();
+    }
+    {
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        let json: String = conn
+            .query_row("SELECT metadata FROM faces LIMIT 1", [], |r| r.get(0))
+            .unwrap();
+        let mut face: fontina_core::FaceMetadata = serde_json::from_str(&json).unwrap();
+        assert!(
+            !face.metrics.is_fixed_pitch,
+            "the fixture starts out saying no"
+        );
+        face.metrics.is_fixed_pitch = true;
+        conn.execute(
+            "UPDATE faces SET metadata = ?1",
+            [serde_json::to_string(&face).unwrap()],
+        )
+        .unwrap();
+        conn.execute_batch(
+            "DROP INDEX faces_fixed_pitch;
+             ALTER TABLE faces DROP COLUMN is_fixed_pitch;
+             PRAGMA user_version = 6;",
+        )
+        .unwrap();
+    }
+
+    let idx = Index::open(&db).unwrap();
+    let mono = idx
+        .list(&FaceFilter {
+            monospace: Some(true),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(
+        mono.len(),
+        1,
+        "the backfill read the claim out of the metadata"
+    );
+    assert!(mono[0].monospace);
+    assert!(
+        idx.list(&FaceFilter {
+            monospace: Some(false),
+            ..Default::default()
+        })
+        .unwrap()
+        .is_empty()
+    );
+    let facets = idx.facets(&FaceFilter::default()).unwrap();
+    assert_eq!(
+        facets
+            .spacing
+            .iter()
+            .map(|c| c.value.as_str())
+            .collect::<Vec<_>>(),
+        vec!["monospace"]
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// The language facet offers both kinds of claim, and every offer is honoured.
 #[test]
 fn the_language_facet_offers_what_the_filter_will_return() {
@@ -705,7 +818,10 @@ fn an_older_index_learns_its_languages_without_a_rescan() {
     }
     {
         let conn = rusqlite::Connection::open(&db).unwrap();
-        conn.execute_batch("DROP TABLE face_languages; PRAGMA user_version = 5;")
+        conn.execute_batch(
+                "DROP TABLE face_languages; DROP INDEX faces_fixed_pitch; ALTER TABLE faces DROP COLUMN is_fixed_pitch;
+                 PRAGMA user_version = 5;",
+            )
             .unwrap();
     }
     let idx = Index::open(&db).unwrap();
@@ -795,7 +911,8 @@ fn an_older_index_learns_its_scripts_without_a_rescan() {
     {
         let conn = rusqlite::Connection::open(&db).unwrap();
         conn.execute_batch(
-            "DROP TABLE face_scripts; DROP TABLE face_languages; PRAGMA user_version = 4;",
+            "DROP TABLE face_scripts; DROP TABLE face_languages; DROP INDEX faces_fixed_pitch; ALTER TABLE faces DROP COLUMN is_fixed_pitch;
+             PRAGMA user_version = 4;",
         )
         .unwrap();
     }
@@ -979,6 +1096,8 @@ fn a_face_whose_metadata_will_not_parse_keeps_its_static_weight() {
         conn.execute_batch(
             "DROP TABLE face_scripts;
              DROP TABLE face_languages;
+             DROP INDEX faces_fixed_pitch;
+             ALTER TABLE faces DROP COLUMN is_fixed_pitch;
              DROP INDEX faces_weight_span; DROP INDEX faces_width_span;
              ALTER TABLE faces DROP COLUMN weight_min;
              ALTER TABLE faces DROP COLUMN weight_max;
@@ -1033,6 +1152,8 @@ fn an_older_index_learns_the_ranges_without_a_rescan() {
         conn.execute_batch(
             "DROP TABLE face_scripts;
              DROP TABLE face_languages;
+             DROP INDEX faces_fixed_pitch;
+             ALTER TABLE faces DROP COLUMN is_fixed_pitch;
              DROP INDEX faces_weight_span; DROP INDEX faces_width_span;
              ALTER TABLE faces DROP COLUMN weight_min;
              ALTER TABLE faces DROP COLUMN weight_max;

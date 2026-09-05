@@ -366,6 +366,11 @@
             "null"
           ]
         },
+        "monospace": {
+          "default": false,
+          "description": "What `post.isFixedPitch` says. Reported, never second-guessed: a font whose\nadvance widths contradict its own flag is a health check, not a filter that\nquietly disagrees with the file.",
+          "type": "boolean"
+        },
         "path": {
           "type": "string"
         },
@@ -535,6 +540,13 @@
           },
           "type": "array"
         },
+        "spacing": {
+          "description": "`monospace` or `proportional`, from `post.isFixedPitch`.",
+          "items": {
+            "$ref": "#/$defs/FacetCount"
+          },
+          "type": "array"
+        },
         "style": {
           "description": "`upright` or `italic`.",
           "items": {
@@ -584,6 +596,7 @@
         "container",
         "script",
         "language",
+        "spacing",
         "license",
         "freedom",
         "vendor",

@@ -73,6 +73,11 @@ pub struct FaceSummary {
     pub italic: bool,
     pub variable: bool,
     pub color: bool,
+    /// What `post.isFixedPitch` says. Reported, never second-guessed: a font whose
+    /// advance widths contradict its own flag is a health check, not a filter that
+    /// quietly disagrees with the file.
+    #[serde(default)]
+    pub monospace: bool,
     pub glyph_count: u16,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub license: Option<String>,
@@ -113,6 +118,9 @@ pub struct FaceFilter {
     pub lang: Option<String>,
     /// Restrict `lang` to one kind of claim.
     pub lang_source: Option<LanguageSource>,
+    /// `Some(true)` for faces the font itself calls monospaced, `Some(false)` for the
+    /// rest.
+    pub monospace: Option<bool>,
     /// SPDX identifier prefix match, e.g. `OFL`.
     pub license: Option<String>,
     /// Whether the license grants the four freedoms.
@@ -267,9 +275,9 @@ impl Index {
             "INSERT INTO faces (file_id, face_index, postscript_name, family, subfamily, full_name,
                 weight, width, italic, is_variable, is_color, glyph_count, license_spdx, vendor,
                 version, designer, identity_hash, scripts, metadata,
-                weight_min, weight_max, width_min, width_max)
+                weight_min, weight_max, width_min, width_max, is_fixed_pitch)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19,
-                ?20, ?21, ?22, ?23)",
+                ?20, ?21, ?22, ?23, ?24)",
         )?;
         for face in faces {
             let (weight_span, width_span) = (face.weight_span(), face.width_span());
@@ -306,6 +314,7 @@ impl Index {
                 weight_span.1,
                 width_span.0,
                 width_span.1,
+                face.metrics.is_fixed_pitch,
             ])?;
             insert_ranges(tx, face_id, &face.coverage.ranges)?;
             insert_scripts(tx, face_id, &face.coverage.scripts)?;
@@ -419,6 +428,7 @@ impl Index {
             italic: r.get("italic")?,
             variable: r.get("is_variable")?,
             color: r.get("is_color")?,
+            monospace: r.get("is_fixed_pitch")?,
             glyph_count: r.get::<_, i64>("glyph_count")? as u16,
             freedom: crate::freedom::classify(license.as_deref()),
             license,
@@ -439,7 +449,7 @@ impl Index {
 
     const SUMMARY_SELECT: &'static str = "SELECT f.id, fi.path, f.face_index, f.family, f.subfamily, f.postscript_name,
         f.weight, f.width, f.weight_min, f.weight_max, f.width_min, f.width_max,
-        f.italic, f.is_variable, f.is_color, f.glyph_count, f.license_spdx, f.scripts, fi.container,
+        f.italic, f.is_variable, f.is_color, f.is_fixed_pitch, f.glyph_count, f.license_spdx, f.scripts, fi.container,
         f.vendor, f.designer,
         (SELECT group_concat(name, char(31)) FROM (SELECT t.name FROM face_tags ft JOIN tags t ON t.id = ft.tag_id
             WHERE ft.face_id = f.id ORDER BY t.name COLLATE NOCASE)) AS tags,
@@ -484,6 +494,10 @@ impl Index {
         // the `LIKE` over the joined string could never express. `script_min` is the
         // depth: a font with three Arabic codepoints should stop ranking beside one with
         // three thousand.
+        if let Some(v) = filter.monospace {
+            w.clauses.push("f.is_fixed_pitch = ?".into());
+            w.args.push(Box::new(v));
+        }
         if let Some(l) = &filter.lang {
             let mut clause = String::from(
                 "f.id IN (SELECT fl.face_id FROM face_languages fl
