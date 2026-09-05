@@ -162,6 +162,19 @@ CREATE TABLE face_scripts (
 );
 CREATE INDEX face_scripts_script ON face_scripts(script, codepoints);
 "#,
+    // 6: the languages a face claims, and which claim it is. Both have been parsed and
+    // stored since M0 and neither was reachable: `FaceFilter` had no language field at
+    // all, so "which of my fonts declare Vietnamese" could not be put to the index that
+    // knows the answer.
+    r#"
+CREATE TABLE face_languages (
+    face_id INTEGER NOT NULL REFERENCES faces(id) ON DELETE CASCADE,
+    tag     TEXT NOT NULL,
+    source  TEXT NOT NULL,
+    PRIMARY KEY (face_id, tag, source)
+);
+CREATE INDEX face_languages_tag ON face_languages(tag COLLATE NOCASE);
+"#,
 ];
 
 pub fn migrate(conn: &mut Connection) -> Result<()> {
@@ -190,6 +203,9 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
         }
         if i == 4 {
             backfill_scripts(&tx)?;
+        }
+        if i == 5 {
+            backfill_languages(&tx)?;
         }
         tx.pragma_update(None, "user_version", (i + 1) as i64)?;
         tx.commit()?;
@@ -252,6 +268,21 @@ fn backfill_scripts(tx: &rusqlite::Transaction) -> Result<()> {
     for (id, json) in rows {
         if let Ok(face) = serde_json::from_str::<crate::model::FaceMetadata>(&json) {
             super::insert_scripts(tx, id, &face.coverage.scripts)?;
+        }
+    }
+    Ok(())
+}
+
+/// Populate `face_languages` from the stored metadata JSON of an index created before v6.
+fn backfill_languages(tx: &rusqlite::Transaction) -> Result<()> {
+    let rows: Vec<(i64, String)> = {
+        let mut stmt = tx.prepare("SELECT id, metadata FROM faces")?;
+        let it = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        it.collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    for (id, json) in rows {
+        if let Ok(face) = serde_json::from_str::<crate::model::FaceMetadata>(&json) {
+            super::insert_languages(tx, id, &face)?;
         }
     }
     Ok(())

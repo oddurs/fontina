@@ -512,6 +512,151 @@ fn a_script_filter_can_ask_how_much_of_it() {
     assert_eq!(latin(deepest + 1), 0, "nothing is deeper than the deepest");
 }
 
+/// "Which of my fonts declare Vietnamese" is a question the index could not be asked.
+///
+/// Both answers were parsed and stored from the start — language system tags under each
+/// OpenType script, and BCP 47 on every localised name record — and `FaceFilter` had no
+/// language field at all.
+#[test]
+fn a_face_can_be_found_by_a_language_it_claims() {
+    let index = indexed();
+    let of = |tag: &str| -> Vec<String> {
+        let mut names: Vec<String> = index
+            .list(&FaceFilter {
+                lang: Some(tag.into()),
+                ..Default::default()
+            })
+            .unwrap()
+            .into_iter()
+            .map(|f| f.family)
+            .collect();
+        names.sort();
+        names.dedup();
+        names
+    };
+
+    // Arabic and Urdu are Amiri's alone; Kazakh is Bricolage's; Dutch is Source Serif's.
+    assert_eq!(of("ARA"), vec!["Amiri".to_string()]);
+    assert_eq!(of("URD"), vec!["Amiri".to_string()]);
+    assert_eq!(of("KAZ"), vec!["Bricolage Grotesque".to_string()]);
+    assert_eq!(of("NLD"), vec!["Source Serif 4".to_string()]);
+    // Turkish is declared by three of the five families, which is the useful shape of
+    // this question: it narrows without being unique.
+    assert_eq!(
+        of("TRK"),
+        vec![
+            "Amiri".to_string(),
+            "Bricolage Grotesque".to_string(),
+            "Source Serif 4".to_string()
+        ]
+    );
+
+    // Case is not part of the claim.
+    assert_eq!(of("trk"), of("TRK"));
+    // The tag is stored unpadded: OpenType pads to four bytes and the padding is the
+    // format's, not the language's.
+    assert!(of("TRK ").is_empty(), "the space is not part of it");
+    // Nothing here claims Klingon.
+    assert!(of("TLH").is_empty());
+}
+
+/// The two claims are different claims, and the filter can say which it means.
+///
+/// A language system tag says the shaping engine has rules for that language. A BCP 47
+/// tag on a name record only says the font names itself in it, which says nothing about
+/// whether it can set a word of it. Merging them would over-report in one direction and
+/// under-report in the other, with no way for a reader to tell which had happened.
+///
+/// Source Serif makes both claims about Bulgarian and makes them under different tags:
+/// `BGR` to the shaping engine, `bg` on its name records.
+#[test]
+fn an_opentype_claim_and_a_name_record_are_not_the_same_claim() {
+    use fontina_core::LanguageSource;
+    let index = indexed();
+    let id = id_of(&index, "Source Serif 4");
+    let claims = index.languages(id).unwrap();
+
+    let kinds = |source: LanguageSource| -> Vec<String> {
+        claims
+            .iter()
+            .filter(|(_, s)| *s == source)
+            .map(|(t, _)| t.clone())
+            .collect()
+    };
+    assert!(kinds(LanguageSource::Opentype).contains(&"BGR".to_string()));
+    assert!(kinds(LanguageSource::Name).contains(&"bg".to_string()));
+    assert!(
+        !kinds(LanguageSource::Opentype).contains(&"bg".to_string()),
+        "the two namespaces are kept apart: {claims:?}"
+    );
+
+    let by_kind = |tag: &str, source: LanguageSource| {
+        index
+            .list(&FaceFilter {
+                lang: Some(tag.into()),
+                lang_source: Some(source),
+                ..Default::default()
+            })
+            .unwrap()
+            .len()
+    };
+    assert_eq!(by_kind("BGR", LanguageSource::Opentype), 1);
+    assert_eq!(
+        by_kind("BGR", LanguageSource::Name),
+        0,
+        "no name record carries the OpenType tag"
+    );
+    assert_eq!(by_kind("bg", LanguageSource::Name), 1);
+    assert_eq!(
+        by_kind("bg", LanguageSource::Opentype),
+        0,
+        "and no shaping rule carries the BCP 47 one"
+    );
+
+    // Nabla declares no language system at all, and still names itself in English.
+    let nabla = index.languages(id_of(&index, "Nabla")).unwrap();
+    assert!(
+        nabla.iter().all(|(_, s)| *s == LanguageSource::Name),
+        "{nabla:?}"
+    );
+    assert!(
+        !nabla.is_empty(),
+        "naming itself is still a claim, just a weaker one"
+    );
+}
+
+/// Filled from what is already stored, so an older index answers without a rescan.
+#[test]
+fn an_older_index_learns_its_languages_without_a_rescan() {
+    let dir = std::env::temp_dir().join(format!("fontina-langs-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let db = dir.join("v5.db");
+    {
+        let mut idx = Index::open(&db).unwrap();
+        fontina_core::scan::scan(
+            &mut idx,
+            &[fixtures().join("BricolageGrotesque[opsz,wdth,wght].ttf")],
+            &ScanOptions::default(),
+        )
+        .unwrap();
+    }
+    {
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        conn.execute_batch("DROP TABLE face_languages; PRAGMA user_version = 5;")
+            .unwrap();
+    }
+    let idx = Index::open(&db).unwrap();
+    let found = idx
+        .list(&FaceFilter {
+            lang: Some("KAZ".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(found.len(), 1, "read out of the stored metadata");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// The script facet is ordered by how much of each script there is.
 ///
 /// `Zyyy` and `Zinh` — common punctuation and inherited marks — are in almost every font
@@ -587,8 +732,10 @@ fn an_older_index_learns_its_scripts_without_a_rescan() {
     }
     {
         let conn = rusqlite::Connection::open(&db).unwrap();
-        conn.execute_batch("DROP TABLE face_scripts; PRAGMA user_version = 4;")
-            .unwrap();
+        conn.execute_batch(
+            "DROP TABLE face_scripts; DROP TABLE face_languages; PRAGMA user_version = 4;",
+        )
+        .unwrap();
     }
     let idx = Index::open(&db).unwrap();
     let found = idx
@@ -769,6 +916,7 @@ fn a_face_whose_metadata_will_not_parse_keeps_its_static_weight() {
         let conn = rusqlite::Connection::open(&db).unwrap();
         conn.execute_batch(
             "DROP TABLE face_scripts;
+             DROP TABLE face_languages;
              DROP INDEX faces_weight_span; DROP INDEX faces_width_span;
              ALTER TABLE faces DROP COLUMN weight_min;
              ALTER TABLE faces DROP COLUMN weight_max;
@@ -822,6 +970,7 @@ fn an_older_index_learns_the_ranges_without_a_rescan() {
         let conn = rusqlite::Connection::open(&db).unwrap();
         conn.execute_batch(
             "DROP TABLE face_scripts;
+             DROP TABLE face_languages;
              DROP INDEX faces_weight_span; DROP INDEX faces_width_span;
              ALTER TABLE faces DROP COLUMN weight_min;
              ALTER TABLE faces DROP COLUMN weight_max;
