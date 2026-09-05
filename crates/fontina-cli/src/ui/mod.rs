@@ -442,6 +442,7 @@ impl App {
                 KeyCode::Char('m') => self.open_glyphs(),
                 KeyCode::Char('w') => self.open_sheet(sheet::Kind::Waterfall)?,
                 KeyCode::Char('C') => self.open_sheet(sheet::Kind::Compare)?,
+                KeyCode::Char('s') => self.open_specimen()?,
                 KeyCode::Tab => {
                     self.focus = match self.focus {
                         Focus::Facets => Focus::List,
@@ -587,6 +588,56 @@ impl App {
         Ok(())
     }
 
+    /// Write a specimen for the selection and hand it to the user's browser.
+    ///
+    /// A terminal is at its worst at exactly what choosing a typeface needs: real
+    /// antialiasing at text sizes, spacing you can trust, hinting. `specimen.rs` already
+    /// renders all of that, in a file that makes no network request and needs nothing
+    /// installed. This is the one keystroke that reaches it — the whole of the graphical
+    /// escape hatch, and the reason there is no second interface to maintain.
+    fn open_specimen(&mut self) -> Result<()> {
+        let ids = self.current_face_ids();
+        if ids.is_empty() {
+            self.status = "no face on show".into();
+            return Ok(());
+        }
+        let mut faces = Vec::with_capacity(ids.len());
+        for id in &ids {
+            if let Some(face) = self.index.get_face(*id)? {
+                faces.push(face);
+            }
+        }
+        if faces.is_empty() {
+            self.status = "no face on show".into();
+            return Ok(());
+        }
+        let html = fontina_core::specimen::render(
+            &faces,
+            &fontina_core::specimen::SpecimenOptions {
+                text: self.preview_text.clone(),
+                link: false,
+                title: None,
+            },
+        )?;
+        // One file per fontina, overwritten each time: a browser tab the user reloads is
+        // better than a temp directory that fills up with every press of the key.
+        let path =
+            std::env::temp_dir().join(format!("fontina-specimen-{}.html", std::process::id()));
+        std::fs::write(&path, &html)?;
+        let ran = format!(
+            "fontina specimen {} -o {}",
+            ids.iter().map(i64::to_string).collect::<Vec<_>>().join(" "),
+            path.display()
+        );
+        self.status = match fontina_platform::open::file(&path) {
+            Ok(opened) => format!("opened in {}   ({ran})", opened.with),
+            // A machine with no desktop is an ordinary place to run this. The file is
+            // written either way, and its path is the useful half of the answer.
+            Err(e) => format!("wrote {} but could not open it: {e}", path.display()),
+        };
+        Ok(())
+    }
+
     /// Keys the sheet owns while it is open. Everything else is swallowed, for the same
     /// reason the glyph map swallows: it covers the panes underneath.
     fn handle_sheet_key(&mut self, code: KeyCode) -> Result<()> {
@@ -621,6 +672,7 @@ impl App {
                 let text = self.preview_text.clone().unwrap_or_default();
                 self.start_input(InputKind::Text, text);
             }
+            KeyCode::Char('s') => self.open_specimen()?,
             _ => {}
         }
         Ok(())
@@ -1547,7 +1599,7 @@ impl App {
     }
 
     fn draw_keys(&self, f: &mut ratatui::Frame, area: Rect) {
-        let keys = " / search  ⇥ facets  ⏎ open  ⌫ back  t tag  c collection  a/A activate  d deactivate  i install  u uninstall  e text  +/- size  R rescan  ? help  q quit";
+        let keys = " / search  ⇥ facets  ⏎ open  ⌫ back  t tag  c collection  a/A activate  d deactivate  i install  u uninstall  e text  +/- size  s specimen  R rescan  ? help  q quit";
         f.render_widget(
             Paragraph::new(Span::styled(keys, Style::default().fg(Color::DarkGray))),
             area,
@@ -1570,6 +1622,8 @@ impl App {
              codepoint (U+0041, 0x41, 41) or a block by name
  Sheets      w waterfalls the face down the size ladder; C compares every face
              the selection stands for. j/k scroll, +/- resize a comparison
+ Specimen    s writes an HTML specimen for the selection and opens it in your
+             browser, for the things a terminal cannot show honestly
  Index       R rescans every source (fontina scan --prune)
  Quit        q
 
@@ -1577,7 +1631,7 @@ impl App {
 
  any key to close";
         let w = 90.min(area.width);
-        let h = 24.min(area.height);
+        let h = 26.min(area.height);
         let rect = Rect::new(
             area.x + (area.width - w) / 2,
             area.y + (area.height - h) / 2,
@@ -1859,6 +1913,52 @@ mod tests {
         let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures");
         fontina_core::scan::scan(&mut index, &[fixtures], &Default::default()).unwrap();
         App::new(index).unwrap()
+    }
+
+    /// The graphical escape hatch, and the whole of it: a specimen for what is selected,
+    /// written and handed to the desktop.
+    #[test]
+    fn the_specimen_key_writes_a_file_for_the_selection() {
+        // No desktop in a test runner, and `open_specimen` must survive that: the file is
+        // the point and the handler is best-effort. `true` accepts the path and does
+        // nothing, which is exactly the "it opened" branch without opening anything.
+        // SAFETY: single-threaded test.
+        unsafe { std::env::set_var("BROWSER", "true") };
+        let mut app = app();
+        app.preview_text = Some("Hamburgefonstiv".into());
+        let ids = app.current_face_ids();
+        assert!(!ids.is_empty(), "the first family is selected");
+
+        app.open_specimen().unwrap();
+        unsafe { std::env::remove_var("BROWSER") };
+
+        let path =
+            std::env::temp_dir().join(format!("fontina-specimen-{}.html", std::process::id()));
+        let html = std::fs::read_to_string(&path).expect("the specimen was written");
+        assert!(html.starts_with("<!doctype html>") || html.starts_with("<!DOCTYPE html>"));
+        assert!(
+            html.contains("Hamburgefonstiv"),
+            "the sample text the user set is in it"
+        );
+        assert!(
+            !html.contains("http://") && !html.contains("https://"),
+            "a specimen makes no network request, which is why it can be opened from /tmp"
+        );
+        assert!(
+            app.status.contains("fontina specimen"),
+            "the status line names the command that would do the same thing: {}",
+            app.status
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Pressing it with nothing selected must say so rather than writing an empty page.
+    #[test]
+    fn the_specimen_key_says_when_there_is_nothing_to_show() {
+        let mut app = app();
+        app.list.select(None);
+        app.open_specimen().unwrap();
+        assert_eq!(app.status, "no face on show");
     }
 
     #[test]
