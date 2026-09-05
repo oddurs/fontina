@@ -336,7 +336,29 @@ fn any_text_a_person_can_type_renders_or_errors_but_never_breaks() {
             } else {
                 assert!(!bm.is_blank(), "{what}: drew nothing");
             }
-            assert_eq!(bm.missing, 0, "{what}: outlines went missing");
+            // `missing` counts .notdef substitutions as well as outlines that would not
+            // draw, and a fixture is not obliged to cover every text here — the
+            // grapheme-cluster and emoji cases reach past every one of them. What must
+            // stay zero is the difference: an outline the font claims and cannot draw.
+            // Per line, as the renderer shapes it: a newline is a break, not a
+            // character the font is expected to have.
+            let raw = std::fs::read(&f.file.path).unwrap();
+            let sfnt = fontina_core::container::unwrap(f.file.container, &raw).unwrap();
+            let notdef: usize = text
+                .split('\n')
+                .map(|line| {
+                    shaped_glyphs(&sfnt, f.index, line)
+                        .map(|ids| ids.iter().filter(|g| **g == 0).count())
+                        .unwrap_or(0)
+                })
+                .sum();
+            assert_eq!(
+                bm.missing,
+                notdef,
+                "{what}: {} glyph(s) went missing beyond the {notdef} the font does not \
+                 have at all",
+                bm.missing.saturating_sub(notdef)
+            );
         }
     }
 }
@@ -1165,4 +1187,42 @@ fn options_compare_field_by_field() {
             }
         }
     }
+}
+
+// ----- what the font could not show -----
+
+/// Text a font does not cover is counted, not quietly drawn as boxes.
+///
+/// Shaping substitutes glyph 0 for every character a font has no glyph for, and most
+/// fonts draw glyph 0 as an empty box. A preview of Japanese in a Latin font is
+/// therefore a row of boxes that looks exactly like a rendering fault, and `missing`
+/// used to say 0 for it: it counted only outlines that were absent or would not draw,
+/// which is a different thing and one that almost never happens.
+#[test]
+fn characters_the_font_has_no_glyph_for_are_counted() {
+    let opts = |text: &str| RenderOptions {
+        text: text.into(),
+        size: 24.0,
+        ..Default::default()
+    };
+
+    // Amiri covers Arabic and Latin, and no CJK at all.
+    let covered = render("Amiri-Regular.ttf", &opts("Hi"), "Latin in Amiri");
+    assert_eq!(covered.missing, 0, "Amiri has Latin letters");
+    assert!(covered.glyphs >= 2);
+
+    let not = render("Amiri-Regular.ttf", &opts("日本語"), "Japanese in Amiri");
+    assert_eq!(
+        (not.missing, not.glyphs),
+        (3, 3),
+        "every character shaped to .notdef and none of them was counted"
+    );
+    // And it is the shaper's own verdict, not a guess about the text.
+    let ids = shaped_glyphs(&bytes("Amiri-Regular.ttf"), 0, "日本語").unwrap();
+    assert_eq!(ids, vec![0, 0, 0], "three .notdef substitutions");
+
+    // Mixed text counts only what is missing.
+    let mixed = render("Amiri-Regular.ttf", &opts("A日"), "mixed in Amiri");
+    assert_eq!(mixed.missing, 1, "one of the two is not in the font");
+    assert_eq!(mixed.glyphs, 2);
 }

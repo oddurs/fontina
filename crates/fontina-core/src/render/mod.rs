@@ -73,7 +73,14 @@ pub struct Bitmap {
     pub baseline: f32,
     /// Glyphs placed, over all lines.
     pub glyphs: usize,
-    /// Glyphs the font had no outline for (rendered as gaps).
+    /// Characters this font has no glyph for, plus glyphs it could not draw.
+    ///
+    /// Shaping substitutes glyph 0, `.notdef`, for every character a font does not
+    /// cover, and most fonts draw `.notdef` as an empty box. The box is a picture of the
+    /// font's answer, not of the text, so it is counted here: a preview of Japanese in a
+    /// Latin font is three boxes and nothing else says so. An outline that is absent or
+    /// fails to draw is counted the same way, since it also leaves the reader looking at
+    /// something the font did not render.
     pub missing: usize,
 }
 
@@ -269,6 +276,12 @@ pub fn render_sfnt(bytes: &[u8], index: u32, opts: &RenderOptions) -> Result<Bit
         let baseline = baseline0 + i as f32 * line_height;
         for (gid, x, y) in &line.glyphs {
             glyphs += 1;
+            // Glyph 0 is `.notdef`: shaping puts it where the font covers nothing. It
+            // usually has an outline — the box — so it draws, and it is still a
+            // character the font cannot show.
+            if gid.to_u32() == 0 {
+                missing += 1;
+            }
             // A glyph whose pen has already passed the clip cannot put ink inside it.
             // Skipping it keeps the buffer bounded by the clip rather than by the text.
             if pad + x >= width as f32 {
