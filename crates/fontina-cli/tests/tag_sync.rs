@@ -19,6 +19,9 @@
 #[cfg(unix)]
 mod common;
 
+// The file tags are a Unix thing here, so every test that reads JSON out of a run is
+// `cfg(unix)` too, and on Windows this import has nothing left to serve.
+#[cfg(unix)]
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::Command;
