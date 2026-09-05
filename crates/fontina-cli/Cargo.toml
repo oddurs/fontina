@@ -26,6 +26,9 @@ fontina-platform.workspace = true
 clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+# The CLI prints types of its own with --json (the agent reports, the licence table, the
+# restore report); each has to be described in `schemas/cli-output.json` like the core's.
+schemars.workspace = true
 anyhow.workspace = true
 ratatui = { version = "0.30", default-features = false, features = ["crossterm", "std", "layout-cache"] }
 clap_complete = "4"

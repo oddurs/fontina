@@ -47,6 +47,81 @@
         }
       ]
     },
+    "AgentInstalled": {
+      "description": "What `agent install --json` prints.",
+      "properties": {
+        "activate_with": {
+          "description": "The command that starts it now rather than at the next login, if one is needed.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "installed": {
+          "type": "boolean"
+        },
+        "kind": {
+          "description": "The mechanism, for a human: `systemd user unit`, `LaunchAgent`, `Startup folder`.",
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "installed",
+        "path",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "AgentRemoved": {
+      "description": "What `agent uninstall --json` prints.",
+      "properties": {
+        "deactivate_with": {
+          "description": "The command that undoes the enablement, which deleting the file does not.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "removed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "removed"
+      ],
+      "type": "object"
+    },
+    "AgentStatus": {
+      "description": "What `agent status --json` prints.",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "installed": {
+          "type": "boolean"
+        },
+        "kind": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "installed",
+        "enabled"
+      ],
+      "type": "object"
+    },
     "BlockCoverage": {
       "description": "One Unicode block and the codepoints a face covers within it.",
       "properties": {
@@ -305,6 +380,35 @@
         "reason",
         "key",
         "faces"
+      ],
+      "type": "object"
+    },
+    "EmbeddingLevel": {
+      "enum": [
+        "installable",
+        "restricted_license",
+        "preview_and_print",
+        "editable"
+      ],
+      "type": "string"
+    },
+    "EmbeddingRights": {
+      "description": "Decoded `OS/2.fsType` embedding permissions.",
+      "properties": {
+        "bitmap_only": {
+          "type": "boolean"
+        },
+        "level": {
+          "$ref": "#/$defs/EmbeddingLevel"
+        },
+        "no_subsetting": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "level",
+        "no_subsetting",
+        "bitmap_only"
       ],
       "type": "object"
     },
@@ -793,6 +897,76 @@
       ],
       "type": "object"
     },
+    "LicenseRow": {
+      "properties": {
+        "copyright": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "embedding": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EmbeddingRights"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "family": {
+          "type": "string"
+        },
+        "freedom": {
+          "$ref": "#/$defs/Freedom"
+        },
+        "path": {
+          "type": "string"
+        },
+        "reason": {
+          "description": "Why `freedom` is what it is, in one line.",
+          "type": "string"
+        },
+        "reserved_font_names": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "spdx": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "subfamily": {
+          "type": "string"
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "family",
+        "subfamily",
+        "path",
+        "freedom",
+        "reason",
+        "reserved_font_names"
+      ],
+      "type": "object"
+    },
+    "Paths": {
+      "description": "A list of paths, printed as a bare array so it pipes straight back into `--stdin`.\n\nThe newtype exists to give the array a name in `schemas/cli-output.json`: a type\nprinted with `--json` has to be described there, and `Vec<PathBuf>` has no name to\ndescribe. `transparent` keeps the JSON exactly what it was.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
     "Related": {
       "description": "One candidate from [`Index::related`], with the numbers that say what the overlap\nmeans.\n\nThe score is printed rather than thresholded away, and the metrics stand beside it,\nbecause \"covers the same characters\" is not the same as \"is the same design\". High\noverlap with identical metrics is a variant of one typeface; high overlap with\ndifferent metrics is two fonts that happen to serve the same languages. The reader\ndraws that line, the way `freedom` reports a verdict and its reason rather than\nfiltering silently.",
       "properties": {
@@ -827,6 +1001,42 @@
         "shared",
         "union",
         "metrics_agree"
+      ],
+      "type": "object"
+    },
+    "RestoreReport": {
+      "properties": {
+        "failed": {
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "reinstalled": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "restored": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "restored",
+        "reinstalled",
+        "failed"
       ],
       "type": "object"
     },
@@ -1000,6 +1210,26 @@
         "sources",
         "activations",
         "db_path"
+      ],
+      "type": "object"
+    },
+    "SystemFontDir": {
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "user_writable": {
+          "description": "True for the directory a per-user install writes to.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path",
+        "user_writable",
+        "description"
       ],
       "type": "object"
     },

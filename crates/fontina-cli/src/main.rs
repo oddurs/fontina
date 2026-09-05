@@ -1337,7 +1337,7 @@ fn run() -> Result<()> {
             let schema = match which.as_str() {
                 "face" => fontina_core::face_schema(),
                 "collection" => fontina_core::collection_schema(),
-                "cli-output" | "cli_output" | "cli" => fontina_core::cli_output_schema(),
+                "cli-output" | "cli_output" | "cli" => cli_output_schema(),
                 other => bail!("unknown schema {other:?}; use face, collection or cli-output"),
             };
             println!("{}", serde_json::to_string_pretty(&schema)?);
@@ -1346,7 +1346,7 @@ fn run() -> Result<()> {
     Ok(())
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, schemars::JsonSchema)]
 struct LicenseRow<'a> {
     family: &'a str,
     subfamily: &'a str,
@@ -1387,12 +1387,12 @@ fn run_agent(cli: &Cli, cmd: &AgentCmd) -> Result<()> {
             if *json {
                 println!(
                     "{}",
-                    serde_json::json!({
-                        "installed": true,
-                        "path": plan.path,
-                        "kind": plan.kind,
-                        "activate_with": plan.activate_with,
-                    })
+                    serde_json::to_string_pretty(&AgentInstalled {
+                        installed: true,
+                        path: plan.path.clone(),
+                        kind: plan.kind,
+                        activate_with: plan.activate_with.clone(),
+                    })?
                 );
             } else {
                 println!("wrote the {} to {}", plan.kind, plan.path.display());
@@ -1408,10 +1408,10 @@ fn run_agent(cli: &Cli, cmd: &AgentCmd) -> Result<()> {
             if *json {
                 println!(
                     "{}",
-                    serde_json::json!({
-                        "removed": removed,
-                        "deactivate_with": plan.as_ref().and_then(|p| p.deactivate_with.clone()),
-                    })
+                    serde_json::to_string_pretty(&AgentRemoved {
+                        removed,
+                        deactivate_with: plan.as_ref().and_then(|p| p.deactivate_with.clone()),
+                    })?
                 );
             } else if removed {
                 println!("removed the login agent");
@@ -1431,12 +1431,12 @@ fn run_agent(cli: &Cli, cmd: &AgentCmd) -> Result<()> {
             if *json {
                 println!(
                     "{}",
-                    serde_json::json!({
-                        "installed": status.as_ref().is_some_and(|s| s.installed),
-                        "enabled": status.as_ref().is_some_and(|s| s.enabled),
-                        "path": status.as_ref().map(|s| s.path.clone()),
-                        "kind": plan.as_ref().map(|p| p.kind),
-                    })
+                    serde_json::to_string_pretty(&AgentStatus {
+                        installed: status.as_ref().is_some_and(|s| s.installed),
+                        enabled: status.as_ref().is_some_and(|s| s.enabled),
+                        path: status.as_ref().map(|s| s.path.clone()),
+                        kind: plan.as_ref().map(|p| p.kind),
+                    })?
                 );
             } else {
                 match (&status, &plan) {
@@ -1950,6 +1950,36 @@ fn target_of(value: &serde_json::Value) -> Result<String> {
         }
         other => bail!("{other} on stdin is not a face id, a family or a path"),
     }
+}
+
+/// Every type this binary prints with `--json`, one definition each.
+///
+/// The core's own listing covers the types it defines. The rest live here or in
+/// `fontina-platform`, and neither crate can see them from the other, so the two sets are
+/// generated separately and merged. CLAUDE.md's rule is that every printed type is in
+/// this file; a test in `tests/schema_conformance.rs` checks that against the commands
+/// `--help` reports rather than against anyone's memory.
+fn cli_output_schema() -> serde_json::Value {
+    use schemars::{JsonSchema, SchemaGenerator, generate::SchemaSettings};
+    let mut schema = fontina_core::cli_output_schema();
+    let mut g = SchemaGenerator::new(SchemaSettings::draft2020_12());
+    fn add<T: JsonSchema>(g: &mut SchemaGenerator) {
+        g.subschema_for::<T>();
+    }
+    add::<fontina_platform::SystemFontDir>(&mut g);
+    add::<LicenseRow>(&mut g);
+    add::<RestoreReport>(&mut g);
+    add::<AgentInstalled>(&mut g);
+    add::<AgentRemoved>(&mut g);
+    add::<AgentStatus>(&mut g);
+    add::<Paths>(&mut g);
+    let mine = g.take_definitions(true);
+    if let Some(defs) = schema.get_mut("$defs").and_then(|d| d.as_object_mut()) {
+        for (name, def) in mine {
+            defs.insert(name, def);
+        }
+    }
+    schema
 }
 
 fn run_tag(cli: &Cli, cmd: &TagCmd) -> Result<()> {
@@ -2699,7 +2729,7 @@ fn run_deactivate(cli: &Cli, targets: &[String], uninstall: bool, json: bool) ->
         done.push(path);
     }
     if json {
-        println!("{}", serde_json::to_string_pretty(&done)?);
+        println!("{}", serde_json::to_string_pretty(&Paths(done.clone()))?);
     } else {
         for p in &done {
             println!(
@@ -2716,7 +2746,44 @@ fn run_deactivate(cli: &Cli, targets: &[String], uninstall: bool, json: bool) ->
     Ok(())
 }
 
-#[derive(Debug, Default, serde::Serialize)]
+/// What `agent install --json` prints.
+#[derive(serde::Serialize, schemars::JsonSchema)]
+struct AgentInstalled {
+    installed: bool,
+    path: PathBuf,
+    /// The mechanism, for a human: `systemd user unit`, `LaunchAgent`, `Startup folder`.
+    kind: &'static str,
+    /// The command that starts it now rather than at the next login, if one is needed.
+    activate_with: Option<String>,
+}
+
+/// What `agent uninstall --json` prints.
+#[derive(serde::Serialize, schemars::JsonSchema)]
+struct AgentRemoved {
+    removed: bool,
+    /// The command that undoes the enablement, which deleting the file does not.
+    deactivate_with: Option<String>,
+}
+
+/// What `agent status --json` prints.
+#[derive(serde::Serialize, schemars::JsonSchema)]
+struct AgentStatus {
+    installed: bool,
+    enabled: bool,
+    path: Option<PathBuf>,
+    kind: Option<&'static str>,
+}
+
+/// A list of paths, printed as a bare array so it pipes straight back into `--stdin`.
+///
+/// The newtype exists to give the array a name in `schemas/cli-output.json`: a type
+/// printed with `--json` has to be described there, and `Vec<PathBuf>` has no name to
+/// describe. `transparent` keeps the JSON exactly what it was.
+#[derive(serde::Serialize, schemars::JsonSchema)]
+#[serde(transparent)]
+struct Paths(Vec<PathBuf>);
+
+#[derive(Debug, Default, serde::Serialize, schemars::JsonSchema)]
 struct RestoreReport {
     restored: usize,
     reinstalled: usize,

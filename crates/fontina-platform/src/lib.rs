@@ -53,7 +53,7 @@ pub enum Scope {
     User,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SystemFontDir {
     pub path: PathBuf,
     /// True for the directory a per-user install writes to.

@@ -17,6 +17,9 @@ platform-tests = []
 [dependencies]
 directories.workspace = true
 serde.workspace = true
+# `fontina dirs --json` prints SystemFontDir, and CLAUDE.md requires every type printed
+# with --json to carry a schema.
+schemars.workspace = true
 thiserror.workspace = true
 blake3.workspace = true
 

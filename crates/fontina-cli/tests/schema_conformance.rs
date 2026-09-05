@@ -29,7 +29,9 @@
 //!
 //! [`every_json_command_is_covered_or_exempt`] walks `fontina --help` and fails when a
 //! command grows `--json` without growing a case here, the way `tests/checks.rs` stops
-//! the check-id list drifting.
+//! the check-id list drifting. The seven commands that write to the system cannot be run
+//! here at all; [`every_exempt_command_prints_a_defined_type`] holds the half of the
+//! promise that can be held without running them.
 //!
 //! Two commands are validated against a different file, because that is what they print:
 //! `info` prints `FaceMetadata`, which is `schemas/face.json` and is in no other file,
@@ -186,9 +188,11 @@ fn case(command: &'static str, args: &[&str], shape: Shape, why: &'static str) -
 /// lives (a session activation, undone before it returns). `scripts/acceptance` covers
 /// these end to end on a throwaway XDG home.
 ///
-/// `activate` and `install` print `ActivationRecord`, which is defined and which
-/// `activations` validates here from the same rows. The other five print types the
-/// schema does not describe at all — see [`json_output_the_schema_does_not_describe`].
+/// Every one of them still prints a type `schemas/cli-output.json` defines, and
+/// [`every_exempt_command_prints_a_defined_type`] holds that: `activate` and `install`
+/// print `ActivationRecord`, which `activations` validates here from the same rows;
+/// `deactivate` and `uninstall` print `Paths`; `restore` prints `RestoreReport`; and the
+/// two `agent` commands print `AgentInstalled` and `AgentRemoved`.
 const EXEMPT: &[(&str, &str)] = &[
     ("activate", "registers a font with the running OS"),
     ("deactivate", "unregisters a font from the running OS"),
@@ -605,7 +609,7 @@ fn cases(work: &Path) -> Vec<Case> {
         case(
             "dirs",
             &["dirs", "--json"],
-            Shape::ArrayOf("FontDir"),
+            Shape::ArrayOf("SystemFontDir"),
             "the operating system's font directories",
         ),
         case(
@@ -627,21 +631,6 @@ fn cases(work: &Path) -> Vec<Case> {
     cases
 }
 
-/// Definitions [`library`] names that `schemas/cli-output.json` does not have.
-///
-/// These are the mismatches, kept out of the conforming run and asserted on their own in
-/// [`json_output_the_schema_does_not_describe`] so the gap is documented rather than
-/// hidden. Fixing it is not a test's call.
-const UNDEFINED: &[&str] = &["AgentStatus", "FontDir", "LicenseRow"];
-
-fn is_undefined(shape: &Shape) -> bool {
-    let name = match shape {
-        Shape::Def(n) | Shape::ArrayOf(n) => *n,
-        Shape::Faces | Shape::Collection => return false,
-    };
-    UNDEFINED.contains(&name)
-}
-
 // ---------------------------------------------------------------------------------
 // The tests
 // ---------------------------------------------------------------------------------
@@ -660,9 +649,6 @@ fn json_output_validates_against_the_published_schemas() {
     let mut seen: std::collections::BTreeMap<&str, usize> = Default::default();
 
     for c in &cases {
-        if is_undefined(&c.shape) {
-            continue;
-        }
         let label = format!("`fontina {}` ({})", c.args.join(" "), c.why);
         let stdout = stdout_of(&db, &c.args);
         match c.shape {
@@ -703,14 +689,10 @@ fn json_output_validates_against_the_published_schemas() {
         }
     }
 
-    for def in cases
-        .iter()
-        .filter(|c| !is_undefined(&c.shape))
-        .filter_map(|c| match c.shape {
-            Shape::Def(n) | Shape::ArrayOf(n) => Some(n),
-            Shape::Faces | Shape::Collection => None,
-        })
-    {
+    for def in cases.iter().filter_map(|c| match c.shape {
+        Shape::Def(n) | Shape::ArrayOf(n) => Some(n),
+        Shape::Faces | Shape::Collection => None,
+    }) {
         assert!(
             seen.get(def).copied().unwrap_or(0) > 0,
             "every case naming {def} came back empty, so nothing was validated against \
@@ -938,89 +920,70 @@ fn every_json_command_is_covered_or_exempt() {
     );
 }
 
-/// Three `--json` commands print a type `schemas/cli-output.json` does not define.
+/// Every command a hermetic test may not run still prints a defined type.
 ///
-/// `dirs` prints `fontina_platform::FontDir`, `license` prints the CLI's own
-/// `LicenseRow`, and `agent status` prints an object literal with no Rust type at all.
-/// None of the three is in `cli_output_schema()`, so none is in the file, so the promise
-/// README.md, the manual and PLAN.md all make — "`--json` output validates against
-/// `schemas/cli-output.json`" — is not true of them. CLAUDE.md says the same in the
-/// imperative: "Every type printed with `--json` derives `JsonSchema` and is listed in
-/// `cli_output_schema()`".
+/// The seven in [`EXEMPT`] register a font with the operating system or write to the
+/// user's home, so nothing here runs them and nothing here can validate their bytes.
+/// What can be held is the half that used to be missing: that the type each one prints
+/// is in `schemas/cli-output.json` at all. Until this file's history closed it, seven of
+/// them printed types the file did not define, which made the promise README.md, the
+/// manual and PLAN.md all make — "`--json` output validates against
+/// `schemas/cli-output.json`" — untrue of them, and CLAUDE.md's rule — "Every type
+/// printed with `--json` derives `JsonSchema` and is listed in `cli_output_schema()`" —
+/// unenforced. `scripts/acceptance` runs the commands themselves, end to end.
 ///
-/// Four more are in the same position and cannot be run here (see [`EXEMPT`]):
-/// `deactivate` and `uninstall` print `Vec<PathBuf>`, `restore` prints the CLI's
-/// `RestoreReport`, and `agent install` and `agent uninstall` print object literals.
-///
-/// Whether the fix is to define the types or to stop promising is a decision for a
-/// person; this test only refuses to let the gap go unrecorded. When a definition
-/// arrives, this fails and says to move the command into the conforming run.
+/// Adding a `--json` command that writes to the system means adding it to [`EXEMPT`],
+/// and this is what then asks for its definition.
 #[test]
-fn json_output_the_schema_does_not_describe() {
+fn every_exempt_command_prints_a_defined_type() {
+    /// What each exempt command prints, by definition name.
+    const PRINTS: &[(&str, &str)] = &[
+        ("activate", "ActivationRecord"),
+        ("install", "ActivationRecord"),
+        ("deactivate", "Paths"),
+        ("uninstall", "Paths"),
+        ("restore", "RestoreReport"),
+        ("agent install", "AgentInstalled"),
+        ("agent uninstall", "AgentRemoved"),
+    ];
+
     let defs = schema_file("cli-output.json");
     let defs = defs["$defs"].as_object().expect("$defs is an object");
-
-    let work = temp_dir("undefined");
-    let db = build_library(&work);
-    let cases = cases(&work);
-
-    for name in UNDEFINED {
+    for (command, def) in PRINTS {
         assert!(
-            !defs.contains_key(*name),
-            "schemas/cli-output.json now defines {name}: remove it from UNDEFINED so \
-             its command is validated with the rest"
+            defs.contains_key(*def),
+            "`fontina {command} --json` prints {def} and schemas/cli-output.json does \
+             not define it. Derive JsonSchema on the type and add it to \
+             `cli_output_schema()` in crates/fontina-cli/src/main.rs."
         );
     }
 
-    // Missing by name is the mismatch. What follows is the reason a validator alone
-    // would not have caught it: `schemars` leaves `additionalProperties` unset, so every
-    // definition in the file accepts extra properties, and an undefined shape can be
-    // waved through by an unrelated definition that happens to require a subset of its
-    // keys. A `LicenseRow` has a `path` and a `reason`, which is all `TagSyncSkip` asks
-    // for. Pinning the coincidences here means a schema change that creates or removes
-    // one is noticed rather than absorbed.
-    let mut accidental: Vec<(String, Vec<String>)> = Vec::new();
-    for c in cases.iter().filter(|c| is_undefined(&c.shape)) {
-        let stdout = stdout_of(&db, &c.args);
-        let value: Value = serde_json::from_str(&stdout).expect("JSON on stdout");
-        let sample = match &value {
-            Value::Array(items) => match items.first() {
-                Some(first) => first.clone(),
-                // An empty array is accepted by anything and proves nothing either way.
-                None => continue,
-            },
-            other => other.clone(),
-        };
-        accidental.push((
-            c.args.join(" "),
-            defs.keys()
-                .filter(|def| cli_output_validator(def).is_valid(&sample))
-                .cloned()
-                .collect(),
-        ));
-    }
-    let found: Vec<(&str, Vec<&str>)> = accidental
-        .iter()
-        .map(|(k, v)| (k.as_str(), v.iter().map(String::as_str).collect()))
-        .collect();
-    let expected: Vec<(&str, Vec<&str>)> = ACCIDENTAL_ACCEPTANCES
-        .iter()
-        .map(|(command, defs)| (*command, defs.to_vec()))
-        .collect();
+    let listed: BTreeSet<&str> = PRINTS.iter().map(|(c, _)| *c).collect();
+    let exempt: BTreeSet<&str> = EXEMPT.iter().map(|(c, _)| *c).collect();
     assert_eq!(
-        found, expected,
-        "which definitions happen to accept an output they do not describe has changed"
+        listed, exempt,
+        "EXEMPT and the list of what each exempt command prints have drifted apart"
     );
-    let _ = std::fs::remove_dir_all(&work);
-}
 
-/// Definitions that accept one of the [`UNDEFINED`] outputs by coincidence, in the order
-/// [`cases`] lists the commands. See [`json_output_the_schema_does_not_describe`].
-const ACCIDENTAL_ACCEPTANCES: &[(&str, &[&str])] = &[
-    ("agent status --json", &[]),
-    ("dirs --json", &[]),
-    ("license --json 1", &["TagSyncSkip"]),
-];
+    // The definitions are not vacuous: each refuses something of the wrong shape. A
+    // `$ref` that resolved to nothing would satisfy the loop above and prove nothing.
+    assert!(
+        !cli_output_validator("Paths").is_valid(&json!({})),
+        "an object satisfied Paths, which is an array"
+    );
+    assert!(
+        !cli_output_validator("RestoreReport").is_valid(&json!({"restored": "two"})),
+        "a string satisfied an integer property of RestoreReport"
+    );
+    assert!(
+        !cli_output_validator("AgentInstalled").is_valid(&json!({})),
+        "an empty object satisfied AgentInstalled"
+    );
+    assert!(
+        !cli_output_validator("AgentRemoved").is_valid(&json!({"removed": 1})),
+        "a number satisfied a boolean property of AgentRemoved"
+    );
+}
 
 // ---------------------------------------------------------------------------------
 // Walking `fontina --help`

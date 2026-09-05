@@ -684,6 +684,7 @@ dependencies = [
  "mimalloc",
  "ratatui",
  "rusqlite",
+ "schemars",
  "serde",
  "serde_json",
 ]
@@ -725,6 +726,7 @@ dependencies = [
  "fontina-core",
  "libc",
  "rusqlite",
+ "schemars",
  "serde",
  "thiserror 2.0.20",
  "windows-sys 0.61.2",
