@@ -1749,7 +1749,7 @@ fn print_table(faces: &[FaceSummary]) {
         natural(&|f| fontina_core::unicode::columns(&f.family), 6, 40),
         natural(&|f| fontina_core::unicode::columns(&f.subfamily), 5, 28),
         natural(
-            &|f| fontina_core::unicode::columns(f.license.as_deref().unwrap_or("-")),
+            &|f| fontina_core::unicode::columns(&license_cell(f.license.as_deref())),
             7,
             14,
         ),
@@ -1815,7 +1815,7 @@ fn print_table(faces: &[FaceSummary]) {
             t.dim(&format!("{:>w_wght$}", wght[i])),
             t.dim(&format!("{:>w_wdth$}", wdth[i])),
             flags_cell(&t, f),
-            t.dim(&cell(f.license.as_deref().unwrap_or("-"), w_lic)),
+            t.dim(&cell(&license_cell(f.license.as_deref()), w_lic)),
             t.dim(&dir),
             file,
             if f.tags.is_empty() {
@@ -1939,6 +1939,21 @@ fn pad(s: &str, w: usize) -> String {
         out.push(' ');
     }
     out
+}
+
+/// The licence, short enough to be worth a column.
+///
+/// SPDX puts a licence it does not have an identifier for behind `LicenseRef-`, so a
+/// library of commercial fonts is a column of `LicenseRef-Proprietary` — twenty-two
+/// characters into twelve, which is `LicenseRef-…` on every row and tells the reader
+/// nothing they did not know. The prefix is a namespace, not a name; the name is what
+/// follows it. `--license` still takes the whole identifier, `--json` still prints it,
+/// and `fontina license` still reports it in full.
+fn license_cell(license: Option<&str>) -> String {
+    match license {
+        Some(l) => l.strip_prefix("LicenseRef-").unwrap_or(l).to_string(),
+        None => "-".to_string(),
+    }
 }
 
 /// One table cell: `s` fitted to `w` terminal columns and padded to exactly `w`.
@@ -3172,7 +3187,7 @@ fn print_families(families: &[fontina_core::Family]) {
             44,
         ),
         natural(
-            &|i| fontina_core::unicode::columns(families[i].license.as_deref().unwrap_or("-")),
+            &|i| fontina_core::unicode::columns(&license_cell(families[i].license.as_deref())),
             7,
             14,
         ),
@@ -3198,7 +3213,7 @@ fn print_families(families: &[fontina_core::Family]) {
             t.dim(&format!("{:<9}", range(f.weights[0], f.weights[1]))),
             t.dim(&format!("{:<9}", range(f.widths[0], f.widths[1]))),
             family_flags(&t, f),
-            t.dim(&cell(f.license.as_deref().unwrap_or("-"), w_lic)),
+            t.dim(&cell(&license_cell(f.license.as_deref()), w_lic)),
             t.dim(&fontina_core::unicode::fit(&scripts[i], w_scr)),
         );
     }
@@ -4276,6 +4291,22 @@ mod tests {
         let mut unknown = faces.clone();
         unknown[0].license.spdx = None;
         assert_eq!(embedded_nonfree(&unknown), 1);
+    }
+
+    /// SPDX's namespace for a licence it has no identifier for is not the licence's name.
+    ///
+    /// A library of commercial fonts is a column of `LicenseRef-Proprietary`, which in
+    /// twelve columns is `LicenseRef-…` on every row: eleven characters of prefix,
+    /// repeated, saying nothing. Found on a real library, 1,306 faces of 1,998.
+    #[test]
+    fn the_licence_cell_drops_the_namespace_and_keeps_the_name() {
+        assert_eq!(license_cell(Some("LicenseRef-Proprietary")), "Proprietary");
+        assert_eq!(license_cell(Some("LicenseRef-Unknown")), "Unknown");
+        // An identifier SPDX does have is already the name.
+        assert_eq!(license_cell(Some("OFL-1.1")), "OFL-1.1");
+        assert_eq!(license_cell(Some("Apache-2.0")), "Apache-2.0");
+        // And a face with no licence at all still gets a cell.
+        assert_eq!(license_cell(None), "-");
     }
 
     #[test]
