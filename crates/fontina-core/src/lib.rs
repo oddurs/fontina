@@ -53,7 +53,8 @@ pub use freedom::Freedom;
 pub use index::{
     ActivationRecord, ActivationState, BUNDLE_FILE, BUNDLE_FONTS, BundleReport, CollectionExport,
     CollectionFace, CollectionInfo, Conflict, DuplicateGroup, FaceFilter, FaceSummary, Facets,
-    Family, ImportReport, Index, Source, SourceKind, TagInfo,
+    Family, ImportReport, Index, Source, SourceKind, TagInfo, TagSyncChange, TagSyncReport,
+    TagSyncSkip,
 };
 pub use model::{Container, FaceMetadata, FileInfo};
 pub use scan::{ScanOptions, ScanReport};
@@ -145,6 +146,7 @@ pub fn cli_output_schema() -> serde_json::Value {
     add::<CollectionExport>(&mut g);
     add::<ImportReport>(&mut g);
     add::<BundleReport>(&mut g);
+    add::<TagSyncReport>(&mut g);
     add::<Source>(&mut g);
     add::<ActivationRecord>(&mut g);
     add::<Conflict>(&mut g);
