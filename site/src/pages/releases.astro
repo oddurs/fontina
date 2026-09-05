@@ -1,0 +1,75 @@
+---
+import Base from '../layouts/Base.astro';
+import { releases, current } from '../releases';
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const u = (p: string) => `${base}${p}`;
+const repo = 'https://github.com/oddurs/fontina';
+
+// One line per release, written when it goes out. The version, the date and the order
+// come from the repository's tags, so this page cannot fall behind the way a hard-coded
+// version number did.
+const notes: Record<string, string> = {
+  '0.1.0':
+    'First release. Renamed from unifont and relicensed under GPL-3.0-or-later in the same release. Its GNU/Linux binaries were built against a newer glibc than any stable distribution ships and will not start on one; take 0.1.1 or later instead.',
+  '0.1.1':
+    'Static GNU/Linux binaries that run on every distribution. Two denial-of-service defects in the importer, found by fuzzing. The index no longer loses tags and collections when a parse fails, activation can no longer delete a font it did not install, and concurrent fontina processes can share one index.',
+};
+---
+<Base title="fontina releases" description="Release policy, what a release contains, and the timeline." source="site/src/pages/releases.astro">
+  <h1>fontina releases</h1>
+
+  <h2>Current</h2>
+  {current ? (
+    <p>
+      The current release is <a href={current.url}>fontina {current.version}</a>, {current.date}.
+      Before 1.0, command output, schemas and check identifiers may still change, and every
+      such change is called out in the <a href={`${repo}/blob/main/CHANGELOG.md`}>changelog</a>.
+      From 1.0, they are stable.
+    </p>
+  ) : (
+    <p>
+      There is no tagged release yet.
+      <a href={u('/download/')}>Build from source</a> in the meantime.
+    </p>
+  )}
+
+  <h2>What a release contains</h2>
+  <p>
+    Every release on <a href={`${repo}/releases`}>the releases page</a> carries, per
+    platform, one archive with the binary, shell completions for bash, zsh, fish and
+    PowerShell, and the man pages; a SHA-256 checksum for each archive; a SLSA build
+    provenance attestation; <code>.deb</code> and <code>.rpm</code> packages for
+    GNU/Linux with their own checksums; and an SPDX software bill of materials. See
+    <a href={u('/download/')}>Download</a> for how to verify them.
+  </p>
+  <p>
+    The GNU/Linux binaries are statically linked against musl, so one file runs on every
+    distribution and there is no minimum glibc version to check.
+  </p>
+
+  <h2>Policy</h2>
+  <p>
+    Only the latest release and the <code>main</code> branch receive fixes. Versions
+    follow <a href="https://semver.org/">semantic versioning</a>. Releases are cut by
+    <a href="https://github.com/googleapis/release-please">release-please</a> from the
+    commit history: it keeps a release pull request open with the changelog and the
+    version bump, and merging it tags the release and starts the build. Nothing is
+    released by hand.
+  </p>
+  <p>
+    Security fixes are announced in the release notes and, for anything serious, on the
+    <a href={u('/news/')}>news</a> page.
+  </p>
+
+  <h2>Timeline</h2>
+  <table>
+    <tr><th>Release</th><th>Date</th><th>Notes</th></tr>
+    {releases.map((r) => (
+      <tr>
+        <td><a href={r.url}>fontina {r.version}</a></td>
+        <td>{r.date}</td>
+        <td>{notes[r.version] ?? ''}</td>
+      </tr>
+    ))}
+  </table>
+</Base>

@@ -5,8 +5,7 @@ description: "How to get fontina today, what a release archive contains, and how
 source: site/src/pages/download.md
 ---
 
-The current release is [fontina 0.1.0](https://github.com/oddurs/fontina/releases/tag/v0.1.0);
-see [Releases](../releases/) for the policy. Get a release archive below and verify
+See [Releases](../releases/) for what the current one is and what it contains. Get a release archive below and verify
 it, or build from source, which takes one command and a Rust toolchain.
 
 ## Release archives
