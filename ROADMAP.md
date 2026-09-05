@@ -62,7 +62,7 @@ Helping someone find the right face rather than the one they asked for: comparis
 
 ## unfiled — Found, not yet scheduled
 
-`··········` 0% · 0 of 2 done
+`··········` 0% · 0 of 4 done
 
 Real findings with no milestone. Triage moves them or drops them; nothing sits here by default.
 
@@ -70,14 +70,17 @@ Real findings with no milestone. Triage moves them or drops them; nothing sits h
 
 - [ ] [`0018`](https://github.com/oddurs/fontina/blob/main/cairn/items/0018-say-what-a-scan-skipped.md) Say what a scan skipped <sup>feat · p1 · core</sup>
 - [ ] [`0019`](https://github.com/oddurs/fontina/blob/main/cairn/items/0019-write-down-which-font-formats-are-in-scope.md) Write down which font formats are in scope <sup>docs · p2 · workspace</sup>
+- [ ] [`0023`](https://github.com/oddurs/fontina/blob/main/cairn/items/0023-duplicates-are-found-and-then-nothing-can-be-done-about-them.md) Duplicates are found and then nothing can be done about them <sup>feat · p1 · cli</sup>
+- [ ] [`0024`](https://github.com/oddurs/fontina/blob/main/cairn/items/0024-variants-opens-with-the-family-you-are-already-looking-at.md) Variants opens with the family you are already looking at <sup>feat · p2 · cli</sup>
 
 ## m5-ship — M5 — Ship
 
-`··········` 0% · 0 of 1 done
+`··········` 0% · 0 of 2 done
 
 Who can run it, rather than what else it can do. Package managers on every desktop, the two unmeasured budgets measured. PLAN.md §5.
 
 ### backlog
 
 - [ ] [`0022`](https://github.com/oddurs/fontina/blob/main/cairn/items/0022-ship-through-the-package-managers-people-actually-use.md) Ship through the package managers people actually use <sup>chore · p1 · workspace</sup>
+- [ ] [`0025`](https://github.com/oddurs/fontina/blob/main/cairn/items/0025-a-first-scan-cannot-see-the-fonts-the-machine-is-already-using.md) A first scan cannot see the fonts the machine is already using <sup>feat · p1 · cli</sup>
 
