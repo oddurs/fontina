@@ -14,6 +14,14 @@
 // You should have received a copy of the GNU General Public License along with this
 // program. If not, see <https://www.gnu.org/licenses/>.
 
+//! The index schema, as an append-only list of migrations.
+//!
+//! Index `i` in [`MIGRATIONS`] applies when `PRAGMA user_version` is `i`. An applied
+//! migration is never edited: a database in the wild has already run it, and changing
+//! it would leave two different schemas claiming the same version. A migration that
+//! needs data the old schema did not store reads it back out of the stored metadata
+//! JSON in a backfill keyed on its own index, which is what `face_ranges` does.
+
 use crate::error::Result;
 use rusqlite::Connection;
 

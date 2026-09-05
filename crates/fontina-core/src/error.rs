@@ -14,6 +14,13 @@
 // You should have received a copy of the GNU General Public License along with this
 // program. If not, see <https://www.gnu.org/licenses/>.
 
+//! The crate's error type.
+//!
+//! "Errors are values" is a rule in CLAUDE.md and this enum is where it is kept: every
+//! failure a caller can act on differently gets a variant, so no caller has to match on
+//! a string. Parsing never panics on font input, so a malformed file arrives here as
+//! `Parse` rather than as an unwind.
+
 use std::path::PathBuf;
 
 #[derive(Debug, thiserror::Error)]
