@@ -155,13 +155,14 @@ deb)
     else
         no "it declares no libc dependency (Depends: $depends)"
     fi
-    # Debian Policy 5.6.2 makes Maintainer mandatory. Reported rather than asserted:
-    # who to name is the maintainer's call, not this test's.
-    if dpkg -s fontina 2>/dev/null | grep -q '^Maintainer:'; then
-        ok "the deb names a maintainer"
-    else
-        skip "the deb has no Maintainer field (Debian Policy 5.6.2 requires one); set [package.metadata.deb] maintainer"
-    fi
+    # Debian Policy 5.6.2 makes Maintainer mandatory, and dpkg-deb warns on every read
+    # without it.
+    maintainer=$(dpkg -s fontina 2>/dev/null | sed -n 's/^Maintainer: //p')
+    case "$maintainer" in
+    *"<"*"@"*">"*) ok "it names a maintainer, as Debian Policy 5.6.2 requires: $maintainer" ;;
+    "") no "the deb has no Maintainer field; set [package.metadata.deb] maintainer" ;;
+    *) no "the Maintainer field is not a name and address: $maintainer" ;;
+    esac
     ;;
 rpm)
     if rpm -q fontina >/dev/null 2>&1; then
