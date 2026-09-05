@@ -186,8 +186,9 @@ fn case(command: &'static str, args: &[&str], shape: Shape, why: &'static str) -
 /// lives (a session activation, undone before it returns). `scripts/acceptance` covers
 /// these end to end on a throwaway XDG home.
 ///
-/// Not one of them prints a type that `schemas/cli-output.json` defines, either — see
-/// [`json_output_the_schema_does_not_describe`].
+/// `activate` and `install` print `ActivationRecord`, which is defined and which
+/// `activations` validates here from the same rows. The other five print types the
+/// schema does not describe at all — see [`json_output_the_schema_does_not_describe`].
 const EXEMPT: &[(&str, &str)] = &[
     ("activate", "registers a font with the running OS"),
     ("deactivate", "unregisters a font from the running OS"),
@@ -736,7 +737,8 @@ fn json_output_validates_against_the_published_schemas() {
 ///
 /// Every other test here passes when a validator is vacuous — a `$ref` that resolved to
 /// nothing, a schema that compiled to "anything goes" — and would go on passing for
-/// years. This is the control: two instances that must be refused, one per schema file.
+/// years. This is the control: four instances that must be refused, across all three
+/// schema files.
 #[test]
 fn the_validators_reject_what_the_schemas_forbid() {
     assert!(
