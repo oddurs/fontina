@@ -51,6 +51,14 @@ pub fn sample_for(face: &FaceMetadata) -> String {
 }
 
 impl Cache {
+    /// An empty cache that draws in `theme`.
+    pub fn new(theme: Theme) -> Self {
+        Cache {
+            entries: Vec::new(),
+            theme,
+        }
+    }
+
     pub fn clear(&mut self) {
         self.entries.clear();
     }

@@ -27,9 +27,17 @@
 use ratatui::style::{Color, Modifier, Style};
 
 /// What the terminal can show, in the order the checks run.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// The default is the top of the range, not the bottom: a palette assumes the best
+/// until something asks the terminal, and [`Depth::detect`] is that asking. Keeping
+/// the asking out of `Default` is what makes a `Theme` a value rather than a reading
+/// of the environment, and it is not a theoretical distinction: a preview test that
+/// built its palette with `default()` passed under a developer's terminal and failed
+/// in CI, which has no `TERM` at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Depth {
     /// Twenty-four bit colour: `COLORTERM` says `truecolor` or `24bit`.
+    #[default]
     True,
     /// The 256-colour cube and its greyscale ramp.
     Ansi256,
@@ -72,15 +80,9 @@ impl Depth {
 }
 
 /// The palette, resolved once.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Theme {
     depth: Depth,
-}
-
-impl Default for Theme {
-    fn default() -> Self {
-        Theme::new(Depth::detect())
-    }
 }
 
 impl Theme {
@@ -178,6 +180,16 @@ pub fn density(top: u8, bottom: u8) -> char {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The regression this guards: `Theme::default()` used to call `detect()`, so a
+    /// palette built anywhere inherited the environment. Every test that renders got
+    /// its colours from whatever terminal it ran under, which is how a preview test
+    /// passed on a developer's machine and failed in CI, where there is no `TERM`.
+    #[test]
+    fn a_palette_is_a_value_and_never_a_reading_of_the_environment() {
+        assert_eq!(Theme::default(), Theme::new(Depth::True));
+        assert_eq!(Depth::default(), Depth::True);
+    }
 
     #[test]
     fn no_color_beats_a_terminal_that_promises_everything() {

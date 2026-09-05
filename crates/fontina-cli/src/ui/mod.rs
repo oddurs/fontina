@@ -202,6 +202,7 @@ pub struct App {
 pub fn run(db: &Path) -> Result<()> {
     let index = Index::open(db)?;
     let mut app = App::new(index)?;
+    app.use_depth(theme::Depth::detect());
     let mut terminal = ratatui::try_init()?;
     let result = app.event_loop(&mut terminal);
     ratatui::restore();
@@ -479,6 +480,18 @@ impl App {
             Focus::List => layout::Pane::List,
             Focus::Detail => layout::Pane::Detail,
         }
+    }
+
+    /// Resolve the palette against the terminal this run has.
+    ///
+    /// Asking the environment happens here, once, rather than inside `Theme::default`,
+    /// so that building an App — which every test does — does not inherit whatever
+    /// `TERM` and `NO_COLOR` the machine running the tests happens to have. Both the
+    /// panes and the preview cache hold the answer, because a preview drawn at one
+    /// depth and a border drawn at another would be one screen in two palettes.
+    fn use_depth(&mut self, depth: theme::Depth) {
+        self.theme = theme::Theme::new(depth);
+        self.preview = preview::Cache::new(self.theme);
     }
 
     // ----- events -----
@@ -3273,6 +3286,29 @@ mod tests {
         let drawn = stable_frame(&mut app, 120, 36);
         assert!(drawn.contains("wght"), "the weight axis is named: {drawn}");
         insta::assert_snapshot!(drawn);
+    }
+
+    /// The depth reaches the preview as well as the panes: one screen, one palette.
+    #[test]
+    fn the_terminals_depth_reaches_the_preview_as_well_as_the_borders() {
+        let mut app = app();
+        select_family(&mut app, "Amiri");
+        let coloured = frame(&mut app, 120, 36);
+        assert!(
+            coloured.contains('▀'),
+            "with colour every filled cell is a top half over a background"
+        );
+
+        app.use_depth(theme::Depth::None);
+        let plain = frame(&mut app, 120, 36);
+        assert_ne!(
+            plain, coloured,
+            "the preview did not notice the depth change"
+        );
+        assert!(
+            plain.contains('█') || plain.contains('▄') || plain.contains('▀'),
+            "and it is drawn as shape rather than dropped: {plain}"
+        );
     }
 
     #[test]
