@@ -135,6 +135,14 @@ The masthead wraps rather than collapsing into a menu. Five items do not need a
 disclosure, and a disclosure without script means fighting the user agent stylesheet;
 under `30rem` the wordmark takes its own line and the destinations sit beneath it.
 
+Its row is centred rather than baseline-aligned, and that is the mark's fault: an emoji
+font's descent is enormous, so under `baseline` the cheese set the row's baseline far
+below the text, everything else floated to the top, and the bar grew to fit a descender
+nobody can see. Centring ignores font metrics entirely. The current page is marked with a
+2px rule close under the word rather than one reaching down to the masthead's own
+hairline — that needed a negative margin, which does not survive centring, and an
+underline four pixels under a word belongs to the word anyway.
+
 Three things happen as the page narrows. Under `60rem` the columns stack, the nav takes
 a top hairline and stops being sticky, and — because six groups in a single list is
 three screens of scrolling on a phone — its groups flow into as many columns as fit.
@@ -345,35 +353,43 @@ What the program refuses to do, in the first screen, as badges. The claim gets m
 a reader is deciding whether to care and argued properly further down in **Properties**;
 a licence named in a badge and never explained is a sticker.
 
-### Sitemap
+### Footer
 
 ```html
-<nav class="sitemap" aria-label="Site"><div class="inner">…nav items…</div></nav>
+<footer class="footer">
+  <div class="inner">
+    <nav class="sitemap">…nav items…</nav>
+    <div class="footer-note">
+      <div class="colophon">…which licences…</div>
+      <div class="notice">…where to ask, copyright, last modified…</div>
+    </div>
+  </div>
+</footer>
 ```
 
-The complete index, at the foot, in as many columns as fit. This is where the twenty-four
-links went when the masthead took the five that matter and the nav column became
-contextual.
+One section, three bands: the index, then the licence, then the small print. They were
+three siblings, each drawing its own rule and setting its own width, which is why the
+foot of the page read as a pile rather than a block. The footer owns the rule and the
+width now; the bands inside own only rhythm, and one hairline separates the index from
+the words.
 
-It reuses the nav item's markup but not its rail. The nav column's 2px left border says
-*you are here in this list*; a footer index is not a list you are anywhere in, so in the
-sitemap the border comes off and the indent with it. A component carried into a place
-where its affordance does not apply is worse than a new one, because it makes a promise
-the page cannot keep.
+The **sitemap** is the complete index — where the twenty-four links went once the
+masthead took the five that matter and the nav column became contextual. It reuses the
+nav item's markup but neither its rail nor its indent. The nav column's 2px left border
+says *you are here in this list*, and its indent says *this belongs to the line above*;
+a footer index is a list you are nowhere in, and every entry in it is just a link. Both
+come off. A component carried into a place where its affordance does not apply is worse
+than a new one, because it makes a promise the page cannot keep.
 
-### Colophon
+The **colophon** and the **notice** sit side by side while there is room — the claim on
+the left, the housekeeping on the right, so neither reads as a footnote to the other —
+and stack under `19rem` of column.
 
-```html
-<div class="colophon">
-  <p><strong>fontina is free software.</strong> …GPL for the program, GFDL for the prose…</p>
-</div>
-```
-
-Between the index and the small print, because it is neither. What a free software
-project's footer owes a reader is which licence covers the program and which covers the
-words, named rather than linked past — followed by the three things it refuses to do, so
-the claim on the front page is repeated where someone who scrolled to the bottom looking
-for it will find it.
+What a free software project's footer owes a reader is which licence covers the program
+and which covers the words, named rather than linked past, followed by what it refuses to
+do — so the claim on the front page is repeated where someone who scrolled to the bottom
+looking for it will find it. Both are kept short: the foot of a page is not where anyone
+reads a paragraph, and this one lost a third of its words on the way to fitting.
 
 ### Frame
 

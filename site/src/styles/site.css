@@ -214,7 +214,11 @@ a:focus-visible {
   padding: var(--space-4) 0;
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  /* Centred, not baseline-aligned. An emoji font's descent is enormous, so with
+     `baseline` the mark set the row's baseline far below the text and everything
+     else floated to the top of a bar that had grown to fit a descender nobody
+     can see. Centring ignores font metrics entirely. */
+  align-items: center;
   gap: var(--space-3) var(--space-5);
 }
 /* ---------------------------------------------------------------- Lockup */
@@ -267,13 +271,15 @@ a:focus-visible {
 }
 .masthead nav a:link, .masthead nav a:visited { color: var(--ink-soft); }
 .masthead nav a:hover { color: var(--accent); text-decoration: none; }
-/* Where you are, said with a rule rather than a shade. `--ink` against
-   `--ink-soft` at 14px is a difference you have to be told about to see; a
-   2px rule sitting on the masthead's own hairline is one you cannot miss.
-   The transparent border is on every item so nothing shifts. */
+/* Where you are, said with a rule rather than a shade: `--ink` against
+   `--ink-soft` at 14px is a difference you have to be told about to see.
+   The rule sits close under the word rather than reaching down to the
+   masthead's own hairline — that needed a negative margin to work, and a
+   negative margin does not survive centring the row. Close is also better:
+   an underline four pixels under a word belongs to the word. The transparent
+   border is on every item, so nothing moves when one becomes current. */
 .masthead nav a {
-  padding-bottom: var(--space-3);
-  margin-bottom: calc(var(--space-3) * -1 - 1px);
+  padding-bottom: var(--space-1);
   border-bottom: 2px solid transparent;
 }
 .masthead nav a[aria-current="page"] {
@@ -759,17 +765,34 @@ pre.astro-code, pre.astro-code span {
    The masthead carries the five destinations most people want; the sidebar
    carries what is contextual, which today is the manual's own chapters; this
    carries everything. Three tiers instead of one list doing all three jobs. */
-.sitemap {
+/* ---------------------------------------------------------------- Footer */
+/* One section, three bands: the index, then the licence, then the small print.
+   They used to be three siblings each drawing its own rule and setting its own
+   width, which is why the foot of the page read as a pile rather than a block.
+   The footer owns the rule and the width; the bands inside own only rhythm. */
+.footer {
   border-top: 1px solid var(--line);
   margin-top: var(--space-8);
-  padding-top: var(--space-6);
+  padding: var(--space-7) 0 var(--space-8);
 }
-.sitemap .inner {
-  max-width: var(--frame);
-  margin: 0 auto;
+.footer .inner { max-width: var(--frame); margin: 0 auto; }
+
+.sitemap {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
-  gap: var(--space-5);
+  gap: var(--space-6) var(--space-5);
+}
+
+/* The licence and the small print sit side by side while there is room: the
+   claim on the left, the housekeeping on the right, so neither reads as a
+   footnote to the other. */
+.footer-note {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  gap: var(--space-5) var(--space-6);
+  margin-top: var(--space-6);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--line);
 }
 .sitemap .navitem { margin-bottom: 0; }
 /* The nav column's rail says "you are here in this list". A footer index is
@@ -782,17 +805,16 @@ pre.astro-code, pre.astro-code span {
 }
 .sitemap .navbody a:hover { border-left-color: transparent; text-decoration: underline; }
 .sitemap .navbody a[aria-current="page"] { border-left-color: transparent; }
-.sitemap .navbody .sub { padding-left: var(--space-3); }
+/* Flat, including the sub-items. The indent is the nav column's way of saying
+   "this belongs to the line above"; in a footer index every entry is just a
+   link, and the indent only left a ragged edge in a column that should align. */
+.sitemap .navbody .sub { padding-left: 0; }
 
 /* --------------------------------------------------------------- Colophon */
 /* What a free software project's footer owes the reader: which licence, for
    the program and for the prose, named rather than linked past. It sits
    between the index and the small print because it is neither. */
 .colophon {
-  max-width: var(--frame);
-  margin: var(--space-6) auto 0;
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--line);
   font-size: var(--text-sm);
   color: var(--ink-soft);
 }
@@ -800,20 +822,14 @@ pre.astro-code, pre.astro-code span {
 .colophon p:last-child { margin-bottom: 0; }
 .colophon strong { color: var(--ink); font-weight: var(--weight-semi); }
 /* The notice follows it, so it should not draw a second rule of its own. */
-.sitemap + .notice { border-top: 0; margin-top: var(--space-6); padding-top: 0; }
 
 /* ---------------------------------------------------------------- Notice */
 /* The GNU copyright box, unboxed: a rule, then the small print. */
 .notice {
-  clear: both;
-  max-width: var(--frame);
-  margin: var(--space-8) auto var(--space-7);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--line);
   font-size: var(--text-sm);
   color: var(--ink-soft);
 }
-.notice address { font-style: normal; margin-bottom: var(--space-3); }
+.notice .meta { color: var(--ink-faint); }
 .notice p { margin: 0 0 var(--space-2); max-width: var(--measure); }
 .notice p:last-child { margin-bottom: 0; }
 
