@@ -4,37 +4,37 @@ expression: drawn
 ---
 ┌ 6 faces ───────────────┐┌ 5 families ──────────────────────────────────┐┌ Details ───────────────────────────────────┐
 │Weight                  ││Amiri                                   1     ││Amiri Regular                               │
-│  400 Regular         5 ││Bricolage Grotesque                     1 V   ││style     weight 400 · width 100% · normal  │
-│  800 ExtraBold       1 ││Inter                                   2     ││glyphs    6710 · 1699 codepoints · Arab Latn│
-│Width                   ││Nabla                                   1 VC  ││Zyyy Zinh                                   │
-│  100% Normal         6 ││Source Serif 4                          1     ││features  25: ccmp dnom fina init liga locl │
-│Style                   ││                                              ││mark medi numr pnum rlig rtlm               │
-│  upright             6 ││                                              ││license   OFL-1.1                           │
-│Variable                ││                                              ││freedom   free                              │
-│  variable            2 ││                                              ││designer  Khaled Hosny                      │
-│Color                   ││                                              ││state     not active                        │
-│  color               1 ││                                              ││file      ../../fixtures/Amiri-Regular.ttf  │
-│Script                  ││                                              ││                                            │
-│  Latn                6 ││                                              ││features                                    │
-│  Zinh                6 ││                                              ││  liga [ ] Standard ligatures               │
-│  Zyyy                6 ││                                              ││  pnum [ ] Proportional figures             │
-│  Grek                2 ││                                              ││  ss01 [ ] Stylistic set 1                  │
-│  Arab                1 ││                                              ││  ss02 [ ] Stylistic set 2                  │
-│  Cyrl                1 ││                                              ││  ss03 [ ] Stylistic set 3                  │
-│License                 ││                                              ││  ss04 [ ] Stylistic set 4                  │
-│  OFL-1.1             6 ││                                              ││  ss05 [ ] Stylistic set 5                  │
-│Freedom                 ││                                              ││  ss06 [ ] Stylistic set 6                  │
-│  free                6 ││                                              ││  ss07 [ ] Stylistic set 7                  │
-│Activation              ││                                              ││  ss08 [ ] Stylistic set 8                  │
+│  200 ExtraLight      1 ││Bricolage Grotesque                     1 V   ││style     weight 400 · width 100% · normal  │
+│  300 Light           1 ││Inter                                   2     ││glyphs    6710 · 1699 codepoints · Arab Latn│
+│  400 Regular         6 ││Nabla                                   1 VC  ││Zyyy Zinh                                   │
+│  500 Medium          1 ││Source Serif 4                          1     ││features  25: ccmp dnom fina init liga locl │
+│  600 SemiBold        1 ││                                              ││mark medi numr pnum rlig rtlm               │
+│  700 Bold            1 ││                                              ││license   OFL-1.1                           │
+│  800 ExtraBold       1 ││                                              ││freedom   free                              │
+│Width                   ││                                              ││designer  Khaled Hosny                      │
+│  75% Condensed       1 ││                                              ││state     not active                        │
+│  87.5% SemiCondensed 1 ││                                              ││file      ../../fixtures/Amiri-Regular.ttf  │
+│  100% Normal         6 ││                                              ││                                            │
+│Style                   ││                                              ││features                                    │
+│  upright             6 ││                                              ││  liga [ ] Standard ligatures               │
+│Variable                ││                                              ││  pnum [ ] Proportional figures             │
+│  variable            2 ││                                              ││  ss01 [ ] Stylistic set 1                  │
+│Color                   ││                                              ││  ss02 [ ] Stylistic set 2                  │
+│  color               1 ││                                              ││  ss03 [ ] Stylistic set 3                  │
+│Script                  ││                                              ││  ss04 [ ] Stylistic set 4                  │
+│  Latn                6 ││                                              ││  ss05 [ ] Stylistic set 5                  │
+│  Zinh                6 ││                                              ││  ss06 [ ] Stylistic set 6                  │
+│  Zyyy                6 ││                                              ││  ss07 [ ] Stylistic set 7                  │
+│  Grek                2 ││                                              ││  ss08 [ ] Stylistic set 8                  │
+│  Arab                1 ││                                              ││                                            │
+│  Cyrl                1 ││                                              ││                                            │
+│License                 ││                                              ││                                            │
+│  OFL-1.1             6 ││                                              ││                                            │
+│Freedom                 ││                                              ││                                            │
+│  free                6 ││                                              ││                                            │
+│Activation              ││                                              ││                                            │
 │  none                6 ││                                              ││                                            │
 │Vendor                  ││                                              ││                                            │
-│  RSMS                2 ││                                              ││                                            │
-│  ADBO                1 ││                                              ││                                            │
-│  ALIF                1 ││                                              ││                                            │
-│  ATLR                1 ││                                              ││                                            │
-│  TYPT                1 ││                                              ││                                            │
-│Container               ││                                              ││                                            │
-│  ttf                 3 ││                                              ││                                            │
 └────────────────────────┘└──────────────────────────────────────────────┘└────────────────────────────────────────────┘
  $ fontina families
  / search  ⇥ facets  ⏎ open  ⌫ back  t tag  c collection  a/A activate  d deactivate  i install  u uninstall  e text  +/

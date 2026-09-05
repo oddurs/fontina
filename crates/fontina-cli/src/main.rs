@@ -1442,6 +1442,18 @@ fn print_table(faces: &[FaceSummary]) {
         .max()
         .unwrap_or(5)
         .clamp(5, 28);
+    // A variable face reaches further than the one number it reports, and a table that
+    // shows only the default instance is the same omission the filter used to make.
+    let wght: Vec<String> = faces
+        .iter()
+        .map(|f| axis_cell(f.weight, f.weight_range))
+        .collect();
+    let wdth: Vec<String> = faces
+        .iter()
+        .map(|f| axis_cell(f.width, f.width_range))
+        .collect();
+    let w_wght = wght.iter().map(|c| c.len()).max().unwrap_or(4).max(4);
+    let w_wdth = wdth.iter().map(|c| c.len()).max().unwrap_or(4).max(4);
     let any_tags = faces.iter().any(|f| !f.tags.is_empty());
     // One `println!` per row is one `write` syscall per row: Rust's stdout is line
     // buffered whether or not it is a terminal. Listing five thousand faces spent more
@@ -1450,7 +1462,7 @@ fn print_table(faces: &[FaceSummary]) {
     let mut out = std::io::BufWriter::new(stdout.lock());
     let _ = writeln!(
         out,
-        "{:>6}  {:<w_fam$}  {:<w_sub$}  {:>4}  {:>4}  {:<5}  {:<12}  path{}",
+        "{:>6}  {:<w_fam$}  {:<w_sub$}  {:>w_wght$}  {:>w_wdth$}  {:<5}  {:<12}  path{}",
         "id",
         "family",
         "style",
@@ -1460,17 +1472,17 @@ fn print_table(faces: &[FaceSummary]) {
         "license",
         if any_tags { "  [tags]" } else { "" }
     );
-    for f in faces {
+    for (i, f) in faces.iter().enumerate() {
         // The flags column is exactly five characters, so it goes straight into the row
         // rather than through a `format!` and an allocation for every face listed.
         let _ = writeln!(
             out,
-            "{:>6}  {:<w_fam$}  {:<w_sub$}  {:>4}  {:>4}  {}{}{}{}{}  {:<12}  {}{}{}",
+            "{:>6}  {:<w_fam$}  {:<w_sub$}  {:>w_wght$}  {:>w_wdth$}  {}{}{}{}{}  {:<12}  {}{}{}",
             f.id,
             truncate(&f.family, w_fam),
             truncate(&f.subfamily, w_sub),
-            f.weight.round() as i64,
-            f.width.round() as i64,
+            wght[i],
+            wdth[i],
             if f.variable { "V" } else { "-" },
             if f.color { "C" } else { "-" },
             if f.italic { "I" } else { "-" },
@@ -1499,6 +1511,14 @@ fn print_table(faces: &[FaceSummary]) {
     // BufWriter swallows a failed flush in its destructor, and a closed pipe is the
     // ordinary way this ends; `die_on_broken_pipe` has already made that a signal.
     let _ = out.flush();
+}
+
+/// One axis of a face for the table: the number it is, or the range it can be set to.
+fn axis_cell(value: f32, range: Option<[f32; 2]>) -> String {
+    match range {
+        Some([lo, hi]) => format!("{}-{}", lo.round() as i64, hi.round() as i64),
+        None => format!("{}", value.round() as i64),
+    }
 }
 
 /// The fifth character of the `flags` column: `F` free, `N` nonfree, `?` a license
