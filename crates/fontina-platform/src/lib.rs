@@ -30,6 +30,7 @@
 //! the per-user font directory, registrations are the OS's own per-user mechanisms.
 
 pub mod agent;
+pub mod open;
 pub mod tags;
 
 use serde::{Deserialize, Serialize};
