@@ -20,16 +20,11 @@ text browser. Colour carries hierarchy, never meaning on its own.
 |---|---|
 | `--font-sans` | `ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif` |
 | `--font-mono` | `ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace` |
-| `--font-emoji` | `"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", "EmojiOne Color", "Android Emoji", sans-serif` |
 
 Nothing is fetched. `ui-sans-serif` and `system-ui` resolve to the interface face the
 machine already draws its own menus in, which is the face its owner reads fastest;
 the rest of the stack is there for the machines that have neither.
 
-`--font-emoji` exists for one character. Left to the body stack, a system sans will
-render U+1F9C0 out of whatever fallback it reaches first, which on some machines is a
-monochrome symbol face; asking for the colour emoji font by name is the difference
-between a cheese and an outline of one.
 
 ## Type scale
 
@@ -324,31 +319,27 @@ manual is written in; the description is what lets someone skip to the chapter t
 ### Lockup
 
 ```html
-<span class="lockup"><span class="mark" aria-hidden="true">🧀 </span>fontina</span>
+<span class="lockup"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true">…</svg>fontina</span>
 ```
 
-The mark and the name, set once and used at two sizes — 18px in the masthead, 36px in
-the hero. Everything is in `em`, so one rule serves both. fontina is a cheese; the mark
-is the joke, and it is the only ornament on the site.
+The mark and the name, set once and used at two sizes. Everything is in `em`, so one rule
+serves both. fontina is a cheese; the mark is the joke, and it is the only ornament on the
+site.
 
-Three decisions worth writing down, because each is the opposite of the obvious one:
+**The mark is drawn, not set.** It began as the emoji character U+1F9C0 and sat visibly
+high in the masthead through two attempts to centre it. That is not a bug you can fix from
+CSS: where the ink lands inside a glyph's box is decided by the font's ascent and descent,
+those differ between Apple Color Emoji, Noto Color Emoji and Segoe UI Emoji, and no single
+nudge is right for all three. Centring the box is not centring the picture.
 
-- **Centred, not baseline-aligned.** An emoji does not share a baseline with the text
-  around it in any predictable way: it is drawn to fill its em box rather than to sit on
-  a line.
-- **Below `1em`.** Filling the em box is also why it reads a size larger than the
-  capitals beside it at nominal parity. It is set at `0.92em`, with `line-height: 1` so
-  it cannot stretch the masthead, and a `0.02em` nudge that is optical rather than
-  metric.
-- **`aria-hidden`, and that is the fallback.** The word carries the name. A machine with
-  no emoji font shows a tofu box next to a wordmark that still reads, and a screen reader
-  says "fontina" rather than "cheese wedge fontina". There is no way to detect a missing
-  emoji font without script, so the honest design is one where its absence costs nothing.
-  The trailing space inside the mark collapses under CSS and separates the two in a text
-  browser.
+Inline SVG at `1em` has geometry we own. It centres exactly, scales with the type, renders
+the same everywhere, and can never arrive as a tofu box on a machine with no emoji font —
+which also retires the whole "what if the emoji is missing" fallback story, because there
+is no longer anything to be missing. It is the same wedge the favicon draws, for the same
+reason, one size up.
 
-The favicon is drawn as SVG rather than set as this character, for the same reason in a
-harder form: nothing about a favicon can rely on a font being present at all.
+It stays `aria-hidden`: the word carries the name, so a screen reader says "fontina"
+rather than "cheese wedge fontina".
 
 ### Masthead
 
