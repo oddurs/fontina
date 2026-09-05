@@ -88,7 +88,7 @@ const groups: [string, [string, string, boolean?][]][] = [
         <div class="navhead">{extraNav.head}</div>
         <div class="navbody">
           {extraNav.links.map(([label, href]) => (
-            <>{href === Astro.url.pathname ? <strong>{label}</strong> : <a href={href}>{label}</a>}<br /></>
+            href === Astro.url.pathname ? <strong>{label}</strong> : <a href={href}>{label}</a>
           ))}
         </div>
       </div>
@@ -98,14 +98,14 @@ const groups: [string, [string, string, boolean?][]][] = [
         <div class="navhead">{head}</div>
         <div class="navbody">
           {links.map(([label, href, sub]) => (
-            <>{sub && <>&middot;&nbsp;</>}<a href={href}>{label}</a><br /></>
+            <a href={href} class={sub ? 'sub' : undefined}>{label}</a>
           ))}
         </div>
       </div>
     ))}
   </nav>
 </div>
-<div class="copyright">
+<div class="notice">
   <address set:html={`For questions about using fontina, please consult these pages and the <a href="${u('/docs/')}">manual</a>. If that fails, the <a href="${repo}/issues">bug tracker</a> is the place to ask. Comments on these pages are welcome as pull requests; every page links its source.`} />
   <p>
     Copyright &copy; 2026 Oddur Sigurdsson and the fontina contributors.

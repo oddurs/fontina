@@ -1,190 +1,453 @@
-/* fontina web site. Implements DESIGN.md, section for section. Light mode only, the
-   browser's serif, no script, no web fonts. Derived from gcc.gnu.org/gcc.css. */
+/* fontina web site. Implements DESIGN.md, section for section.
 
-/* Tokens */
+   The shape is still GNU: a main column, a nav column, a notice at the foot, every
+   page readable in a text browser. What changed is the setting. The system fonts a
+   person already has, a type scale and a spacing scale instead of ad-hoc ems, and
+   hairlines instead of boxes. Light mode only, no script, no web fonts, no external
+   requests, one stylesheet. */
+
+/* ---------------------------------------------------------------- Tokens */
 :root {
+  /* Families. The stack is what the machine already has; nothing is fetched. */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  /* Type scale. Seven steps, ratio ~1.25, in rem so it follows the reader's
+     browser setting rather than overriding it. */
+  --text-xs: 0.75rem;     /* 12px  micro labels, badges */
+  --text-sm: 0.875rem;    /* 14px  nav, meta, tables, code */
+  --text-base: 1rem;      /* 16px  body */
+  --text-md: 1.125rem;    /* 18px  h3, lead paragraph */
+  --text-lg: 1.375rem;    /* 22px  h2 */
+  --text-xl: 1.75rem;     /* 28px  section opener */
+  --text-2xl: 2.25rem;    /* 36px  h1 */
+
+  --leading-tight: 1.25;  /* headings */
+  --leading-snug: 1.45;   /* dense lists, code, nav */
+  --leading: 1.6;         /* body prose; sans needs more air than serif did */
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semi: 600;
+
+  /* Spacing scale. One 4px step, doubled and halved; every margin and padding
+     in this file is one of these eight values. */
+  --space-1: 0.25rem;     /* 4  */
+  --space-2: 0.5rem;      /* 8  */
+  --space-3: 0.75rem;     /* 12 */
+  --space-4: 1rem;        /* 16 */
+  --space-5: 1.5rem;      /* 24 */
+  --space-6: 2rem;        /* 32 */
+  --space-7: 3rem;        /* 48 */
+  --space-8: 4rem;        /* 64 */
+
+  /* Ink and ground. Near-black on white: pure #000 on pure #fff is harsher than
+     any printed page and this one is meant to be read for a long time. */
   --bg: #ffffff;
-  --fg: #000000;
-  --fg-soft: #333333;
-  --heading: darkslategray;
-  --link: #0066bb;
-  --link-visited: #003399;
-  --link-hover: darkorange;
-  --accent: #0066dd;
-  --accent-fg: #f2f2f9;
-  --rule: #3366cc;
-  --panel: #f2f2f9;
-  --panel-edge: #d9d9e6;
-  --border: gray;
-  --measure: 66em;
-  --nav-width: 11em;
-  --gap: 32px;
-  --pad: 4px;
-  --pad-2: 8px;
-  --leading: 1.35;
+  --bg-subtle: #f7f8fa;   /* panels, nav bodies, table headers */
+  --bg-inset: #f2f4f7;    /* code, things set into the page */
+  --ink: #14171c;         /* body */
+  --ink-soft: #59616e;    /* secondary: dates, meta, the notice */
+  --ink-faint: #6b7480;   /* tertiary: nav labels, dates, disabled */
+
+  /* Lines. This design draws with hairlines, not with boxes or shadows. */
+  --line: #e5e8ec;        /* the default hairline */
+  --line-strong: #ccd2da; /* a border that has to hold its own */
+
+  /* Accent. One blue, four jobs: links, primary action, focus, emphasis. */
+  --accent: #1b58d0;
+  --accent-hover: #1443a5;
+  --accent-visited: #4a3f9e;
+  --accent-subtle: #eff4fe;
+  --accent-line: #c8d8f8;
+
+  /* Radii. Small on purpose: the tool is a command line, not a phone app. */
+  --radius-sm: 3px;
+  --radius: 5px;
+  --radius-lg: 8px;
+
+  /* Layout */
+  --frame: 70rem;         /* main + nav + gutter */
+  --nav-w: 13rem;
+  --gutter: var(--space-6);
+  --measure: 72ch;        /* prose line length inside the main column */
+
   color-scheme: light only;
 }
 
-/* Type */
-html { background: var(--bg); color: var(--fg); }
-body {
-  font-family: serif;
-  font-size: 100%;
-  line-height: var(--leading);
-  margin: 0;
-  padding: 0 1em;
+/* ------------------------------------------------------------------ Base */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  background: var(--bg);
+  color: var(--ink);
   -webkit-text-size-adjust: 100%;
 }
-a:link    { color: var(--link); text-decoration: none; }
-a:visited { color: var(--link-visited); text-decoration: none; }
-a:hover, a:active { color: var(--link-hover); text-decoration: underline; text-underline-offset: 0.15em; }
-a:focus-visible { outline: 2px solid var(--rule); outline-offset: 2px; border-radius: 1px; }
 
-h1, h2, h3, h4 { color: var(--heading); line-height: 1.2; }
-h1 { text-align: center; font-size: 1.9em; margin: 0.4em 0 0.8em; }
-h2 { font-size: 1.3em; margin: 1.6em 0 0.5em; }
-h3 { font-size: 1.1em; margin: 1.4em 0 0.4em; }
-h4 { font-size: 1em; margin: 1.2em 0 0.3em; }
-h2 + h3, h3 + h4 { margin-top: 0.6em; }
-.highlight { color: var(--heading); font-weight: bold; }
-.small   { font-size: 90%; }
-.smaller { font-size: 80%; }
-.center  { text-align: center; margin-left: auto; margin-right: auto; }
-.right   { text-align: right; }
-.no-margin-top { margin-top: 0; }
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading);
+  font-weight: var(--weight-normal);
+  margin: 0;
+  padding: 0 var(--space-4);
+  /* Sans at a small size benefits from both: real kerning pairs, and figures
+     that line up in a column of dates and versions. */
+  font-kerning: normal;
+  font-variant-numeric: tabular-nums;
+  text-rendering: optimizeLegibility;
+}
 
-/* Frame */
+::selection { background: var(--accent-subtle); }
+
+/* ------------------------------------------------------------------ Type */
+h1, h2, h3, h4 {
+  color: var(--ink);
+  font-weight: var(--weight-semi);
+  line-height: var(--leading-tight);
+  letter-spacing: -0.011em;
+  text-wrap: balance;
+}
+h1 { font-size: var(--text-2xl); margin: 0 0 var(--space-5); letter-spacing: -0.02em; }
+h2 { font-size: var(--text-lg); margin: var(--space-7) 0 var(--space-3); }
+h3 { font-size: var(--text-md); margin: var(--space-6) 0 var(--space-2); }
+h4 { font-size: var(--text-base); margin: var(--space-5) 0 var(--space-2); }
+/* A heading directly under a heading closes up: nothing came between them. */
+h1 + h2, h2 + h3, h3 + h4 { margin-top: var(--space-4); }
+/* Anchored headings in the manual should not land under the top of the window. */
+:is(h1, h2, h3, h4)[id] { scroll-margin-top: var(--space-5); }
+
+p, ul, ol, dl, table, pre, blockquote, figure { margin: 0 0 var(--space-4); }
+.main > p, .main > ul, .main > ol { max-width: var(--measure); }
+ul, ol { padding-left: var(--space-5); }
+li { margin: var(--space-1) 0; }
+li > ul, li > ol { margin: var(--space-1) 0; }
+dt { font-weight: var(--weight-semi); margin-top: var(--space-3); }
+dd { margin: var(--space-1) 0 var(--space-2) var(--space-5); color: var(--ink-soft); }
+strong, b { font-weight: var(--weight-semi); }
+em { font-style: italic; }
+small { font-size: var(--text-sm); }
+abbr[title] { text-decoration: underline dotted; text-underline-offset: 0.2em; }
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: var(--space-7) 0;
+}
+
+blockquote {
+  border-left: 2px solid var(--accent-line);
+  margin-left: 0;
+  padding-left: var(--space-4);
+  color: var(--ink-soft);
+}
+
+img { max-width: 100%; height: auto; }
+
+/* Links. The colour carries them; the underline arrives on hover so a page dense
+   with links is not a page of stripes. */
+a:link { color: var(--accent); text-decoration: none; }
+a:visited { color: var(--accent-visited); }
+a:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  text-decoration-thickness: 1px;
+}
+a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+:target { scroll-margin-top: var(--space-5); }
+
+/* ------------------------------------------------------- Utility classes */
+.lead { font-size: var(--text-md); color: var(--ink-soft); max-width: var(--measure); }
+.small { font-size: var(--text-sm); }
+.smaller { font-size: var(--text-xs); }
+.soft { color: var(--ink-soft); }
+.faint { color: var(--ink-faint); }
+.highlight { font-weight: var(--weight-semi); color: var(--ink); }
+/* The micro label: uppercase, tracked out, faint. Used for nav headings and any
+   other label that names a group without competing with it. */
+.label {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semi);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* ----------------------------------------------------------------- Frame */
 .frame {
   display: flex;
-  gap: var(--gap);
+  gap: var(--gutter);
   align-items: flex-start;
-  max-width: var(--measure);
-  margin: 1em auto 0;
+  max-width: var(--frame);
+  margin: var(--space-7) auto 0;
 }
 .main { flex: 1 1 auto; min-width: 0; }
-.main > h1:first-child { margin-top: 0.2em; }
+
 .navcol {
-  flex: 0 0 var(--nav-width);
+  flex: 0 0 var(--nav-w);
   position: sticky;
-  top: 1em;
-  max-height: calc(100vh - 2em);
+  top: var(--space-5);
+  max-height: calc(100vh - var(--space-8));
   overflow-y: auto;
+  padding-bottom: var(--space-4);
 }
-.navcol .home { margin: 0 0 var(--pad-2); font-weight: bold; }
-@media (max-width: 50em) {
-  .frame { flex-direction: column; align-items: stretch; gap: 1.5em; }
-  .navcol { flex-basis: auto; width: 100%; position: static; max-height: none; }
+.navcol .home {
+  margin: 0 0 var(--space-5);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semi);
+  letter-spacing: -0.015em;
+}
+.navcol .home a:link, .navcol .home a:visited { color: var(--ink); }
+
+@media (max-width: 60rem) {
+  .frame { flex-direction: column; align-items: stretch; gap: var(--space-6); }
+  .navcol {
+    flex-basis: auto;
+    width: 100%;
+    position: static;
+    max-height: none;
+    border-top: 1px solid var(--line);
+    padding-top: var(--space-5);
+  }
 }
 
-/* Nav item */
-.navitem { margin-bottom: var(--pad-2); }
+/* -------------------------------------------------------------- Nav item */
+/* Was a blue title bar over a filled box. Now a label over a list: the same three
+   levels of hierarchy, drawn with weight and space instead of fill. */
+.navitem { margin-bottom: var(--space-5); }
 .navhead {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semi);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  padding-bottom: var(--space-2);
+  margin-bottom: var(--space-2);
+  border-bottom: 1px solid var(--line);
+}
+.navbody { font-size: var(--text-sm); line-height: var(--leading-snug); }
+.navbody a, .navbody strong { display: block; padding: var(--space-1) 0; }
+.navbody a:link, .navbody a:visited { color: var(--ink-soft); }
+.navbody a:hover { color: var(--accent); text-decoration: none; }
+/* The current page, marked in the markup with <strong>. */
+.navbody strong { color: var(--ink); font-weight: var(--weight-semi); }
+/* A sub-item belongs to the line above it. */
+.navbody .sub { padding-left: var(--space-3); }
+
+/* --------------------------------------------------------------- Buttons */
+/* One button, three intents, two sizes. An <a> and a <button> look identical. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  line-height: 1;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:link, .btn:visited { color: var(--ink); text-decoration: none; }
+.btn:hover {
+  background: var(--bg-subtle);
+  border-color: var(--ink-faint);
+  color: var(--ink);
+  text-decoration: none;
+}
+.btn:active { background: var(--bg-inset); }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.btn--primary, .btn--primary:link, .btn--primary:visited {
   background: var(--accent);
-  color: var(--accent-fg);
-  border: 1px solid var(--rule);
-  font-weight: bold;
-  padding: 2px 6px;
+  border-color: var(--accent);
+  color: #ffffff;
 }
-.navbody {
-  background: var(--panel);
-  border: 1px solid var(--panel-edge);
-  border-top: 0;
-  font-size: 80%;
-  padding: var(--pad) var(--pad-2) 5px;
-  line-height: 1.5;
+.btn--primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: #ffffff; }
+.btn--primary:active { background: var(--accent-hover); }
+
+.btn--quiet, .btn--quiet:link, .btn--quiet:visited {
+  background: transparent;
+  border-color: transparent;
+  color: var(--accent);
 }
-.navbody a { display: inline-block; }
+.btn--quiet:hover { background: var(--accent-subtle); border-color: transparent; color: var(--accent-hover); }
 
-/* Columns */
-.columns { display: flex; gap: 0; align-items: flex-start; }
-.col { flex: 1 1 50%; min-width: 0; }
-.col h2 { font-size: 1.2em; margin: 0 0 0.5em; }
-.col h2 + h2, .col p + h2, .col dl + h2 { margin-top: 1.4em; }
-.col.news { padding-right: 16px; }
-.col.status { padding-left: 16px; border-left: 1px solid var(--rule); }
-@media (max-width: 50em) {
-  .columns { flex-direction: column; align-items: stretch; }
-  .col.news { padding-right: 0; }
-  .col.status { padding-left: 0; border-left: 0; margin-top: 1.5em; }
+.btn--sm { font-size: var(--text-xs); padding: var(--space-2) var(--space-3); }
+
+.btn[aria-disabled="true"] { color: var(--ink-faint); pointer-events: none; }
+
+/* Buttons come in rows more often than alone. */
+.btn-row { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0 0 var(--space-4); }
+
+/* ----------------------------------------------------------- Badge, note */
+.badge {
+  display: inline-block;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  line-height: 1.4;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink-soft);
+  white-space: nowrap;
 }
+.badge--accent { border-color: var(--accent-line); background: var(--accent-subtle); color: var(--accent-hover); }
 
-/* News list */
-dl.news { margin-top: 0; }
-dl.news dt { color: var(--heading); font-weight: bold; margin-top: 0.4em; }
-dl.news dd { margin-left: 3ex; margin-top: 0.1em; margin-bottom: 0.1em; }
-dl.news .date { color: var(--fg-soft); font-size: 90%; font-weight: normal; margin-left: 0.2ex; font-variant-numeric: tabular-nums; }
-
-/* Status list */
-dl.status { margin-top: 0; }
-dl.status dt { margin-top: 0.6em; }
-dl.status .version { font-weight: bold; }
-dl.status dd { margin-left: 3ex; }
-dl.status .regress { font-size: 80%; color: var(--fg-soft); }
-
-/* Node nav */
-.node-nav {
-  background: var(--panel);
-  border: 1px solid var(--panel-edge);
-  font-size: 80%;
-  padding: var(--pad) var(--pad-2);
-  margin: 0 0 1em;
-}
-.main > .node-nav:last-child { margin-top: 2em; }
-
-/* Copyright box */
-.copyright {
-  clear: both;
+/* An aside that must not be missed, without a coloured shout. */
+.note {
+  border-left: 2px solid var(--accent-line);
+  background: var(--accent-subtle);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  padding: var(--space-3) var(--space-4);
+  margin: 0 0 var(--space-4);
   max-width: var(--measure);
-  margin: 2.5em auto 1.5em;
-  font-size: 80%;
-  color: var(--fg-soft);
-  background: var(--panel);
-  border: 1px solid var(--rule);
-  padding: 6px var(--pad-2);
 }
-.copyright address { font-style: normal; margin-bottom: 0.6em; }
-.copyright p { margin: 0 0 0.6em; }
-.copyright p:last-child { margin-bottom: 0; }
+.note > :last-child { margin-bottom: 0; }
+.note .label { display: block; margin-bottom: var(--space-1); color: var(--accent-hover); }
 
-/* Padded table */
-table { border-collapse: collapse; font-size: 95%; }
-th, td { border: 1px solid var(--border); padding: 4px var(--pad-2); text-align: left; vertical-align: top; }
-th { background: var(--panel); }
+/* ----------------------------------------------------------------- Panel */
+.panel {
+  background: var(--bg-subtle);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+  margin: 0 0 var(--space-4);
+}
+.panel > :last-child { margin-bottom: 0; }
+
+/* --------------------------------------------------------------- Columns */
+.columns { display: flex; gap: var(--space-7); align-items: flex-start; }
+.col { flex: 1 1 50%; min-width: 0; }
+.col > h2:first-child { margin-top: 0; }
+@media (max-width: 60rem) {
+  .columns { flex-direction: column; align-items: stretch; gap: var(--space-6); }
+}
+
+/* ------------------------------------------------------- News and status */
+dl.news, dl.status { margin-top: 0; }
+dl.news dt { font-weight: var(--weight-medium); margin-top: var(--space-3); }
+dl.news dt:first-child, dl.status dt:first-child { margin-top: 0; }
+dl.news dd { margin: var(--space-1) 0 var(--space-2) 0; font-size: var(--text-sm); }
+dl.news dd:empty { margin: 0; }
+dl.news .date {
+  color: var(--ink-faint);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-normal);
+  margin-left: var(--space-1);
+}
+
+dl.status dt { margin-top: var(--space-4); font-weight: var(--weight-normal); }
+dl.status .version { font-weight: var(--weight-semi); }
+dl.status dd { margin: var(--space-1) 0 0 0; font-size: var(--text-sm); }
+dl.status .regress {
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+  margin-top: var(--space-1);
+}
+
+/* ------------------------------------------------------------- Node nav */
+.node-nav {
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--line);
+  margin: 0 0 var(--space-5);
+}
+.main > .node-nav:last-child {
+  margin: var(--space-7) 0 0;
+  border-bottom: 0;
+  border-top: 1px solid var(--line);
+}
+
+/* ----------------------------------------------------------------- Table */
+/* Rules between rows, not around cells: the data is the grid. */
+table { border-collapse: collapse; font-size: var(--text-sm); width: 100%; }
+th, td {
+  border-bottom: 1px solid var(--line);
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  font-weight: var(--weight-semi);
+  color: var(--ink-soft);
+  border-bottom-color: var(--line-strong);
+  white-space: nowrap;
+}
+tr:last-child td { border-bottom: 0; }
 td code { white-space: nowrap; }
-.wide { overflow-x: auto; }
+.wide { overflow-x: auto; margin: 0 0 var(--space-4); }
 
-/* Example */
-pre, code, kbd, samp { font-family: monospace, monospace; }
+/* ------------------------------------------------------------------ Code */
+pre, code, kbd, samp { font-family: var(--font-mono); }
 pre {
-  background: var(--panel);
-  border: 1px solid var(--panel-edge);
-  padding: 6px var(--pad-2);
+  background: var(--bg-inset);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
   overflow-x: auto;
-  font-size: 88%;
-  line-height: 1.35;
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
   tab-size: 4;
+  /* Code is columns; the proportional figures of prose would break them. */
+  font-variant-numeric: normal;
 }
-pre code { background: none; padding: 0; font-size: 100%; }
-:not(pre) > code { background: var(--panel); padding: 0 0.25em; font-size: 90%; }
-dt > code, h1 code, h2 code, h3 code, a > code { background: none; padding: 0; }
-/* Shiki inlines colours; the house style is plain monochrome. */
-pre.astro-code, pre.astro-code span { color: inherit !important; background-color: var(--panel) !important; }
+pre code { background: none; padding: 0; font-size: inherit; border: 0; }
+:not(pre) > code {
+  background: var(--bg-inset);
+  border-radius: var(--radius-sm);
+  padding: 0.1em 0.3em;
+  font-size: 0.9em;
+  font-variant-numeric: normal;
+}
+/* Inside a heading, a term or a link, the tint is noise. */
+:is(h1, h2, h3, h4, dt, a) code { background: none; padding: 0; }
+kbd {
+  font-size: 0.85em;
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+  padding: 0.1em 0.4em;
+  background: var(--bg);
+}
+/* Shiki inlines colours; the house style is monochrome. */
+pre.astro-code, pre.astro-code span {
+  color: inherit !important;
+  background-color: var(--bg-inset) !important;
+}
 
-/* Text */
-p, ul, ol, dl, table, pre, blockquote { margin: 0 0 1em; }
-ul, ol { padding-left: 2em; }
-li { margin: 0.15em 0; }
-dt { font-weight: bold; margin-top: 0.6em; }
-dd { margin: 0.1em 0 0.3em 3ex; }
-hr { border: 0; border-top: 1px solid var(--fg); margin: 1.5em 0; }
-blockquote { border-left: 3px solid var(--rule); margin-left: 0; padding-left: 0.8em; color: var(--fg-soft); }
-img { max-width: 100%; }
-em { font-style: italic; }
-abbr[title] { text-decoration: none; border-bottom: 1px dotted; }
+/* ---------------------------------------------------------------- Notice */
+/* The GNU copyright box, unboxed: a rule, then the small print. */
+.notice {
+  clear: both;
+  max-width: var(--frame);
+  margin: var(--space-8) auto var(--space-7);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+}
+.notice address { font-style: normal; margin-bottom: var(--space-3); }
+.notice p { margin: 0 0 var(--space-2); max-width: var(--measure); }
+.notice p:last-child { margin-bottom: 0; }
 
+/* ----------------------------------------------------------------- Print */
 @media print {
-  .navcol, .node-nav { display: none; }
-  .frame, .copyright { max-width: none; }
+  .navcol, .node-nav, .btn-row { display: none; }
+  .frame, .notice { max-width: none; }
   a { color: inherit; }
-  a[href^="http"]::after { content: " <" attr(href) ">"; font-size: 80%; }
+  a[href^="http"]::after { content: " <" attr(href) ">"; font-size: var(--text-xs); }
+  pre, .panel, .note { background: none; }
 }

@@ -8,6 +8,11 @@ source: site/src/pages/download.md
 See [Releases](../releases/) for what the current one is and what it contains. Get a release archive below and verify
 it, or build from source, which takes one command and a Rust toolchain.
 
+<p class="btn-row">
+  <a class="btn btn--primary" href="https://github.com/oddurs/fontina/releases/latest">Latest release</a>
+  <a class="btn" href="#building-from-source">Build from source</a>
+</p>
+
 ## Release archives
 
 Every release on the [GitHub releases page](https://github.com/oddurs/fontina/releases)

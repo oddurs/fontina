@@ -80,11 +80,16 @@ source</a> with Rust 1.88 or newer.</p>
 `;
 ---
 <Base title="fontina" description="fontina is a free software font manager: a Rust library, a command line, and soon a desktop application. Open standards end to end." source="site/src/pages/index.astro">
-  <h1 class="no-margin-top">fontina, a font manager</h1>
+  <h1>fontina, a font manager</h1>
   <Fragment set:html={intro} />
+  <p class="btn-row">
+    <a class="btn btn--primary" href={u('/download/')}>Download fontina</a>
+    <a class="btn" href={u('/docs/')}>Read the manual</a>
+    <a class="btn btn--quiet" href={repo}>Source on GitHub</a>
+  </p>
   <hr />
   <div class="columns">
-    <section class="col news">
+    <section class="col">
       <h2 id="news"><a href="#news">News</a></h2>
       <dl class="news">
         {news.map((n) => (
@@ -96,7 +101,7 @@ source</a> with Rust 1.88 or newer.</p>
       </dl>
       <div><a href={u('/news/')}>Older news</a> | <span class="smaller">Announcements are also an <a href={u('/feed.xml')}>RSS feed</a>.</span></div>
     </section>
-    <section class="col status">
+    <section class="col">
       <h2>Supported releases</h2>
       <Fragment set:html={status} />
     </section>
