@@ -88,7 +88,11 @@ impl Glyphs {
             return;
         }
         let last = self.blocks.len() as i32 - 1;
-        let next = (self.block as i32 + delta).clamp(0, last) as usize;
+        // Saturating, because the addition happens before the clamp: from any block but
+        // the first, a delta near either end of i32 overflowed, which panicked in debug
+        // and in release wrapped the sum so the selection went to the opposite end from
+        // the one asked for.
+        let next = (self.block as i32).saturating_add(delta).clamp(0, last) as usize;
         if next != self.block {
             self.block = next;
             self.scroll = 0;
@@ -103,13 +107,27 @@ impl Glyphs {
         };
         let cols = cols.max(1);
         let last_row = block.codepoints.len().div_ceil(cols).saturating_sub(1);
-        self.scroll = (self.scroll as i32 + rows).clamp(0, last_row as i32) as usize;
+        // Saturating for the same reason: Home and End pass i32::MAX / 2 and i32::MIN / 2,
+        // and the halving that keeps that from overflowing should not be load-bearing.
+        self.scroll = (self.scroll as i32)
+            .saturating_add(rows)
+            .clamp(0, last_row as i32) as usize;
     }
 
     /// Pull the scroll position back inside a block that is now laid out `cols` wide.
+    ///
     /// A pane that grew since the last keypress would otherwise start past the end and
-    /// render nothing.
+    /// render nothing. A search result is followed as well: `find` scrolled to a row
+    /// counted in the columns of the frame before, so a resize used to carry the found
+    /// codepoint off the grid, cursor and all, with no key that brought it back.
     pub fn clamp_scroll(&mut self, cols: usize) {
+        if let Some(cp) = self.found
+            && let Some(block) = self.blocks.get(self.block)
+            && let Some(at) = block.codepoints.iter().position(|&c| c == cp)
+        {
+            self.scroll = at / cols.max(1);
+            return;
+        }
         self.scroll_by(0, cols);
     }
 
@@ -304,5 +322,73 @@ mod tests {
         assert!(g.scroll_row() > 0);
         g.select(1);
         assert_eq!(g.scroll_row(), 0, "a new block starts at its first row");
+    }
+
+    /// An extreme delta stops at an end, rather than overflowing on the way to it.
+    ///
+    /// The addition happened before the clamp, so from any block but the first this
+    /// panicked in debug and, in release, wrapped so far that the selection landed at the
+    /// opposite end from the one asked for. Home and End reach `scroll_by` with
+    /// `i32::MAX / 2` for the same reason; the halving is no longer what saves it.
+    #[test]
+    fn an_extreme_delta_stops_at_an_end() {
+        let mut g = Glyphs::for_face(&face("Amiri-Regular.ttf"));
+        assert!(
+            g.blocks().len() > 2,
+            "the fixture has blocks to move between"
+        );
+        g.select(1);
+        let from = g.selected_index();
+        assert!(from > 0, "not sitting on the first block");
+
+        g.select(i32::MAX);
+        assert_eq!(
+            g.selected_index(),
+            g.blocks().len() - 1,
+            "forwards, to the last"
+        );
+        g.select(i32::MIN);
+        assert_eq!(g.selected_index(), 0, "backwards, to the first");
+
+        g.scroll_by(i32::MAX, 16);
+        g.scroll_by(i32::MIN, 16);
+        assert_eq!(g.scroll_row(), 0);
+    }
+
+    /// A resize keeps the codepoint that was searched for on the grid.
+    ///
+    /// `find` scrolls to a row counted in the columns of the frame it was called from.
+    /// A resize re-lays the block at a different width, so that row holds something else
+    /// entirely: widening moved the grid past the found codepoint and narrowing left it
+    /// dozens of rows above, with `found()` still naming it and no key that returned to
+    /// it.
+    #[test]
+    fn a_resize_keeps_the_found_codepoint_on_the_grid() {
+        for (before, after) in [(16, 64), (64, 16), (7, 61), (61, 7), (32, 32)] {
+            let mut g = Glyphs::for_face(&face("Amiri-Regular.ttf"));
+            let cp = g
+                .blocks()
+                .iter()
+                .flat_map(|b| b.codepoints.iter().copied())
+                .nth(300)
+                .expect("the fixture covers enough characters to scroll");
+            assert!(
+                g.find(&format!("U+{cp:04X}"), before),
+                "U+{cp:04X} is there"
+            );
+            g.clamp_scroll(after);
+
+            let block = g.selected().expect("a block is selected");
+            let at = block
+                .codepoints
+                .iter()
+                .position(|&c| c == cp)
+                .expect("the found codepoint is in the selected block");
+            assert_eq!(
+                g.scroll_row(),
+                at / after,
+                "U+{cp:04X} left the grid when {before} columns became {after}"
+            );
+        }
     }
 }
