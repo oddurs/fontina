@@ -26,6 +26,7 @@ mod glyphs;
 mod layout;
 mod preview;
 mod sheet;
+mod theme;
 
 use anyhow::Result;
 use fontina_core::index::FacetCount;
@@ -34,7 +35,7 @@ use fontina_core::render::RenderOptions;
 use fontina_core::{ActivationState, FaceFilter, FaceMetadata, FaceSummary, Facets, Family, Index};
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap};
 use std::collections::BTreeMap;
@@ -140,6 +141,8 @@ struct Input {
 
 pub struct App {
     index: Index,
+    /// The palette, resolved once against what this terminal can show.
+    theme: theme::Theme,
     query: String,
     selected: BTreeMap<Facet, String>,
     facets: Facets,
@@ -199,6 +202,7 @@ pub struct App {
 pub fn run(db: &Path) -> Result<()> {
     let index = Index::open(db)?;
     let mut app = App::new(index)?;
+    app.use_depth(theme::Depth::detect());
     let mut terminal = ratatui::try_init()?;
     let result = app.event_loop(&mut terminal);
     ratatui::restore();
@@ -227,6 +231,7 @@ impl App {
             selected: BTreeMap::new(),
             facets: Facets::default(),
             rows: Vec::new(),
+            theme: theme::Theme::default(),
             families: Vec::new(),
             faces: Vec::new(),
             open_family: None,
@@ -475,6 +480,18 @@ impl App {
             Focus::List => layout::Pane::List,
             Focus::Detail => layout::Pane::Detail,
         }
+    }
+
+    /// Resolve the palette against the terminal this run has.
+    ///
+    /// Asking the environment happens here, once, rather than inside `Theme::default`,
+    /// so that building an App — which every test does — does not inherit whatever
+    /// `TERM` and `NO_COLOR` the machine running the tests happens to have. Both the
+    /// panes and the preview cache hold the answer, because a preview drawn at one
+    /// depth and a border drawn at another would be one screen in two palettes.
+    fn use_depth(&mut self, depth: theme::Depth) {
+        self.theme = theme::Theme::new(depth);
+        self.preview = preview::Cache::new(self.theme);
     }
 
     // ----- events -----
@@ -1215,7 +1232,7 @@ impl App {
         };
         let block = Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan))
+            .border_style(self.theme.accent())
             .title(format!(
                 " {}{position} — e sets the text, Esc closes ",
                 sheet.title()
@@ -1247,7 +1264,7 @@ impl App {
                 let opts = sheet.options(row, words, width as u32);
                 lines.push(Line::from(Span::styled(
                     row.label.clone(),
-                    Style::default().fg(Color::DarkGray),
+                    self.theme.dim(),
                 )));
                 let px_rows = (row.size.ceil() as u32 * 2).max(2);
                 lines.extend(self.preview.lines(&row.face, &opts, px_rows));
@@ -1274,7 +1291,7 @@ impl App {
         f.render_widget(Clear, area);
         let block = Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan))
+            .border_style(self.theme.accent())
             .title(" glyph map — / to search, m or Esc to close ");
         let inner = block.inner(area);
         f.render_widget(block, area);
@@ -1296,9 +1313,7 @@ impl App {
             .take(visible)
             .map(|(i, b)| {
                 let style = if i == selected {
-                    Style::default()
-                        .fg(Color::Cyan)
-                        .add_modifier(Modifier::BOLD)
+                    self.theme.accent().add_modifier(Modifier::BOLD)
                 } else {
                     Style::default()
                 };
@@ -1341,12 +1356,12 @@ impl App {
         {
             let mut spans = vec![Span::styled(
                 format!("{:<LABEL$}", format!("{:04X}", row[0])),
-                Style::default().fg(Color::DarkGray),
+                self.theme.dim(),
             )];
             for &cp in row {
                 let cell = fontina_core::unicode::cell_for(cp);
                 let style = if Some(cp) == found {
-                    Style::default().fg(Color::Black).bg(Color::Cyan)
+                    self.theme.cursor()
                 } else {
                     Style::default()
                 };
@@ -1364,9 +1379,9 @@ impl App {
 
     fn border(&self, focused: bool) -> Style {
         if focused {
-            Style::default().fg(Color::Cyan)
+            self.theme.accent()
         } else {
-            Style::default().fg(Color::DarkGray)
+            self.theme.dim()
         }
     }
 
@@ -1393,7 +1408,7 @@ impl App {
                         room = room
                     );
                     let style = if on {
-                        Style::default().fg(Color::Cyan)
+                        self.theme.accent()
                     } else {
                         Style::default()
                     };
@@ -1507,6 +1522,7 @@ impl App {
                 face.style.width.round(),
                 face.style.css.style
             ),
+            &self.theme,
         ));
         if let Some(v) = &face.variable {
             lines.push(kv(
@@ -1516,6 +1532,7 @@ impl App {
                     .map(|a| format!("{} {}–{} ({})", a.tag, a.min, a.max, a.default))
                     .collect::<Vec<_>>()
                     .join(", "),
+                &self.theme,
             ));
         }
         lines.push(kv(
@@ -1532,6 +1549,7 @@ impl App {
                     .collect::<Vec<_>>()
                     .join(" ")
             ),
+            &self.theme,
         ));
         let feats = face.features.gsub.len() + face.features.gpos.len();
         if feats > 0 {
@@ -1548,20 +1566,21 @@ impl App {
                         .collect::<Vec<_>>()
                         .join(" ")
                 ),
+                &self.theme,
             ));
         }
-        lines.extend(license_lines(face));
+        lines.extend(license_lines(face, &self.theme));
         if let Some(d) = face
             .names
             .designer
             .as_deref()
             .or(face.names.manufacturer.as_deref())
         {
-            lines.push(kv("designer", d.to_string()));
+            lines.push(kv("designer", d.to_string(), &self.theme));
         }
         if let Some(s) = self.detail_summary.as_ref() {
             if !s.tags.is_empty() {
-                lines.push(kv("tags", s.tags.join(", ")));
+                lines.push(kv("tags", s.tags.join(", "), &self.theme));
             }
             lines.push(kv(
                 "state",
@@ -1569,6 +1588,7 @@ impl App {
                     Some(a) => a.as_str().to_string(),
                     None => "not active".into(),
                 },
+                &self.theme,
             ));
         }
         lines.push(kv(
@@ -1582,6 +1602,7 @@ impl App {
                     String::new()
                 }
             ),
+            &self.theme,
         ));
         lines.push(Line::from(""));
         // Rows the block will actually occupy once wrapped, not how many lines were
@@ -1657,10 +1678,7 @@ impl App {
             // "custom" would be nonsense for a face with no axes to be custom about.
             None => "features".to_string(),
         };
-        lines.push(Line::from(Span::styled(
-            title,
-            Style::default().fg(Color::DarkGray),
-        )));
+        lines.push(Line::from(Span::styled(title, self.theme.dim())));
         // Scroll so the cursor is always on screen; without this a reader moves down,
         // the marker disappears, and the arrows adjust an axis they cannot see.
         let body = area.height.saturating_sub(1) as usize;
@@ -1672,7 +1690,7 @@ impl App {
             let selected = focused && i == self.controls.cursor();
             let marker = if selected { ">" } else { " " };
             let style = if selected {
-                Style::default().fg(Color::Cyan)
+                self.theme.accent()
             } else {
                 Style::default()
             };
@@ -1713,16 +1731,16 @@ impl App {
                 InputKind::Glyph => "codepoint or block",
             };
             Line::from(vec![
-                Span::styled(format!(" {prompt}: "), Style::default().fg(Color::Cyan)),
+                Span::styled(format!(" {prompt}: "), self.theme.accent()),
                 Span::raw(input.buf.clone()),
-                Span::styled("▏", Style::default().fg(Color::Cyan)),
+                Span::styled("▏", self.theme.accent()),
             ])
         } else if !self.status.is_empty() {
             Line::from(Span::raw(format!(" {}", self.status)))
         } else {
             Line::from(Span::styled(
                 format!(" $ {}", self.command_line()),
-                Style::default().fg(Color::DarkGray),
+                self.theme.dim(),
             ))
         };
         f.render_widget(Paragraph::new(line), area);
@@ -1730,10 +1748,7 @@ impl App {
 
     fn draw_keys(&self, f: &mut ratatui::Frame, area: Rect) {
         f.render_widget(
-            Paragraph::new(Span::styled(
-                layout::keys(area.width),
-                Style::default().fg(Color::DarkGray),
-            )),
+            Paragraph::new(Span::styled(layout::keys(area.width), self.theme.dim())),
             area,
         );
     }
@@ -1802,7 +1817,7 @@ impl App {
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .border_style(Style::default().fg(Color::Cyan))
+                        .border_style(self.theme.accent())
                         .title(title),
                 ),
             rect,
@@ -1902,9 +1917,9 @@ fn facet_value_label(facet: Facet, value: &str) -> String {
 }
 
 /// A labelled line in the details pane.
-fn kv(k: &str, v: String) -> Line<'static> {
+fn kv(k: &str, v: String, theme: &theme::Theme) -> Line<'static> {
     Line::from(vec![
-        Span::styled(format!("{k:<10}"), Style::default().fg(Color::DarkGray)),
+        Span::styled(format!("{k:<10}"), theme.dim()),
         Span::raw(v),
     ])
 }
@@ -1914,7 +1929,7 @@ fn kv(k: &str, v: String) -> Line<'static> {
 /// The verdict and its reason, not an SPDX string on its own: whether a font may be
 /// studied, changed and passed on is the fact that decides whether it can be used at
 /// all, and an identifier only answers that for a reader who already knows the list.
-fn license_lines(face: &FaceMetadata) -> Vec<Line<'static>> {
+fn license_lines(face: &FaceMetadata, theme: &theme::Theme) -> Vec<Line<'static>> {
     let verdict = fontina_core::freedom::assess(face.license.spdx.as_deref());
     let mut lines = vec![
         kv(
@@ -1923,21 +1938,21 @@ fn license_lines(face: &FaceMetadata) -> Vec<Line<'static>> {
                 .spdx
                 .clone()
                 .unwrap_or_else(|| "none embedded".into()),
+            theme,
         ),
         Line::from(vec![
-            Span::styled(
-                format!("{:<10}", "freedom"),
-                Style::default().fg(Color::DarkGray),
-            ),
+            Span::styled(format!("{:<10}", "freedom"), theme.dim()),
+            // Bold as well as coloured, because the verdict is the one thing in this
+            // pane a reader may act on and colour alone cannot carry it: on a terminal
+            // with none, every role here collapses to the same nothing.
             Span::styled(
                 verdict.freedom.to_string(),
-                Style::default()
-                    .fg(match verdict.freedom {
-                        fontina_core::Freedom::Free => Color::Green,
-                        fontina_core::Freedom::Nonfree => Color::Red,
-                        _ => Color::Yellow,
-                    })
-                    .add_modifier(Modifier::BOLD),
+                match verdict.freedom {
+                    fontina_core::Freedom::Free => theme.good(),
+                    fontina_core::Freedom::Nonfree => theme.bad(),
+                    _ => theme.warn(),
+                }
+                .add_modifier(Modifier::BOLD),
             ),
         ]),
     ];
@@ -1946,11 +1961,15 @@ fn license_lines(face: &FaceMetadata) -> Vec<Line<'static>> {
         // and the preview. Every other verdict is a reason to go and read something.
         lines.push(Line::from(Span::styled(
             format!("{:<10}{}", "", verdict.reason),
-            Style::default().fg(Color::DarkGray),
+            theme.dim(),
         )));
     }
     if !face.license.reserved_font_names.is_empty() {
-        lines.push(kv("reserved", face.license.reserved_font_names.join(", ")));
+        lines.push(kv(
+            "reserved",
+            face.license.reserved_font_names.join(", "),
+            theme,
+        ));
     }
     if let Some(os2) = &face.os2
         && !matches!(os2.embedding.level, EmbeddingLevel::Installable)
@@ -1960,6 +1979,7 @@ fn license_lines(face: &FaceMetadata) -> Vec<Line<'static>> {
         lines.push(kv(
             "embedding",
             format!("{:?} (reported, not enforced)", os2.embedding.level),
+            theme,
         ));
     }
     lines
@@ -2864,7 +2884,7 @@ mod tests {
         let mut app = app();
         select_family(&mut app, "Amiri");
         let mut face = app.detail.clone().unwrap();
-        let shown = text_of(&license_lines(&face));
+        let shown = text_of(&license_lines(&face, &theme::Theme::default()));
         assert!(shown.contains("OFL-1.1"), "{shown}");
         // Not `contains("free")`: the label "freedom" contains it, so that would hold
         // even if the verdict were missing or said the opposite.
@@ -2879,13 +2899,13 @@ mod tests {
 
         // A nonfree licence says so, and says why.
         face.license.spdx = Some("LicenseRef-Proprietary".into());
-        let shown = text_of(&license_lines(&face));
+        let shown = text_of(&license_lines(&face, &theme::Theme::default()));
         assert!(shown.contains("nonfree"), "{shown}");
         assert!(shown.contains("withholds"), "{shown}");
 
         // A font with nothing embedded is not silently called free.
         face.license.spdx = None;
-        let shown = text_of(&license_lines(&face));
+        let shown = text_of(&license_lines(&face, &theme::Theme::default()));
         assert!(shown.contains("none embedded"), "{shown}");
         assert!(shown.contains("unstated"), "{shown}");
         assert!(shown.contains("no permission"), "{shown}");
@@ -2909,7 +2929,7 @@ mod tests {
         assert_eq!(wrapped_rows(&Line::from("a b c d e f g h i j"), 25), 1);
 
         // A padded label is charged its padding, not its text length.
-        let padded = kv("file", "x".repeat(18));
+        let padded = kv("file", "x".repeat(18), &theme::Theme::default());
         assert!(
             wrapped_rows(&padded, 25) > 1,
             "kv pads the label to ten columns, so this is 28 columns, not 22"
@@ -2918,8 +2938,12 @@ mod tests {
 
     #[test]
     fn a_long_value_does_not_cost_the_lines_below_it() {
-        let long = kv("file", "/a/very/long/path/".repeat(6));
-        let short = kv("style", "Regular".into());
+        let long = kv(
+            "file",
+            "/a/very/long/path/".repeat(6),
+            &theme::Theme::default(),
+        );
+        let short = kv("style", "Regular".into(), &theme::Theme::default());
         let rows = wrapped_rows;
 
         assert!(rows(&long, 30) > 1, "a long value wraps");
@@ -2943,12 +2967,12 @@ mod tests {
         select_family(&mut app, "Amiri");
         let mut face = app.detail.clone().unwrap();
         // Installable is the ordinary case and says nothing.
-        assert!(!text_of(&license_lines(&face)).contains("embedding"));
+        assert!(!text_of(&license_lines(&face, &theme::Theme::default())).contains("embedding"));
 
         let os2 = face.os2.as_mut().unwrap();
         os2.fs_type = 0x0002;
         os2.embedding = fontina_core::model::EmbeddingRights::from_fs_type(0x0002);
-        let shown = text_of(&license_lines(&face));
+        let shown = text_of(&license_lines(&face, &theme::Theme::default()));
         assert!(shown.contains("RestrictedLicense"), "{shown}");
         assert!(
             shown.contains("not enforced"),
@@ -3260,6 +3284,29 @@ mod tests {
         let drawn = stable_frame(&mut app, 120, 36);
         assert!(drawn.contains("wght"), "the weight axis is named: {drawn}");
         insta::assert_snapshot!(drawn);
+    }
+
+    /// The depth reaches the preview as well as the panes: one screen, one palette.
+    #[test]
+    fn the_terminals_depth_reaches_the_preview_as_well_as_the_borders() {
+        let mut app = app();
+        select_family(&mut app, "Amiri");
+        let coloured = frame(&mut app, 120, 36);
+        assert!(
+            coloured.contains('▀'),
+            "with colour every filled cell is a top half over a background"
+        );
+
+        app.use_depth(theme::Depth::None);
+        let plain = frame(&mut app, 120, 36);
+        assert_ne!(
+            plain, coloured,
+            "the preview did not notice the depth change"
+        );
+        assert!(
+            plain.contains('█') || plain.contains('▄') || plain.contains('▀'),
+            "and it is drawn as shape rather than dropped: {plain}"
+        );
     }
 
     #[test]
