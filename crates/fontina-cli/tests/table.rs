@@ -224,6 +224,51 @@ fn the_tag_table_lines_up_with_a_japanese_tag() {
     );
 }
 
+/// A path longer than its column is printed whole, not cut short.
+///
+/// `fontina dirs` is how a script asks where an install goes, and `scripts/acceptance`
+/// is one such script: it greps the install target out of this listing and then looks
+/// for the font there. A temporary home on macOS is longer than sixty columns, so
+/// truncating the column meant handing a caller a path that does not exist. The same
+/// goes for a source, a tag and a collection: the name is the answer, not a label.
+#[test]
+fn a_path_or_a_name_is_never_cut_short_to_fit_its_column() {
+    let s = session("whole-path");
+    let deep = s
+        .root
+        .join("a-directory-with-a-deliberately-long-name/and-another-one-below-it/and-a-third");
+    std::fs::create_dir_all(&deep).unwrap();
+    let deep_str = deep.to_string_lossy().into_owned();
+    assert!(
+        fontina_core::unicode::columns(&deep_str) > 60,
+        "the path has to be longer than the column: {deep_str}"
+    );
+
+    s.ok(&["source", "add", &deep_str]);
+    let listed = s.ok(&["source", "list"]);
+    assert!(
+        listed.contains(&deep_str),
+        "the source listing cut the path short:\n{listed}"
+    );
+    assert!(!listed.contains('…'), "{listed}");
+
+    let long_tag = "a-tag-name-that-somebody-typed-and-is-longer-than-thirty-columns";
+    let ids: serde_json::Value = serde_json::from_str(&s.ok(&["list", "--json"])).unwrap();
+    let id = ids[0]["id"].to_string();
+    s.ok(&["tag", "add", long_tag, &id]);
+    let tags = s.ok(&["tag", "list"]);
+    assert!(
+        tags.contains(long_tag),
+        "the tag listing cut the name short:\n{tags}"
+    );
+
+    let dirs = s.ok(&["dirs"]);
+    assert!(
+        !dirs.contains('…'),
+        "a font directory was cut short:\n{dirs}"
+    );
+}
+
 /// A name that would reverse the line, or move the cursor, prints as neither.
 ///
 /// `fit` stands a replacement character in for anything with no column of its own. A
