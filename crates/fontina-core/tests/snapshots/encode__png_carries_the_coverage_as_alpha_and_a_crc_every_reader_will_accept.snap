@@ -1,0 +1,15 @@
+---
+source: crates/fontina-core/tests/encode.rs
+expression: decoded
+---
+IHDR 8x7, 8 bits a channel, colour type 6 (RGBA)
+IDAT 7 scanlines, filter none, every pixel #ff8800, alpha:
+........
+.######.
+.#....#.
+.#-++-#.
+.#....#.
+.######.
+...--...
+IEND
+every chunk CRC checks out
