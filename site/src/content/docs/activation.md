@@ -20,7 +20,8 @@ already watches. The copy is an ordinary file you can see and delete. Undo with
 <code>uninstall</code>.</dd>
 </dl>
 
-Both take the usual targets: face ids, `family:<name>`, or indexed file paths.
+Both take the usual targets: face ids, `family:<name>`, or indexed file paths
+(with `path#1` for one face of a collection).
 
 ```
 $ fontina activate family:Amiri

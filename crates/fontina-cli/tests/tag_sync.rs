@@ -17,6 +17,11 @@
 //! `fontina tag sync`, against the running system's real tag store.
 
 #[cfg(unix)]
+mod common;
+
+// The file tags are a Unix thing here, so every test that reads JSON out of a run is
+// `cfg(unix)` too, and on Windows this import has nothing left to serve.
+#[cfg(unix)]
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -360,13 +365,8 @@ fn a_tag_the_file_cannot_hold_is_kept_rather_than_lost() {
 
 /// A selection rewrites only the files it named.
 ///
-/// This is the half of the "partial selection" defect that the fixtures can reach. The
-/// other half — a font collection, where several faces share one file and one set of
-/// tags, and syncing a selection of them wrote only *their* tags over the file's — is
-/// fixed in `faces_by_file`, which now widens each file to every face in it. Nothing here
-/// exercises that: `fixtures/` holds no `.ttc`, and fabricating one whose internal
-/// offsets survive concatenation is a fixture's worth of work in a test. It wants a small
-/// collection added to `fixtures/`, which is the note this comment exists to leave.
+/// This is the half of the "partial selection" defect that two separate files can reach.
+/// The other half is a collection, and it is below.
 #[cfg(unix)]
 #[test]
 fn a_selection_rewrites_only_the_files_it_named() {
@@ -385,6 +385,62 @@ fn a_selection_rewrites_only_the_files_it_named() {
     assert!(
         on_other.iter().any(|t| t == "theirs"),
         "syncing one face rewrote another file: {on_other:?}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Syncing one face of a collection writes every face's tags, not just that one's.
+///
+/// The other half of the partial-selection defect, and the one the fixtures could not
+/// reach until this test built its own collection. Several faces share one file and one
+/// set of file tags, so writing only the named face's tags over the file silently takes
+/// the others' away. `faces_by_file` widens each file to every face in it; this is what
+/// that is for.
+#[cfg(unix)]
+#[test]
+fn syncing_one_face_of_a_collection_keeps_the_others_tags() {
+    let dir = std::env::temp_dir().join(format!("fontina-sync-ttc-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("fonts")).unwrap();
+    let collection = dir.join("fonts/two.ttc");
+    common::write_collection(
+        &[
+            &fixtures().join("Amiri-Regular.ttf"),
+            &fixtures().join("SourceSerif4-Regular.otf"),
+        ],
+        &collection,
+    );
+    let db = dir.join("index.db");
+    run(&db, &["scan", &dir.join("fonts").to_string_lossy()]);
+
+    // Canonical, because that is what the index stores: on macOS the temporary directory
+    // is reached through a symlink.
+    let collection = std::fs::canonicalize(&collection).unwrap();
+    let faces: Value = serde_json::from_slice(&out(&db, &["list", "--json"]).stdout).unwrap();
+    let faces = faces.as_array().expect("a list");
+    assert_eq!(faces.len(), 2, "one file, two faces: {faces:?}");
+    assert!(
+        faces
+            .iter()
+            .all(|f| f["path"].as_str().unwrap_or_default() == collection.to_string_lossy()),
+        "both faces are in the one file: {faces:?}"
+    );
+    let first = faces[0]["id"].to_string();
+    let second = faces[1]["id"].to_string();
+
+    run(&db, &["tag", "add", "mine", &first]);
+    run(&db, &["tag", "add", "theirs", &second]);
+
+    // One face named, one file written, and the file carries what both faces have.
+    run(&db, &["tag", "sync", "--to-files", &first]);
+    let on_file = fontina_platform::tags::read(&collection).unwrap();
+    assert!(
+        on_file.iter().any(|t| t == "mine"),
+        "the named face's tag is on the file: {on_file:?}"
+    );
+    assert!(
+        on_file.iter().any(|t| t == "theirs"),
+        "and so is the other face's, which shares the file: {on_file:?}"
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
