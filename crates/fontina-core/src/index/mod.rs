@@ -107,6 +107,12 @@ pub struct FaceFilter {
     /// How many codepoints of each script in `scripts` the face must cover. `None` is
     /// one, which is "covers it at all".
     pub script_min: Option<u32>,
+    /// A language the face claims, of either kind: an OpenType language system tag
+    /// (`TRK`, `VIT`) or a BCP 47 tag on a name record (`tr`, `vi`). They are different
+    /// namespaces and the tag says which is meant.
+    pub lang: Option<String>,
+    /// Restrict `lang` to one kind of claim.
+    pub lang_source: Option<LanguageSource>,
     /// SPDX identifier prefix match, e.g. `OFL`.
     pub license: Option<String>,
     /// Whether the license grants the four freedoms.
@@ -303,6 +309,7 @@ impl Index {
             ])?;
             insert_ranges(tx, face_id, &face.coverage.ranges)?;
             insert_scripts(tx, face_id, &face.coverage.scripts)?;
+            insert_languages(tx, face_id, face)?;
             library::carry_over_apply(tx, face_id, face.index, &carried)?;
         }
         Ok(())
@@ -477,6 +484,21 @@ impl Index {
         // the `LIKE` over the joined string could never express. `script_min` is the
         // depth: a font with three Arabic codepoints should stop ranking beside one with
         // three thousand.
+        if let Some(l) = &filter.lang {
+            let mut clause = String::from(
+                "f.id IN (SELECT fl.face_id FROM face_languages fl
+                          WHERE fl.tag = ? COLLATE NOCASE",
+            );
+            if filter.lang_source.is_some() {
+                clause.push_str(" AND fl.source = ?");
+            }
+            clause.push(')');
+            w.clauses.push(clause);
+            w.args.push(Box::new(l.clone()));
+            if let Some(src) = filter.lang_source {
+                w.args.push(Box::new(src.as_str().to_string()));
+            }
+        }
         for s in &filter.scripts {
             w.clauses.push(
                 "f.id IN (SELECT fs.face_id FROM face_scripts fs
@@ -755,6 +777,89 @@ impl Index {
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
+}
+
+/// Which of the two things a font can say about a language it is.
+///
+/// They are different claims and must not be collapsed. A language system tag under an
+/// OpenType script says the shaping engine has rules for that language — Turkish `i`,
+/// Serbian italics. A BCP 47 tag on a name record only says the font names *itself* in
+/// that language, which says nothing about whether it can set a word of it. A filter
+/// that merged them would over-report in one direction and under-report in the other,
+/// and the reader would have no way to tell which had happened.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum LanguageSource {
+    /// An OpenType language system tag declared under a script in GSUB or GPOS.
+    Opentype,
+    /// A BCP 47 tag on a `name` record.
+    Name,
+}
+
+impl LanguageSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            LanguageSource::Opentype => "opentype",
+            LanguageSource::Name => "name",
+        }
+    }
+}
+
+impl std::str::FromStr for LanguageSource {
+    type Err = ();
+    fn from_str(s: &str) -> std::result::Result<Self, ()> {
+        Ok(match s {
+            "opentype" => LanguageSource::Opentype,
+            "name" => LanguageSource::Name,
+            _ => return Err(()),
+        })
+    }
+}
+
+impl Index {
+    /// The languages a face claims, and which claim each one is. Sorted by tag.
+    pub fn languages(&self, face_id: i64) -> Result<Vec<(String, LanguageSource)>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT tag, source FROM face_languages WHERE face_id = ?1 ORDER BY tag, source",
+        )?;
+        let rows = stmt.query_map(params![face_id], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?
+                    .parse()
+                    .unwrap_or(LanguageSource::Name),
+            ))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+}
+
+/// Insert both kinds of language claim a face makes.
+pub(crate) fn insert_languages(tx: &Transaction, face_id: i64, face: &FaceMetadata) -> Result<()> {
+    let mut stmt = tx.prepare_cached(
+        "INSERT OR IGNORE INTO face_languages (face_id, tag, source) VALUES (?1, ?2, ?3)",
+    )?;
+    for script in &face.features.scripts {
+        for lang in &script.languages {
+            // OpenType language system tags are four bytes, space-padded: `TRK `, `AZE `.
+            // The padding is the format's, not the language's.
+            let tag = lang.trim();
+            if !tag.is_empty() {
+                stmt.execute(params![face_id, tag, LanguageSource::Opentype.as_str()])?;
+            }
+        }
+    }
+    for record in &face.name_records {
+        if let Some(tag) = record
+            .language
+            .as_deref()
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+        {
+            stmt.execute(params![face_id, tag, LanguageSource::Name.as_str()])?;
+        }
+    }
+    Ok(())
 }
 
 pub(crate) fn insert_scripts(
