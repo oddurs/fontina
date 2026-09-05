@@ -345,6 +345,30 @@
       ],
       "type": "object"
     },
+    "ConfigReport": {
+      "description": "What `config --json` prints: the file, whether it is there, and every setting with\nwhere its value came from.",
+      "properties": {
+        "found": {
+          "description": "False when there is no file yet, which is not an error.",
+          "type": "boolean"
+        },
+        "path": {
+          "type": "string"
+        },
+        "settings": {
+          "items": {
+            "$ref": "#/$defs/Setting"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "path",
+        "found",
+        "settings"
+      ],
+      "type": "object"
+    },
     "Conflict": {
       "description": "A face that would clash with the one being activated.",
       "properties": {
@@ -1098,6 +1122,51 @@
         "failed"
       ],
       "type": "object"
+    },
+    "Setting": {
+      "description": "One resolved setting, for `fontina config`.",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/SettingSource"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "value",
+        "source"
+      ],
+      "type": "object"
+    },
+    "SettingSource": {
+      "description": "Where a value came from.\n\n`SettingSource` rather than `Source` because `schemas/cli-output.json` names every\ntype it defines, and the core already has a `Source`: the directories a library is\nscanned from, which `fontina source list` prints.",
+      "oneOf": [
+        {
+          "const": "default",
+          "description": "Compiled in.",
+          "type": "string"
+        },
+        {
+          "const": "file",
+          "description": "The configuration file.",
+          "type": "string"
+        },
+        {
+          "const": "environment",
+          "description": "An environment variable.",
+          "type": "string"
+        },
+        {
+          "const": "flag",
+          "description": "An argument on this command line.",
+          "type": "string"
+        }
+      ]
     },
     "Severity": {
       "enum": [

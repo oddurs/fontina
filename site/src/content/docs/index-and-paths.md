@@ -72,6 +72,41 @@ state. Everything else is recreated by a scan.
 
 ## Configuration
 
-There is no configuration file yet. When there is one, it will be TOML in the
-platform configuration directory (`$XDG_CONFIG_HOME/fontina/config.toml` on Linux),
-and every setting in it will also be a command-line flag.
+One TOML file, in the platform configuration directory:
+
+| Platform | Default |
+|---|---|
+| GNU/Linux and the BSDs | `$XDG_CONFIG_HOME/fontina/config.toml`, normally `~/.config/fontina/config.toml` |
+| macOS | `~/Library/Application Support/fontina/config.toml` |
+| Windows | `%APPDATA%\fontina\config.toml` |
+
+`FONTINA_CONFIG` names a different one. `fontina config --path` prints whichever is
+in force, and `fontina config --example` prints a commented file to save there.
+
+It holds **defaults only**. Every setting in it is one a flag can override, so
+nothing in the file can make a command do something its arguments do not say, and
+you can read somebody else's config and still predict what their commands do.
+Precedence runs: the flag, then the environment, then this file, then fontina's own
+default.
+
+```
+$ fontina config
+~/.config/fontina/config.toml
+
+index.db           ~/.local/share/fontina/index.db               config
+scan.sources       ~/Fonts                                       config
+scan.system        false                                         default
+preview.text       Sphinx of black quartz, judge my vow          config
+preview.size       48                                            default
+preview.protocol   auto                                          default
+preview.fg         (the terminal's foreground)                   default
+preview.bg         (the terminal's background)                   default
+```
+
+The last column is where each value came from, because a setting whose origin you
+cannot see is worse than no setting at all.
+
+A missing file is not an error: with no file, fontina behaves exactly as it did
+before there was one. A file that exists and does not parse is an error naming the
+line, and so is a key nobody recognises, since a typo that is quietly ignored is a
+setting that quietly does nothing.

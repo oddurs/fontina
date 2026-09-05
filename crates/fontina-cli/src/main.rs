@@ -14,6 +14,7 @@
 // You should have received a copy of the GNU General Public License along with this
 // program. If not, see <https://www.gnu.org/licenses/>.
 
+mod config;
 mod ui;
 
 use anyhow::{Context, Result, bail};
@@ -293,6 +294,17 @@ enum Command {
         #[arg(long)]
         out_dir: Option<PathBuf>,
     },
+    /// Show the settings in force, and where each one came from.
+    Config {
+        /// Print the path of the configuration file and nothing else.
+        #[arg(long)]
+        path: bool,
+        /// Print a commented file holding every setting, to save and edit.
+        #[arg(long)]
+        example: bool,
+        #[arg(long)]
+        json: bool,
+    },
     /// Print a JSON Schema: `face` (default), `collection`, or `cli-output`.
     Schema {
         #[arg(default_value = "face")]
@@ -309,18 +321,19 @@ struct PreviewArgs {
     /// sample text when it has one.
     #[arg(long, short = 't')]
     text: Option<String>,
-    /// Font size in pixels.
-    #[arg(long, short = 's', default_value_t = 48.0)]
-    size: f32,
+    /// Font size in pixels [default: 48, or preview.size in the config file].
+    #[arg(long, short = 's')]
+    size: Option<f32>,
     /// Variable axis setting, e.g. `wght=700`; repeatable.
     #[arg(long = "axis", short = 'a', value_parser = parse_axis)]
     axes: Vec<(String, f32)>,
     /// OpenType feature to turn on (`smcp`) or off (`liga=0`); repeatable.
     #[arg(long = "feature", short = 'f', value_parser = parse_feature)]
     features: Vec<(String, bool)>,
-    /// Output protocol: auto, kitty, iterm, sixel, blocks, or png (needs --output).
-    #[arg(long, short = 'p', default_value = "auto")]
-    protocol: String,
+    /// Output protocol: auto, kitty, iterm, sixel, blocks, or png (needs --output)
+    /// [default: auto, or preview.protocol in the config file].
+    #[arg(long, short = 'p')]
+    protocol: Option<String>,
     /// Write a PNG here instead of drawing in the terminal (one face only).
     #[arg(long, short = 'o')]
     output: Option<PathBuf>,
@@ -727,7 +740,15 @@ fn main() {
 }
 
 fn open_index(cli: &Cli) -> Result<Index> {
-    let path = cli.db.clone().unwrap_or_else(Index::default_path);
+    // `--db` (which clap also fills from FONTINA_DB), then the config file, then the
+    // platform data directory.
+    let path = match &cli.db {
+        Some(p) => p.clone(),
+        None => match config::load()?.config.index.db {
+            Some(p) => config::expand(&p),
+            None => Index::default_path(),
+        },
+    };
     Index::open(&path).with_context(|| format!("opening index at {}", path.display()))
 }
 
@@ -742,7 +763,23 @@ fn run() -> Result<()> {
             prune,
             json,
         } => {
-            let system_roots: Vec<PathBuf> = if *system {
+            let cfg = config::load()?.config.scan;
+            // A bare `scan` uses the sources in the config file, if it names any. Passing
+            // paths overrides them: the file is a default, never an addition, so what a
+            // command touches is always what its arguments say.
+            let configured: Vec<PathBuf> = cfg
+                .sources
+                .unwrap_or_default()
+                .iter()
+                .map(|s| config::expand(s))
+                .collect();
+            let paths: &Vec<PathBuf> = if paths.is_empty() && !configured.is_empty() {
+                &configured
+            } else {
+                paths
+            };
+            let system = *system || (cfg.system.unwrap_or(false) && paths.is_empty());
+            let system_roots: Vec<PathBuf> = if system {
                 fontina_platform::system_font_dirs()
                     .into_iter()
                     .map(|d| d.path)
@@ -752,7 +789,10 @@ fn run() -> Result<()> {
                 Vec::new()
             };
             if paths.is_empty() && system_roots.is_empty() {
-                bail!("nothing to scan: pass directories or --system");
+                bail!(
+                    "nothing to scan: pass directories, or --system, or set scan.sources in {}",
+                    config::path().display()
+                );
             }
             let mut index = open_index(&cli)?;
             let opts = ScanOptions {
@@ -1331,6 +1371,46 @@ fn run() -> Result<()> {
                     clap_mangen::Man::new(cmd).render(&mut out)?;
                     std::io::stdout().write_all(&out)?;
                 }
+            }
+        }
+        Command::Config {
+            path,
+            example,
+            json,
+        } => {
+            if *example {
+                print!("{}", config::EXAMPLE);
+                return Ok(());
+            }
+            let loaded = config::load()?;
+            if *path {
+                println!("{}", loaded.path.display());
+                return Ok(());
+            }
+            let settings = loaded.config.settings(cli.db.as_deref());
+            if *json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&ConfigReport {
+                        path: loaded.path.clone(),
+                        found: loaded.found,
+                        settings: &settings,
+                    })?
+                );
+                return Ok(());
+            }
+            println!(
+                "{}{}",
+                loaded.path.display(),
+                if loaded.found {
+                    ""
+                } else {
+                    "  (no file yet; `fontina config --example` prints one to save there)"
+                }
+            );
+            println!();
+            for s in settings {
+                println!("{:<18} {:<44} {}", s.key, s.value, s.source.label());
             }
         }
         Command::Schema { which } => {
@@ -1985,6 +2065,7 @@ fn cli_output_schema() -> serde_json::Value {
     add::<LicenseRow>(&mut g);
     add::<RestoreReport>(&mut g);
     add::<AgentInstalled>(&mut g);
+    add::<ConfigReport>(&mut g);
     add::<AgentRemoved>(&mut g);
     add::<AgentStatus>(&mut g);
     add::<Paths>(&mut g);
@@ -2824,6 +2905,16 @@ fn run_deactivate(cli: &Cli, targets: &[String], uninstall: bool, json: bool) ->
     Ok(())
 }
 
+/// What `config --json` prints: the file, whether it is there, and every setting with
+/// where its value came from.
+#[derive(serde::Serialize, schemars::JsonSchema)]
+struct ConfigReport<'a> {
+    path: PathBuf,
+    /// False when there is no file yet, which is not an error.
+    found: bool,
+    settings: &'a [config::Setting],
+}
+
 /// What `agent install --json` prints.
 #[derive(serde::Serialize, schemars::JsonSchema)]
 struct AgentInstalled {
@@ -2977,16 +3068,20 @@ fn dark_background() -> bool {
 
 fn run_preview(cli: &Cli, args: &PreviewArgs) -> Result<()> {
     use fontina_core::render::{RenderOptions, encode, render_face};
+    let cfg = config::load()?.config.preview;
     let mut faces = Vec::new();
     for t in &args.targets {
         faces.extend(resolve_faces(cli, t)?);
     }
+    // Flag, then the configuration file, then what fontina has always done.
+    let asked = args.protocol.clone().or(cfg.protocol);
     let protocol = if args.output.is_some() {
         "png"
-    } else if args.protocol == "auto" {
-        detect_protocol()
     } else {
-        args.protocol.as_str()
+        match asked.as_deref() {
+            None | Some("auto") => detect_protocol(),
+            Some(p) => p,
+        }
     };
     if protocol == "png" && args.output.is_none() {
         bail!("--protocol png needs --output <file.png>");
@@ -2995,12 +3090,14 @@ fn run_preview(cli: &Cli, args: &PreviewArgs) -> Result<()> {
         bail!("--output writes one face; got {}", faces.len());
     }
     let dark = dark_background();
-    let fg = match &args.fg {
+    let asked_fg = args.fg.clone().or(cfg.fg.clone());
+    let asked_bg = args.bg.clone().or(cfg.bg.clone());
+    let fg = match &asked_fg {
         Some(s) => encode::parse_rgb(s).with_context(|| format!("bad colour {s:?}"))?,
         None if dark => [235, 235, 235],
         None => [20, 20, 20],
     };
-    let bg = match &args.bg {
+    let bg = match &asked_bg {
         Some(s) => encode::parse_rgb(s).with_context(|| format!("bad colour {s:?}"))?,
         None if dark => [0, 0, 0],
         None => [255, 255, 255],
@@ -3011,13 +3108,18 @@ fn run_preview(cli: &Cli, args: &PreviewArgs) -> Result<()> {
         let text = args
             .text
             .clone()
+            .or_else(|| cfg.text.clone())
             .or_else(|| face.names.sample_text.clone())
             .unwrap_or_else(|| fontina_core::typography::DEFAULT_TEXT.into())
             .replace("\\n", "\n");
-        let size = if protocol == "blocks" && args.size == 48.0 {
-            24.0
-        } else {
-            args.size
+        // Half blocks are two pixels to a cell, so the same number draws twice as tall
+        // as it does through an image protocol; the default drops for them alone, and
+        // only when nobody asked for a size.
+        let asked_size = args.size.or(cfg.size);
+        let size = match asked_size {
+            Some(s) => s,
+            None if protocol == "blocks" => 24.0,
+            None => 48.0,
         };
         let bitmap = render_face(
             face,
@@ -3035,8 +3137,11 @@ fn run_preview(cli: &Cli, args: &PreviewArgs) -> Result<()> {
         .with_context(|| format!("rendering {}", face.file.path))?;
         if protocol == "png" {
             let path = args.output.as_ref().expect("checked");
-            std::fs::write(path, encode::png(&bitmap, fg, args.bg.as_ref().map(|_| bg)))
-                .with_context(|| format!("writing {}", path.display()))?;
+            std::fs::write(
+                path,
+                encode::png(&bitmap, fg, asked_bg.as_ref().map(|_| bg)),
+            )
+            .with_context(|| format!("writing {}", path.display()))?;
             eprintln!(
                 "wrote {} ({}x{}, {} glyphs)",
                 path.display(),
