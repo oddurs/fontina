@@ -122,10 +122,26 @@ each script is there rather than by how many fonts mention it, so the scripts a 
 actually for come first and @code{Zyyy} and @code{Zinh}, which almost every font carries,
 do not crowd the top.
 
+@option{--lang} asks which faces claim a language, and a font can claim one in two
+different ways.  An @dfn{OpenType language system tag} declared under a script ---
+@code{TRK}, @code{VIT}, @code{BGR} --- says the shaping engine has rules for that
+language: Turkish @kbd{i}, Serbian italics.  A @dfn{BCP 47 tag} on a name record ---
+@code{tr}, @code{vi}, @code{bg} --- says only that the font names @emph{itself} in that
+language, which says nothing about whether it can set a word of it.
+
+They are different claims and @command{fontina} keeps them apart.  The tag you give says
+which namespace you mean, and @option{--lang-source opentype} or
+@option{--lang-source name} narrows it further.  Source Serif 4 in @file{fixtures/} claims
+Bulgarian both ways under different tags, and asking for one does not return the other.
+Merging them would over-report in one direction and under-report in the other, with no
+way for you to tell which had happened.  @code{fontina info} prints the two lists
+separately, as @code{shaping for:} and @code{named in:}.
+
 @noindent
 @code{list}, @code{families}, @code{facets} and @code{covers} share one set of filters:
 @option{--family}, @option{--variable}, @option{--color}, @option{--italic},
-@option{--script}, @option{--script-min}, @option{--license}, @option{--free}, @option{--nonfree},
+@option{--script}, @option{--script-min}, @option{--lang}, @option{--lang-source},
+@option{--license}, @option{--free}, @option{--nonfree},
 @option{--freedom}, @option{--weight}, @option{--width}, @option{--vendor},
 @option{--tag}, @option{--collection}, @option{--active}, @option{--activation},
 @option{--container} and @option{--under}.

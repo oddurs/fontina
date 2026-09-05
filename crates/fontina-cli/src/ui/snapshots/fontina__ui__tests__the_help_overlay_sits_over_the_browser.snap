@@ -28,13 +28,13 @@ expression: drawn
 │  Cyrl        │ Quit        q                                                                          │              │
 │  Zinh        │                                                                                        │              │
 │  Grek        │ The status line shows the CLI command for what you see. Everything here is a command.  │              │
-│License       │                                                                                        │              │
-│  OFL-1.1     │ any key to close                                                                       │              │
-│Freedom       │                                                                                        │              │
-│  free        │                                                                                        │              │
-│Activation    └────────────────────────────────────────────────────────────────────────────────────────┘              │
-│  none                6 ││                                              ││                                            │
-│Vendor                  ││                                              ││                                            │
+│Language      │                                                                                        │              │
+│  en          │ any key to close                                                                       │              │
+│  CAT         │                                                                                        │              │
+│  TRK         │                                                                                        │              │
+│  AZE         └────────────────────────────────────────────────────────────────────────────────────────┘              │
+│  CRT                 2 ││                                              ││                                            │
+│  ARA                 1 ││                                              ││                                            │
 └────────────────────────┘└──────────────────────────────────────────────┘└────────────────────────────────────────────┘
  $ fontina families
  / search  ⇥ facets  ⏎ open  ⌫ back  t tag  c collection  a/A activate  d deactivate  i install  u uninstall  e text  +/

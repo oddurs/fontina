@@ -556,6 +556,15 @@ struct FilterArgs {
     /// Arabic codepoints is not an Arabic font.
     #[arg(long, value_name = "N", requires = "script")]
     script_min: Option<u32>,
+    /// Faces claiming this language. Two namespaces, and the tag says which: an OpenType
+    /// language system tag (TRK, VIT, BGR) means the shaping engine has rules for it; a
+    /// BCP 47 tag on a name record (tr, vi, bg) means only that the font names itself
+    /// in it.
+    #[arg(long, value_name = "TAG")]
+    lang: Option<String>,
+    /// Which kind of claim `--lang` means: `opentype` or `name`.
+    #[arg(long, value_name = "KIND", requires = "lang")]
+    lang_source: Option<String>,
     /// SPDX license prefix, e.g. OFL, Apache, LicenseRef-Proprietary.
     #[arg(long)]
     license: Option<String>,
@@ -614,6 +623,8 @@ impl FilterArgs {
             italic: self.italic,
             scripts: self.script.clone(),
             script_min: self.script_min,
+            lang: self.lang.clone(),
+            lang_source: self.lang_source.as_deref().and_then(|s| s.parse().ok()),
             license: self.license.clone(),
             freedom: self.freedom(),
             weight: self.weight,
@@ -1615,6 +1626,39 @@ fn print_info(f: &fontina_core::FaceMetadata) {
         .map(|s| format!("{} {}", s.script, s.codepoints))
         .collect();
     println!("  scripts:     {}", scripts.join(", "));
+    // Two different claims, kept apart: the shaping engine's rules, and the languages the
+    // font names itself in. Merging them would say more than the file does.
+    let shaping: Vec<&str> = f
+        .features
+        .scripts
+        .iter()
+        .flat_map(|s| s.languages.iter().map(|l| l.trim()))
+        .filter(|l| !l.is_empty())
+        .collect();
+    if !shaping.is_empty() {
+        let mut tags: Vec<&str> = shaping;
+        tags.sort_unstable();
+        tags.dedup();
+        println!(
+            "  shaping for: {}{}",
+            tags.iter().take(12).copied().collect::<Vec<_>>().join(" "),
+            if tags.len() > 12 {
+                format!(" +{} more", tags.len() - 12)
+            } else {
+                String::new()
+            }
+        );
+    }
+    let mut named: Vec<&str> = f
+        .name_records
+        .iter()
+        .filter_map(|r| r.language.as_deref())
+        .collect();
+    named.sort_unstable();
+    named.dedup();
+    if !named.is_empty() {
+        println!("  named in:    {}", named.join(" "));
+    }
     if let Some(v) = &f.variable {
         println!(
             "  axes:        {}",
@@ -2367,6 +2411,7 @@ fn print_facets(f: &fontina_core::Facets) {
     println!("{:<11} {}   color {}", "variable", f.variable, f.color);
     row("container", &f.container, &|v| v.to_string());
     row("script", &f.script, &|v| v.to_string());
+    row("language", &f.language, &|v| v.to_string());
     row("license", &f.license, &|v| v.to_string());
     row("freedom", &f.freedom, &|v| v.to_string());
     row("vendor", &f.vendor, &|v| v.to_string());

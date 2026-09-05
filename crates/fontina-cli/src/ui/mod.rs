@@ -49,6 +49,7 @@ enum Facet {
     Variable,
     Color,
     Script,
+    Language,
     License,
     Freedom,
     Vendor,
@@ -68,6 +69,7 @@ impl Facet {
             Facet::Variable => "Variable",
             Facet::Color => "Color",
             Facet::Script => "Script",
+            Facet::Language => "Language",
             Facet::License => "License",
             Facet::Freedom => "Freedom",
             Facet::Vendor => "Vendor",
@@ -86,6 +88,7 @@ impl Facet {
             Facet::Variable => "--variable",
             Facet::Color => "--color",
             Facet::Script => "--script",
+            Facet::Language => "--lang",
             Facet::License => "--license",
             Facet::Freedom => "--freedom",
             Facet::Vendor => "--vendor",
@@ -236,6 +239,7 @@ impl App {
                 Facet::Variable => f.variable = Some(true),
                 Facet::Color => f.color = Some(true),
                 Facet::Script => f.scripts = vec![v.clone()],
+                Facet::Language => f.lang = Some(v.clone()),
                 Facet::License => f.license = Some(v.clone()),
                 Facet::Freedom => f.freedom = v.parse().ok(),
                 Facet::Vendor => f.vendor = Some(v.clone()),
@@ -1702,6 +1706,7 @@ fn build_rows(facets: &Facets, selected: &BTreeMap<Facet, String>) -> Vec<FacetR
         section(Facet::Color, &color, 1);
     }
     section(Facet::Script, &facets.script, 8);
+    section(Facet::Language, &facets.language, 8);
     section(Facet::License, &facets.license, 6);
     // Four states at most, so nothing is ever hidden behind a cap.
     section(Facet::Freedom, &facets.freedom, 4);

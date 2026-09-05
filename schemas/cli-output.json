@@ -508,6 +508,13 @@
           },
           "type": "array"
         },
+        "language": {
+          "description": "Languages the matched faces claim, most-claimed first. The value carries which\nkind of claim it is, because the two are different questions: `TRK` is a shaping\nrule, `tr` is a name record.",
+          "items": {
+            "$ref": "#/$defs/FacetCount"
+          },
+          "type": "array"
+        },
         "license": {
           "items": {
             "$ref": "#/$defs/FacetCount"
@@ -576,6 +583,7 @@
         "color",
         "container",
         "script",
+        "language",
         "license",
         "freedom",
         "vendor",

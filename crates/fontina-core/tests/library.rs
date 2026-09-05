@@ -625,6 +625,68 @@ fn an_opentype_claim_and_a_name_record_are_not_the_same_claim() {
     );
 }
 
+/// The language facet offers both kinds of claim, and every offer is honoured.
+#[test]
+fn the_language_facet_offers_what_the_filter_will_return() {
+    let index = indexed();
+    let facets = index.facets(&FaceFilter::default()).unwrap();
+    assert!(!facets.language.is_empty());
+
+    for c in &facets.language {
+        let found = index
+            .list(&FaceFilter {
+                lang: Some(c.value.clone()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(
+            found.len() as i64,
+            c.count,
+            "the facet offers {} for {} and the filter returns {}",
+            c.count,
+            c.value,
+            found.len()
+        );
+    }
+
+    let by_value: std::collections::BTreeMap<&str, i64> = facets
+        .language
+        .iter()
+        .map(|c| (c.value.as_str(), c.count))
+        .collect();
+    // Both namespaces are on the list, side by side and not merged.
+    assert_eq!(
+        by_value.get("en"),
+        Some(&6),
+        "every fixture names itself in English"
+    );
+    assert_eq!(by_value.get("BGR"), Some(&1), "{by_value:?}");
+    assert_eq!(by_value.get("bg"), Some(&1), "{by_value:?}");
+    assert_eq!(by_value.get("TRK"), Some(&3), "{by_value:?}");
+
+    // A face claiming a language twice under one tag is still one face: the count is
+    // faces, not claims.
+    assert!(
+        facets.language.iter().all(|c| c.count <= facets.faces),
+        "{:?}",
+        facets.language
+    );
+
+    // Following the filter, as every other facet does.
+    let arabic = index
+        .facets(&FaceFilter {
+            lang: Some("ARA".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(arabic.faces, 1);
+    assert!(
+        arabic.language.iter().all(|c| c.count == 1),
+        "{:?}",
+        arabic.language
+    );
+}
+
 /// Filled from what is already stored, so an older index answers without a rescan.
 #[test]
 fn an_older_index_learns_its_languages_without_a_rescan() {
