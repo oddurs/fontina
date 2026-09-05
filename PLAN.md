@@ -110,7 +110,7 @@ fontina/
 | Hashing | BLAKE3 of file bytes; plus a "font identity" hash of `name` + outlines | dedupe TTF vs OTF vs WOFF2 of the same face |
 | Parallelism | `rayon` for scans | 10k files in seconds |
 | Paths | `directories` crate | XDG on GNU/Linux, standard dirs on mac/win |
-| Config | TOML | human-editable, Rust-native |
+| Config | TOML | human-editable, Rust-native. `crates/fontina-cli/src/config.rs`; defaults only, every one of them overridable by the flag that sets the same thing |
 | Errors | `thiserror` in the library, `anyhow` at the edges | good diagnostics in the CLI |
 
 **Metadata extracted per face** (this is the schema in `schemas/face.json`):

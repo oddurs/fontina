@@ -35,6 +35,9 @@ notify = { version = "8", default-features = false, features = ["macos_fsevent"]
 rusqlite = { version = "0.40", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Config is TOML, per PLAN.md §4: human-editable, and the format the standards
+# inventory already commits to.
+toml = "1"
 schemars = "1"
 thiserror = "2"
 anyhow = "1"

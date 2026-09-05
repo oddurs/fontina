@@ -219,6 +219,12 @@ embedded unless <code>--link</code>, which references them by path and needs an 
 server or a browser that allows <code>file://</code> font loads. See
 <a href="../specimen/">Specimens</a>.</dd>
 
+<dt><code>config [--path] [--example] [--json]</code></dt>
+<dd>Show every setting in force and where it came from: a flag, the environment, the
+configuration file, or fontina's own default. <code>--path</code> prints the file's
+location; <code>--example</code> prints a commented file holding every setting, to save
+there and edit. See <a href="../index-and-paths/#configuration">The index and paths</a>.</dd>
+
 <dt><code>schema [face|collection|cli-output]</code></dt>
 <dd>Print one of the JSON Schemas. <code>face</code> is the default.</dd>
 </dl>
@@ -262,7 +268,11 @@ platform data directory.</dd>
 
 <dl>
 <dt><code>FONTINA_DB</code></dt>
-<dd>Path of the index database when <code>--db</code> is not given.</dd>
+<dd>Path of the index database when <code>--db</code> is not given. Outranks
+<code>index.db</code> in the configuration file.</dd>
+<dt><code>FONTINA_CONFIG</code></dt>
+<dd>Path of the configuration file, instead of the one in the platform configuration
+directory.</dd>
 <dt><code>XDG_DATA_HOME</code>, <code>XDG_CONFIG_HOME</code></dt>
 <dd>Honoured on Linux for the default index location and, in future, configuration.</dd>
 </dl>
