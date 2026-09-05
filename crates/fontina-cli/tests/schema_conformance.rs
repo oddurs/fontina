@@ -205,6 +205,24 @@ const EXEMPT: &[(&str, &str)] = &[
     ),
 ];
 
+/// [`EXEMPT`], plus what this system in particular cannot run.
+///
+/// `tag sync` is the only command whose availability is a property of the platform
+/// rather than of the test: Windows keeps keywords per file format and a font file has
+/// none, so the command refuses and prints the reason instead of a report. It is covered
+/// everywhere it exists.
+fn exempt() -> Vec<(&'static str, &'static str)> {
+    let mut out = EXEMPT.to_vec();
+    if !file_tags_supported() {
+        out.push(("tag sync", "this system has no file tags"));
+    }
+    out
+}
+
+fn file_tags_supported() -> bool {
+    fontina_platform::tags::supported()
+}
+
 /// Commands covered by a test of their own rather than by a [`Case`].
 const COVERED_ELSEWHERE: &[(&str, &str)] = &[(
     "watch",
@@ -421,12 +439,6 @@ fn cases(work: &Path) -> Vec<Case> {
             "two tags",
         ),
         case(
-            "tag sync",
-            &["tag", "sync", "--to-files", "--dry-run", "--json"],
-            Shape::Def("TagSyncReport"),
-            "a dry run, which writes nothing to any file",
-        ),
-        case(
             "collection list",
             &["collection", "list", "--json"],
             Shape::ArrayOf("CollectionInfo"),
@@ -603,6 +615,14 @@ fn cases(work: &Path) -> Vec<Case> {
             "one face's licence and embedding report",
         ),
     ];
+    if file_tags_supported() {
+        cases.push(case(
+            "tag sync",
+            &["tag", "sync", "--to-files", "--dry-run", "--json"],
+            Shape::Def("TagSyncReport"),
+            "a dry run, which writes nothing to any file",
+        ));
+    }
     cases.extend(by_path);
     cases
 }
@@ -699,7 +719,8 @@ fn json_output_validates_against_the_published_schemas() {
     }
 
     // `ScanFailure` and `TagSyncChange` never appear on their own, so the count above
-    // cannot see them; both are arranged for by `build_library` and asserted here.
+    // cannot see them; both are arranged for by `build_library` and asserted here. There
+    // are no file tags on Windows, where `tag sync` refuses to run at all.
     let broken = work.join("broken").to_string_lossy().into_owned();
     let report: Value =
         serde_json::from_str(&stdout_of(&db, &["scan".into(), "--json".into(), broken]))
@@ -711,24 +732,26 @@ fn json_output_validates_against_the_published_schemas() {
             .is_empty(),
         "the file that is not a font parsed anyway, so no ScanFailure was validated"
     );
-    let sync: Value = serde_json::from_str(&stdout_of(
-        &db,
-        &[
-            "tag".into(),
-            "sync".into(),
-            "--to-files".into(),
-            "--dry-run".into(),
-            "--json".into(),
-        ],
-    ))
-    .expect("tag sync prints JSON");
-    assert!(
-        !sync["changes"]
-            .as_array()
-            .expect("changes is an array")
-            .is_empty(),
-        "the tagged face had nothing to sync, so no TagSyncChange was validated"
-    );
+    if file_tags_supported() {
+        let sync: Value = serde_json::from_str(&stdout_of(
+            &db,
+            &[
+                "tag".into(),
+                "sync".into(),
+                "--to-files".into(),
+                "--dry-run".into(),
+                "--json".into(),
+            ],
+        ))
+        .expect("tag sync prints JSON");
+        assert!(
+            !sync["changes"]
+                .as_array()
+                .expect("changes is an array")
+                .is_empty(),
+            "the tagged face had nothing to sync, so no TagSyncChange was validated"
+        );
+    }
 
     let _ = std::fs::remove_dir_all(&work);
 }
@@ -891,7 +914,7 @@ fn every_json_command_is_covered_or_exempt() {
         .map(|c| c.command)
         .chain(COVERED_ELSEWHERE.iter().map(|(c, _)| *c))
         .collect();
-    let exempt: BTreeSet<&str> = EXEMPT.iter().map(|(c, _)| *c).collect();
+    let exempt: BTreeSet<&str> = exempt().into_iter().map(|(c, _)| c).collect();
 
     let uncovered: Vec<&String> = commands
         .iter()
