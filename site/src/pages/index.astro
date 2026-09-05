@@ -30,11 +30,21 @@ function frame(name: string): string {
     );
   }
 }
-const frames = [
-  frame('the_browser_opens_on_the_family_list'),
-  frame('opening_a_family_lists_its_faces_and_says_so_in_the_command'),
-  frame('the_help_overlay_sits_over_the_browser'),
-];
+// One session in five frames, in the order a person meets them: the list, a family
+// opened, what that face covers, the axes it can be moved along, and the keys. Each
+// caption is the key that got there, so the strip reads as a session rather than a
+// gallery.
+const frames: [string, string][] = [
+  ['the_browser_opens_on_the_family_list', 'Families, with every facet of the library down the left.'],
+  ['opening_a_family_lists_its_faces_and_says_so_in_the_command', '⏎ opens a family: its faces, and the command that lists them.'],
+  ['the_glyph_map_lists_the_blocks_and_lays_out_the_characters', 'm — every character the font has, by Unicode block.'],
+  ['the_controls_pane_offers_the_axes_of_a_variable_face', '⇥ to the controls: a variable font on sliders, and its features.'],
+  ['the_help_overlay_sits_over_the_browser', '? — the keys, over whatever you were looking at.'],
+].map(([name, caption]) => [frame(name), caption]);
+
+// The status line on its own. It is the bridge between the two halves of the program:
+// whatever the browser is showing, this row is the command that would show it.
+const statusLine = frame('the_status_line_says_what_the_screen_is');
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const u = (p: string) => `${base}${p}`;
@@ -111,17 +121,31 @@ const status = `
     </ul>
 
     <div class="terminal demo">
-      <div class="terminal-bar"><span class="where">~/Fonts</span><span>fontina</span></div>
-      <pre class="term"><span class="cmd">$ <span class="type t1">fontina scan ~/Fonts</span></span><span class="cursor k1" aria-hidden="true"></span>
-<span class="r1">scanned 5 candidates in 0.00s: 5 parsed (5 faces), 0 unchanged, 0 removed, 0 failed
-</span>
-<span class="r1"><span class="cmd">$ <span class="type t2">fontina list --script Arab</span></span></span><span class="cursor k2" aria-hidden="true"></span>
-<span class="r2">    id  family   style     wght  wdth  flags  license   path
-     1  Amiri    Regular    400   100  ----F  OFL-1.1   ~/Fonts/Amiri-Regular.ttf
+      <div class="terminal-bar"><span class="where">~</span><span>fontina</span></div>
+      <pre class="term"><span class="cmd">$ <span class="type t1">fontina scan --system Fonts</span></span><span class="cursor k1" aria-hidden="true"></span>
+<span class="r1">scanned 28 candidates in 0.03s: 28 parsed (28 faces), 0 unchanged, 0 removed, 0 failed
+
+<span class="cmd">$ <span class="type t2">fontina list --script Arab --license OFL</span></span></span><span class="cursor k2" aria-hidden="true"></span>
+<span class="r2">    id  family  style    wght  wdth  flags   license       path
+     1  Amiri   Regular   400   100  -----F  OFL-1.1       /home/you/Fonts/Amiri-Regular.ttf
 1 face(s)
-</span>
-<span class="r2"><span class="cmd">$ </span></span><span class="cursor k3" aria-hidden="true"></span></pre>
+
+<span class="cmd">$ <span class="type t3">fontina activate family:Amiri</span></span></span><span class="cursor k3" aria-hidden="true"></span>
+<span class="r3">activated Amiri Regular
+
+<span class="cmd">$ <span class="type t4">fc-match Amiri</span></span></span><span class="cursor k4" aria-hidden="true"></span>
+<span class="r4">Amiri-Regular.ttf: "Amiri" "Regular"
+
+<span class="cmd">$ </span></span><span class="cursor k5" aria-hidden="true"></span></pre>
     </div>
+    <p class="demo-say">
+      The last two lines are the whole product. <code>fc-match</code> is fontconfig, not
+      fontina: another program, asked which font it would use, answering with the one that
+      was just activated. Nothing was installed, nothing was copied, no password was
+      typed. The commands are <a href={u('/docs/getting-started/')}>the getting-started
+      chapter</a>; that last answer is the assertion <code>scripts/acceptance</code> makes
+      on six distributions on every change to the program.
+    </p>
   </section>
 
 
@@ -164,18 +188,46 @@ const status = `
   <section class="section">
     <h2 id="browse">And a browser over the same index</h2>
     <p>
-      <code>fontina ui</code> is keyboard first: facets on the left, families in the
-      middle, the face itself on the right. Not a screenshot &mdash; the browser draws
-      text, so this is that text, read from the snapshot a test asserts on every run.
+      <code>fontina ui</code> is the same library with a keyboard on it: facets on the
+      left, families in the middle, the face itself on the right, and two full-screen
+      modes for the questions that need the whole width. One session, five frames.
     </p>
     <div class="terminal">
-      <div class="terminal-bar"><span class="where">fontina ui</span><span>families &rarr; faces &rarr; help</span></div>
+      <div class="terminal-bar"><span class="where">fontina ui</span><span>5 frames</span></div>
       <div class="frames">
-        {frames.map((f, i) => (
+        {frames.map(([f], i) => (
           <pre class={`term frame f${i + 1}`} aria-hidden={i > 0 ? 'true' : undefined}>{f}</pre>
         ))}
       </div>
     </div>
+    <p class="captions">
+      {frames.map(([, caption], i) => (
+        <span class={`caption c${i + 1}`}>{caption}</span>
+      ))}
+    </p>
+    <p class="small">
+      Not a screenshot and not a recording: the browser draws text, so these are that
+      text, read at build time from the snapshot files a test in the CLI asserts on every
+      run. They cannot go stale without a test going red first.
+    </p>
+  </section>
+
+  <section class="section">
+    <h2 id="one-program">One program, two ways in</h2>
+    <p>
+      The browser is not a second interface with its own vocabulary. Whatever it is
+      showing, the row at the bottom is the command line that would show the same thing
+      &mdash; so the way you learn the command line is by using the browser, and the way
+      you script what you just did is to copy the row.
+    </p>
+    <div class="terminal">
+      <div class="terminal-bar"><span class="where">the status line</span><span>four moments</span></div>
+      <pre class="term">{statusLine}</pre>
+    </div>
+    <p class="small">
+      A filter is a flag. A search is a prompt. An action says what it did, until the next
+      reload. Four states of one row, from the test that pins them.
+    </p>
   </section>
 
   <section class="section">
@@ -193,7 +245,8 @@ sudo rpm -i fontina-X.Y.Z-1.x86_64.rpm
 cargo install --git https://github.com/oddurs/fontina fontina-cli</pre>
     <p class="small">
       <a href={u('/download/')}>Every archive, with checksums and provenance</a>, and how
-      to verify one.
+      to verify one. Then <code>fontina scan --system ~/Fonts</code>, which is where the
+      top of this page started.
     </p>
   </section>
 

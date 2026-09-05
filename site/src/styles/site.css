@@ -911,12 +911,22 @@ pre.astro-code, pre.astro-code span {
    the reader to watch it instead of read the page, and the last frame is the
    one worth leaving on screen anyway.
 
-   The timeline, in one place so it can be reasoned about:
-     0.6s  the first command types, 20 characters over 1.6s
-     2.4s  its output appears, and the first cursor goes
-     2.9s  the second command types, 26 characters over 1.7s
-     4.8s  the table appears
-     5.0s  the prompt returns and keeps blinking */
+   Four commands, because the story needs four: find the fonts, ask a question
+   only a font manager can answer, activate one, and then have a *different
+   program* say it can see it. The fourth line is the product; the first three
+   are what earns it.
+
+   The timeline, in one place so it can be reasoned about. Typing runs at about
+   twenty characters a second, which is a fast typist rather than a machine:
+     0.4s  `fontina scan --system Fonts`              27 characters, 1.4s
+     1.9s  the scan report
+     2.2s  `fontina list --script Arab --license OFL` 40 characters, 2.0s
+     4.3s  the table
+     4.6s  `fontina activate family:Amiri`            29 characters, 1.5s
+     6.2s  what was activated
+     6.5s  `fc-match Amiri`                           14 characters, 0.8s
+     7.4s  fontconfig's answer
+     7.6s  the prompt returns and keeps blinking */
 .demo .type {
   display: inline-block;
   overflow: hidden;
@@ -924,16 +934,22 @@ pre.astro-code, pre.astro-code span {
   vertical-align: bottom;
   width: 0;
 }
-.demo .t1 { animation: type-20 1.6s steps(20, end) 0.6s forwards; }
-.demo .t2 { animation: type-26 1.7s steps(26, end) 2.9s forwards; }
-@keyframes type-20 { to { width: 20ch; } }
-@keyframes type-26 { to { width: 26ch; } }
+.demo .t1 { animation: type-27 1.4s steps(27, end) 0.4s forwards; }
+.demo .t2 { animation: type-40 2.0s steps(40, end) 2.2s forwards; }
+.demo .t3 { animation: type-29 1.5s steps(29, end) 4.6s forwards; }
+.demo .t4 { animation: type-14 0.8s steps(14, end) 6.5s forwards; }
+@keyframes type-27 { to { width: 27ch; } }
+@keyframes type-40 { to { width: 40ch; } }
+@keyframes type-29 { to { width: 29ch; } }
+@keyframes type-14 { to { width: 14ch; } }
 
 /* Output is revealed rather than inserted, so the frame is its full height from
    the first paint and nothing below it moves. */
-.demo .r1, .demo .r2 { opacity: 0; }
-.demo .r1 { animation: reveal 0.01s 2.4s forwards; }
-.demo .r2 { animation: reveal 0.01s 4.8s forwards; }
+.demo .r1, .demo .r2, .demo .r3, .demo .r4 { opacity: 0; }
+.demo .r1 { animation: reveal 0.01s 1.9s forwards; }
+.demo .r2 { animation: reveal 0.01s 4.3s forwards; }
+.demo .r3 { animation: reveal 0.01s 6.2s forwards; }
+.demo .r4 { animation: reveal 0.01s 7.4s forwards; }
 @keyframes reveal { to { opacity: 1; } }
 
 /* One cursor per phase: each blinks while its own line is live and leaves when
@@ -943,58 +959,116 @@ pre.astro-code, pre.astro-code span {
    with opacity meant two animations writing one property, where the later of
    them wins only while it is filling — and `reverse` on a keyframe with an
    implicit `from` takes that from-value from whatever the *other* animation was
-   writing at the time. The first cursor never left, so all three were on screen
-   at once. Two properties cannot race. */
+   writing at the time. The first cursor never left, so all of them were on
+   screen at once. Two properties cannot race. */
 .demo .cursor { visibility: hidden; }
 .demo .k1 {
   visibility: visible;
-  animation: cursor-blink 1.1s steps(1, end) infinite, cursor-off 0.01s 2.4s forwards;
+  animation: cursor-blink 1.1s steps(1, end) infinite, cursor-off 0.01s 1.9s forwards;
 }
 .demo .k2 {
   animation:
-    cursor-on 0.01s 2.9s forwards,
-    cursor-blink 1.1s steps(1, end) 2.9s infinite,
-    cursor-off 0.01s 4.8s forwards;
+    cursor-on 0.01s 2.2s forwards,
+    cursor-blink 1.1s steps(1, end) 2.2s infinite,
+    cursor-off 0.01s 4.3s forwards;
 }
 .demo .k3 {
-  animation: cursor-on 0.01s 5s forwards, cursor-blink 1.1s steps(1, end) 5s infinite;
+  animation:
+    cursor-on 0.01s 4.6s forwards,
+    cursor-blink 1.1s steps(1, end) 4.6s infinite,
+    cursor-off 0.01s 6.2s forwards;
+}
+.demo .k4 {
+  animation:
+    cursor-on 0.01s 6.5s forwards,
+    cursor-blink 1.1s steps(1, end) 6.5s infinite,
+    cursor-off 0.01s 7.4s forwards;
+}
+.demo .k5 {
+  animation: cursor-on 0.01s 7.6s forwards, cursor-blink 1.1s steps(1, end) 7.6s infinite;
 }
 @keyframes cursor-on { to { visibility: visible; } }
 @keyframes cursor-off { to { visibility: hidden; } }
 
+/* What the transcript cannot say for itself. A terminal has no margin to write
+   in, so the sentence that explains why the last two lines matter goes under the
+   frame, in the page's own voice rather than in the program's. */
+.demo-say {
+  max-width: var(--measure);
+  margin: calc(var(--space-3) * -1) 0 var(--space-6);
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+}
+
 /* ------------------------------------------------------------ TUI frames */
-/* Three real snapshots, stacked in one grid cell and cross-faded. This one
-   loops, because it is a slideshow rather than a session: there is no last
-   frame that is more true than the others.
+/* Five real snapshots, stacked in one grid cell and cross-faded, with a caption
+   strip on the same clock. This one loops, because it is a session being
+   replayed rather than a session being typed: no frame is the one to end on.
 
    Every frame is a file a test asserts on, so what animates here is the
-   program's actual output in three states, not an impression of it. */
+   program's actual output in five states, not an impression of it.
+
+   Five phases of 3.6s: 18s a lap. Long for an animation and deliberate — the
+   frames are dense, and a glance is not enough to read a glyph map — but not so
+   long that a reader leaves before the fourth one. The caption changes with the
+   frame, so the strip reads as narration rather than as a legend. */
 .frames { display: grid; }
 .frames .frame {
   grid-area: 1 / 1;
   margin: 0;
   opacity: 0;
-  animation: frame-cycle 15s infinite;
+  animation: frame-cycle 18s infinite;
 }
 .frames .f1 { animation-delay: 0s; }
-.frames .f2 { animation-delay: 5s; }
-.frames .f3 { animation-delay: 10s; }
+.frames .f2 { animation-delay: 3.6s; }
+.frames .f3 { animation-delay: 7.2s; }
+.frames .f4 { animation-delay: 10.8s; }
+.frames .f5 { animation-delay: 14.4s; }
+/* On for its fifth of the lap. The fade in of one begins while the fade out of
+   the last is still running, so the change is a dissolve and the frame is never
+   empty — a gap of even a fifth of a second reads as a flicker. */
 @keyframes frame-cycle {
-  0%, 1% { opacity: 0; }
-  3%, 30% { opacity: 1; }
-  33%, 100% { opacity: 0; }
+  0% { opacity: 0; }
+  2%, 19% { opacity: 1; }
+  21%, 100% { opacity: 0; }
 }
+
+/* The caption strip: one line tall, whatever is in it, so nothing below moves
+   when the sentence changes length. */
+.captions {
+  display: grid;
+  min-height: calc(var(--text-sm) * 1.6);
+  margin: calc(var(--space-3) * -1) 0 var(--space-5);
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+}
+.captions .caption {
+  grid-area: 1 / 1;
+  opacity: 0;
+  animation: frame-cycle 18s infinite;
+}
+.captions .c1 { animation-delay: 0s; }
+.captions .c2 { animation-delay: 3.6s; }
+.captions .c3 { animation-delay: 7.2s; }
+.captions .c4 { animation-delay: 10.8s; }
+.captions .c5 { animation-delay: 14.4s; }
 
 /* Motion is a preference, not a hint. With it off, the session is already
    typed and the browser shows its first frame and stays there. */
 @media (prefers-reduced-motion: reduce) {
   .demo .type { width: auto; animation: none; }
-  .demo .r1, .demo .r2 { opacity: 1; animation: none; }
-  .demo .k1, .demo .k2 { display: none; }
-  .demo .k3 { visibility: visible; animation: none; }
+  .demo .r1, .demo .r2, .demo .r3, .demo .r4 { opacity: 1; animation: none; }
+  .demo .k1, .demo .k2, .demo .k3, .demo .k4 { display: none; }
+  .demo .k5 { visibility: visible; animation: none; }
+  /* The slideshow becomes its first frame and its first caption. A reader who
+     asked for no motion still gets the whole session: every frame is a link
+     away in the manual, and the sentence under the strip says so. */
   .frames .frame { animation: none; }
   .frames .f1 { opacity: 1; }
-  .frames .f2, .frames .f3 { display: none; }
+  .frames .f2, .frames .f3, .frames .f4, .frames .f5 { display: none; }
+  .captions .caption { animation: none; }
+  .captions .c1 { opacity: 1; }
+  .captions .c2, .captions .c3, .captions .c4, .captions .c5 { display: none; }
 }
 
 /* The only animation on the site. A cursor that does not blink reads as a
