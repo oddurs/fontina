@@ -63,6 +63,10 @@
     "name": {
       "type": "string"
     },
+    "relative_paths": {
+      "description": "True when every `CollectionFace::path` is relative to the directory holding this\nfile, which is how a bundle is written. Absent means absolute, as every export\nbefore bundles was.\n\nThe flag is additive and `SCHEMA_VERSION` does not move for it. An older fontina\nreading a bundle ignores it and treats the relative paths as absolute, which\ncosts nothing in practice: the path is the *last* thing `match_collection_face`\ntries, after the identity hash and the PostScript name, and those do not depend\non where the file lives.",
+      "type": "boolean"
+    },
     "schema_version": {
       "format": "uint32",
       "minimum": 0,
