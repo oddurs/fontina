@@ -108,7 +108,7 @@ preview_ms=$(ms 3 "$FONTINA" preview 1 -s 64 -t "Sphinx of black quartz, judge m
 echo
 echo "fontina performance budgets"
 echo "  binary:  $FONTINA"
-echo "  version: $("$FONTINA" --version)"
+echo "  version: $("$FONTINA" -V)"
 echo "  corpus:  $files files, $((corpus_bytes / 1024)) MB, $faces faces indexed"
 echo
 printf '%-46s %8s %-3s %8s %s\n' "metric" "actual" "" "budget" ""

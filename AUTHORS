@@ -1,0 +1,11 @@
+fontina — a lightweight, cross-platform font manager.
+
+Oddur Sigurdsson <oddurs@gmail.com>   maintainer, original author
+
+Contributors keep their own copyright: fontina asks for no copyright assignment and
+has no contributor licence agreement.  Everyone listed here holds copyright in their
+own contributions, and the whole is distributed under the GNU General Public License
+version 3 or later (see COPYING).
+
+The names of everyone who has contributed a change are recorded in the git history
+and in CHANGELOG.md; this file lists the people responsible for the project itself.

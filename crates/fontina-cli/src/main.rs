@@ -30,9 +30,28 @@ use std::path::PathBuf;
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
+// The GNU Coding Standards ask `--version` to say who holds the copyright, under what
+// licence the program is distributed, and that it comes with no warranty, so that a
+// person who has only the binary can still find out what their rights are. `-V` keeps
+// the short form for scripts that only want the number.
+const LONG_VERSION: &str = concat!(
+    env!("CARGO_PKG_VERSION"),
+    "\n",
+    "Copyright (C) 2026 Oddur Sigurdsson\n",
+    "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.\n",
+    "This is free software: you are free to change and redistribute it.\n",
+    "There is NO WARRANTY, to the extent permitted by law.",
+);
+
 /// fontina: a lightweight, standards-based font manager.
 #[derive(Parser)]
-#[command(name = "fontina", version, about, propagate_version = true)]
+#[command(
+    name = "fontina",
+    version,
+    long_version = LONG_VERSION,
+    about,
+    propagate_version = true
+)]
 struct Cli {
     /// Path to the index database (default: the platform data directory).
     #[arg(long, global = true, env = "FONTINA_DB")]
