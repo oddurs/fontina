@@ -56,7 +56,8 @@ fontina source add ~/Fonts       # scan now, follow with `watch` later
 fontina activate family:Amiri    # visible to every app, in place, per user; --session until logout
 fontina conflicts 42             # same name already active or in an OS font directory? exit 2
 fontina install 42 --replace     # copy into the per-user font directory
-fontina restore                  # re-apply activations after a reboot (for a login agent)
+fontina restore                  # re-apply activations after a reboot
+fontina agent install            # have the OS run restore at login; off until asked for
 fontina preview 42 -t "Sphinx of black quartz" -a wght=700 -f smcp   # shaped glyphs, in the terminal
 fontina preview 42 -o specimen.png            # or as a PNG
 fontina ui                       # browse: facets, families, previews, tag and activate

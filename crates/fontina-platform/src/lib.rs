@@ -14,8 +14,6 @@
 // You should have received a copy of the GNU General Public License along with this
 // program. If not, see <https://www.gnu.org/licenses/>.
 
-//! Platform integration: where fonts live on each OS, and the activation trait that the
-//! macOS, Windows and Linux backends implement.
 //! Platform integration: where fonts live on each OS, and the activation backend that
 //! makes a font file visible to other applications without touching system directories
 //! or asking for elevation.
@@ -30,6 +28,8 @@
 //!
 //! Deleting fontina leaves everything reversible: links and copies are ordinary files in
 //! the per-user font directory, registrations are the OS's own per-user mechanisms.
+
+pub mod agent;
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -118,7 +118,7 @@ pub fn activator() -> Box<dyn FontActivator> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn home() -> Option<PathBuf> {
+pub(crate) fn home() -> Option<PathBuf> {
     directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf())
 }
 

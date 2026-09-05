@@ -153,6 +153,10 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// The optional login agent that runs `restore` when you log in. Off until you
+    /// install it, per-user, and removable with one command.
+    #[command(subcommand)]
+    Agent(AgentCmd),
     /// Follow the watched sources (and any extra directories) and keep the index
     /// current until interrupted. One line per batch of changes; `--json` for one
     /// JSON object per line.
@@ -331,6 +335,26 @@ fn parse_feature(s: &str) -> std::result::Result<(String, bool), String> {
         return Err(format!("{tag:?} is not a four-character feature tag"));
     }
     Ok((tag.to_string(), on))
+}
+
+#[derive(Subcommand)]
+enum AgentCmd {
+    /// Write the agent for this system. Prints where it went and, where the system
+    /// needs one, the command that starts it now rather than at the next login.
+    Install {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Remove it.
+    Uninstall {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Whether one is installed, and what it would contain if it were not.
+    Status {
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -746,6 +770,7 @@ fn run() -> Result<()> {
             }
         }
         Command::Restore { json } => run_restore(&cli, *json)?,
+        Command::Agent(cmd) => run_agent(&cli, cmd)?,
         Command::Watch {
             paths,
             debounce_ms,
@@ -1195,6 +1220,113 @@ struct LicenseRow<'a> {
     reserved_font_names: &'a [String],
     url: Option<&'a str>,
     copyright: Option<&'a str>,
+}
+
+/// The login agent: write it, remove it, or say where it is.
+///
+/// Everything here stays inside the user's own directories and none of it needs
+/// elevation, so installing the agent cannot affect anyone else on the machine.
+fn run_agent(cli: &Cli, cmd: &AgentCmd) -> Result<()> {
+    use fontina_platform::agent;
+    match cmd {
+        AgentCmd::Install { json } => {
+            // The binary as it was invoked. Deliberately not canonicalised: on Homebrew
+            // and Nix the invoked path is a stable symlink and its target is a
+            // version-specific store path that the next upgrade deletes, so resolving it
+            // would produce an agent that fails at every login after an update.
+            let exe = std::env::current_exe()
+                .context("cannot find this executable, so no login agent can point at it")?;
+            // The index has to travel with it. Without this an agent installed by
+            // someone who keeps their index elsewhere restores from the default one,
+            // finds nothing, and reports success.
+            let mut args = vec!["restore".to_string()];
+            if let Some(db) = &cli.db {
+                args.push("--db".into());
+                args.push(db.display().to_string());
+            }
+            let plan = agent::install(&exe, &args)?;
+            if *json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "installed": true,
+                        "path": plan.path,
+                        "kind": plan.kind,
+                        "activate_with": plan.activate_with,
+                    })
+                );
+            } else {
+                println!("wrote the {} to {}", plan.kind, plan.path.display());
+                match &plan.activate_with {
+                    Some(c) => println!("it starts at your next login; to start it now:  {c}"),
+                    None => println!("it runs at your next login"),
+                }
+            }
+        }
+        AgentCmd::Uninstall { json } => {
+            let plan = agent::plan(std::path::Path::new("/fontina"), &[]);
+            let removed = agent::uninstall()?;
+            if *json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "removed": removed,
+                        "deactivate_with": plan.as_ref().and_then(|p| p.deactivate_with.clone()),
+                    })
+                );
+            } else if removed {
+                println!("removed the login agent");
+                // Deleting the file does not undo the enablement: systemd keeps a
+                // symlink that then fails at every login, and launchd keeps the job
+                // loaded until logout.
+                if let Some(c) = plan.as_ref().and_then(|p| p.deactivate_with.as_ref()) {
+                    println!("if you enabled it, also run:  {c}");
+                }
+            } else {
+                println!("no login agent was installed");
+            }
+        }
+        AgentCmd::Status { json } => {
+            let status = agent::status();
+            let plan = agent::plan(std::path::Path::new("/fontina"), &[]);
+            if *json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "installed": status.as_ref().is_some_and(|s| s.installed),
+                        "enabled": status.as_ref().is_some_and(|s| s.enabled),
+                        "path": status.as_ref().map(|s| s.path.clone()),
+                        "kind": plan.as_ref().map(|p| p.kind),
+                    })
+                );
+            } else {
+                match (&status, &plan) {
+                    (Some(s), Some(p)) if s.installed && s.enabled => {
+                        println!("installed: {} at {}", p.kind, s.path.display())
+                    }
+                    (Some(s), Some(p)) if s.installed => {
+                        // The file exists and the system has not been told to run it,
+                        // which is not the same as being installed.
+                        println!(
+                            "written but not enabled: {} at {}",
+                            p.kind,
+                            s.path.display()
+                        );
+                        if let Some(c) = &p.activate_with {
+                            println!("enable it with:  {c}");
+                        }
+                    }
+                    (_, Some(p)) => println!(
+                        "not installed; `fontina agent install` would write the {} to {}",
+                        p.kind,
+                        p.path.display()
+                    ),
+                    _ => println!("no home directory, so no login agent is possible here"),
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// A target is a face id when numeric and not an existing path; otherwise a file path,
