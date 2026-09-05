@@ -81,9 +81,13 @@ Ubuntu and Fedora, and runs `scripts/acceptance` against the binary the package 
   zero clippy warnings.
 - Public types in `fontina-core::model` are the schema. Any change to them bumps
   `SCHEMA_VERSION` if it is not backwards-compatible, and regenerates `schemas/face.json`.
-  Every type printed with `--json` derives `JsonSchema` and is listed in
-  `cli_output_schema()`; regenerate `schemas/cli-output.json` and `schemas/collection.json`
-  with `fontina schema cli-output` / `fontina schema collection` (CI diffs all three).
+  Every type printed with `--json` derives `JsonSchema` and is listed in a
+  `cli_output_schema()`: the core's own for types it defines, the CLI's in `main.rs` for
+  the CLI's and the platform crate's, which merges the two. Regenerate
+  `schemas/cli-output.json` and `schemas/collection.json` with `fontina schema
+  cli-output` / `fontina schema collection` (CI diffs all three). A `--json` command that
+  a hermetic test cannot run still has to name its type in
+  `tests/schema_conformance.rs`.
 - Snapshot tests in `crates/fontina-core/tests` cover every fixture. Add a fixture when a
   new capability is parsed (a fixture is an OFL/Apache/UFL font under ~500 KB).
 - SQL lives in `crates/fontina-core/src/index`. Migrations are append-only entries in
