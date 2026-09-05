@@ -147,3 +147,408 @@ fn to_lines(bm: &Bitmap, px_rows: u32) -> Vec<Line<'static>> {
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    // ----- bitmaps as pictures -----
+
+    /// A bitmap from ASCII art, the way `fontina-core`'s encoder tests write one: `.` is
+    /// bare and `#` is full ink, so the shape under test can be read by eye.
+    fn art(rows: &[&str]) -> Bitmap {
+        let width = rows.first().map_or(0, |r| r.chars().count()) as u32;
+        let height = rows.len() as u32;
+        let mut coverage = Vec::with_capacity((width * height) as usize);
+        for row in rows {
+            assert_eq!(row.chars().count() as u32, width, "ragged art");
+            for c in row.chars() {
+                coverage.push(match c {
+                    '.' => 0,
+                    '-' => 85,
+                    '+' => 170,
+                    '#' => 255,
+                    other => panic!("{other:?} is not a coverage level"),
+                });
+            }
+        }
+        Bitmap {
+            width,
+            height,
+            coverage,
+            baseline: height as f32,
+            glyphs: 1,
+            missing: 0,
+        }
+    }
+
+    /// A bitmap of a given shape, inked in a pattern that makes every pixel distinct
+    /// enough to notice being moved.
+    fn shaped(width: u32, height: u32, ink: bool) -> Bitmap {
+        let coverage = (0..width as usize * height as usize)
+            .map(|i| if ink { ((i * 37) % 256) as u8 } else { 0 })
+            .collect();
+        Bitmap {
+            width,
+            height,
+            coverage,
+            baseline: height as f32,
+            glyphs: 1,
+            missing: 0,
+        }
+    }
+
+    fn text_of(lines: &[Line<'static>]) -> String {
+        lines
+            .iter()
+            .map(|l| {
+                l.spans
+                    .iter()
+                    .map(|s| s.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// The invariants a conversion has to keep, whatever it was handed. `px_rows` is a
+    /// budget in pixel rows and two of them go in a cell, so the budget in text rows is
+    /// half of it; a pane can never be given more rows than it asked for, because the
+    /// caller draws these into a `Paragraph` that would silently scroll if it were.
+    #[track_caller]
+    fn check(bm: &Bitmap, px_rows: u32, what: &str) -> Vec<Line<'static>> {
+        let out = to_lines(bm, px_rows);
+        assert!(
+            out.len() <= (px_rows as usize).div_ceil(2),
+            "{what}: {} rows for a budget of {px_rows} pixel rows",
+            out.len(),
+        );
+        assert!(
+            out.len() <= (bm.height as usize).div_ceil(2),
+            "{what}: {} rows out of a {}-row bitmap",
+            out.len(),
+            bm.height,
+        );
+        assert_eq!(
+            out.len(),
+            (px_rows.min(bm.height) as usize).div_ceil(2),
+            "{what}: two pixel rows to a text row, up to the budget",
+        );
+        for (i, line) in out.iter().enumerate() {
+            assert!(
+                line.width() <= bm.width as usize,
+                "{what}: row {i} is {} cells wide, the bitmap is {}",
+                line.width(),
+                bm.width,
+            );
+        }
+        out
+    }
+
+    // ----- every shape a bitmap can be -----
+
+    #[test]
+    fn a_bitmap_of_any_shape_converts_without_breaking() {
+        for &(w, h) in &[
+            (0u32, 0u32),
+            (1, 1),
+            (1, 2),
+            (1, 9), // one column
+            (9, 1), // one row
+            (40, 1),
+            (1, 40),
+            (0, 9), // no columns, some rows
+            (9, 0), // no rows, some columns
+            (2, 2),
+            (3, 3),
+            (80, 24),
+            (200, 90), // wider and taller than any pane here
+        ] {
+            for ink in [true, false] {
+                let bm = shaped(w, h, ink);
+                for px_rows in [0u32, 1, 2, 3, 4, 5, 40, 1000] {
+                    check(&bm, px_rows, &format!("{w}x{h} ink={ink} rows={px_rows}"));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_pane_with_no_rows_is_given_no_lines() {
+        assert!(to_lines(&shaped(80, 40, true), 0).is_empty());
+        // And a bitmap with no rows produces none however much room there is.
+        assert!(to_lines(&shaped(80, 0, true), 40).is_empty());
+    }
+
+    #[test]
+    fn one_pixel_is_one_cell() {
+        let out = check(&art(&["#"]), 2, "a single lit pixel");
+        assert_eq!(text_of(&out), "▀");
+        // Unlit, it is a space that the trailing-blank elision drops altogether.
+        let out = check(&art(&["."]), 2, "a single dark pixel");
+        assert_eq!(text_of(&out), "");
+        assert_eq!(out.len(), 1, "the row still exists");
+    }
+
+    #[test]
+    fn an_odd_number_of_pixel_rows_leaves_the_bottom_half_dark() {
+        // Three rows of ink into a three-pixel-row budget: two cells, and the second
+        // one's lower half is outside the budget, so it is drawn dark.
+        let bm = art(&["##", "##", "##"]);
+        let out = check(&bm, 3, "three rows");
+        assert_eq!(out.len(), 2);
+        for span in &out[1].spans {
+            assert_eq!(span.content.as_ref(), "▀");
+            assert_eq!(
+                span.style.bg,
+                Some(Color::Rgb(30, 30, 30)),
+                "the half outside the budget is background",
+            );
+        }
+    }
+
+    /// A cell is emitted only where one of its two pixel rows has ink; everything else
+    /// is a run of spaces, and a run at the end of a row is dropped rather than padded.
+    #[test]
+    fn blank_columns_are_spaces_and_trailing_ones_are_nothing() {
+        let bm = art(&["..#..", "....."]);
+        let out = check(&bm, 2, "one lit pixel among five");
+        assert_eq!(text_of(&out), "  ▀");
+        assert_eq!(out[0].spans.len(), 2, "a run of blanks, then the cell");
+        assert_eq!(out[0].spans[0].content.as_ref(), "  ");
+    }
+
+    #[test]
+    fn the_two_halves_of_a_cell_are_its_two_pixel_rows() {
+        let bm = art(&["#.", ".#"]);
+        let out = check(&bm, 2, "a diagonal");
+        let spans = &out[0].spans;
+        assert_eq!(spans.len(), 2);
+        // Top lit, bottom dark; then the other way round.
+        assert_eq!(spans[0].style.fg, Some(Color::Rgb(230, 230, 230)));
+        assert_eq!(spans[0].style.bg, Some(Color::Rgb(30, 30, 30)));
+        assert_eq!(spans[1].style.fg, Some(Color::Rgb(30, 30, 30)));
+        assert_eq!(spans[1].style.bg, Some(Color::Rgb(230, 230, 230)));
+    }
+
+    /// The whole conversion for a bitmap small enough to read: which cells are drawn,
+    /// and the grey each half of each cell carries. Written back out as two characters a
+    /// cell — the upper half then the lower — so the box in the art is still a box here.
+    #[test]
+    fn a_small_bitmap_converts_to_a_readable_picture() {
+        #[rustfmt::skip] // it is a picture; keep it one row to a line
+        let bm = art(&[
+            "........",
+            ".######.",
+            ".#....#.",
+            ".#-++-#.",
+            ".#....#.",
+            ".######.",
+            "...--...",
+        ]);
+        let grey = |c: Option<Color>| match c {
+            Some(Color::Rgb(v, _, _)) => match v {
+                0..=30 => '.',
+                31..=100 => '-',
+                101..=180 => '+',
+                _ => '#',
+            },
+            other => panic!("a cell without a colour: {other:?}"),
+        };
+        let mut out = String::new();
+        for line in check(&bm, 14, "the box") {
+            for span in &line.spans {
+                if span.content.as_ref() == "▀" {
+                    out.push(grey(span.style.fg));
+                    out.push(grey(span.style.bg));
+                } else {
+                    // A run of blanks: two characters a cell here too.
+                    out.push_str(&"  ".repeat(span.content.chars().count()));
+                }
+            }
+            out.push('\n');
+        }
+        insta::assert_snapshot!(out);
+    }
+
+    // ----- clipping to the pane, and to the ink -----
+
+    /// The reason `to_lines` looks for the ink at all: the top rows of a rendering are
+    /// the font's empty ascent, and a pane too short to hold the whole rendering used to
+    /// spend its rows on them. This is the property #66 fixed, stated as a property
+    /// rather than as one face at one size.
+    #[test]
+    fn a_short_pane_is_spent_on_the_ink_and_not_on_the_empty_ascent() {
+        // Twenty rows, ink only on rows 12..16.
+        let mut rows = vec!["........"; 20];
+        for row in rows.iter_mut().take(16).skip(12) {
+            *row = "..####..";
+        }
+        let bm = art(&rows);
+        for px_rows in [4u32, 6, 8, 10] {
+            let out = check(&bm, px_rows, &format!("{px_rows} pixel rows"));
+            assert!(
+                text_of(&out).contains('▀'),
+                "{px_rows} rows showed none of the ink",
+            );
+        }
+        // Ink at the very top is found too, without running off the bitmap.
+        let mut rows = vec!["........"; 20];
+        rows[0] = "..####..";
+        rows[1] = "..####..";
+        assert!(text_of(&check(&art(&rows), 4, "ink at the top")).contains('▀'));
+        // And at the very bottom.
+        let mut rows = vec!["........"; 20];
+        rows[18] = "..####..";
+        rows[19] = "..####..";
+        assert!(text_of(&check(&art(&rows), 4, "ink at the bottom")).contains('▀'));
+    }
+
+    #[test]
+    fn ink_taller_than_the_pane_starts_at_the_top_of_the_ink() {
+        // Ink on every row but the first two: taller than the four rows on offer, so the
+        // window starts where the ink does rather than centring something that cannot be
+        // centred.
+        let mut rows = vec!["####"; 12];
+        rows[0] = "....";
+        rows[1] = "....";
+        let out = check(&art(&rows), 4, "ink taller than the pane");
+        assert_eq!(out.len(), 2);
+        assert_eq!(text_of(&out), "▀▀▀▀\n▀▀▀▀");
+    }
+
+    #[test]
+    fn a_bitmap_with_no_ink_at_all_is_a_pane_of_blank_rows() {
+        let out = check(&art(&["...."; 10]), 6, "no ink");
+        assert_eq!(out.len(), 3);
+        assert_eq!(text_of(&out), "\n\n", "three rows, nothing on them");
+    }
+
+    /// `to_lines` is given a budget in rows and none in columns, so a bitmap wider than
+    /// the pane comes back wider than the pane. That is by design — the caller clips
+    /// horizontally by passing `RenderOptions::max_width`, and ratatui truncates what is
+    /// left — but it means the width of the output is the width of the bitmap, never the
+    /// width of the pane, and a caller that forgets `max_width` gets a line that runs off
+    /// the side.
+    #[test]
+    fn columns_are_not_clipped_and_that_is_the_callers_job() {
+        let bm = shaped(200, 4, true);
+        let out = check(&bm, 4, "wider than any pane");
+        assert_eq!(out.len(), 2);
+        assert!(
+            out.iter().all(|l| l.width() == 200),
+            "the bitmap's width, not the pane's",
+        );
+    }
+
+    // ----- the cache -----
+
+    fn face(name: &str) -> FaceMetadata {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures")
+            .join(name);
+        fontina_core::load_file(&path).unwrap().1.remove(0)
+    }
+
+    fn small(text: &str) -> RenderOptions {
+        RenderOptions {
+            text: text.into(),
+            size: 12.0,
+            padding: 1,
+            max_width: Some(40),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_rendering_is_kept_and_reused_and_the_cache_stays_bounded() {
+        let mut cache = Cache::default();
+        let f = face("SourceSerif4-Regular.otf");
+        let first = cache.lines(&f, &small("Aa"), 20);
+        assert_eq!(cache.len(), 1);
+        let again = cache.lines(&f, &small("Aa"), 20);
+        assert_eq!(text_of(&first), text_of(&again));
+        assert_eq!(cache.len(), 1, "the same key is the same entry");
+        // Every field of the key is part of it.
+        cache.lines(&f, &small("Ab"), 20);
+        cache.lines(
+            &f,
+            &RenderOptions {
+                size: 14.0,
+                ..small("Aa")
+            },
+            20,
+        );
+        cache.lines(&f, &small("Aa"), 22);
+        assert_eq!(cache.len(), 4);
+        // And it never grows past its capacity, however far someone scrolls.
+        for i in 0..200 {
+            cache.lines(&f, &small(&format!("line {i}")), 20);
+            assert!(cache.len() <= CAPACITY);
+        }
+        assert_eq!(cache.len(), CAPACITY);
+        cache.clear();
+        assert_eq!(cache.len(), 0);
+    }
+
+    #[test]
+    fn a_face_that_cannot_be_rendered_says_so_instead_of_drawing_nothing() {
+        let mut cache = Cache::default();
+        let mut f = face("SourceSerif4-Regular.otf");
+        f.file.path = "/nonexistent/gone.otf".into();
+        let lines = cache.lines(&f, &small("Aa"), 20);
+        assert_eq!(lines.len(), 1);
+        assert!(text_of(&lines).starts_with("preview unavailable: "));
+        assert_eq!(lines[0].spans[0].style.fg, Some(Color::Red));
+        // The failure is cached too, so a broken face does not retry the read on every
+        // frame the pane is drawn.
+        assert_eq!(cache.len(), 1);
+        cache.lines(&f, &small("Aa"), 20);
+        assert_eq!(cache.len(), 1);
+    }
+
+    /// The whole path, over every fixture: a real rendering, into a real pane, at the
+    /// sizes and widths a terminal actually has.
+    #[test]
+    fn every_fixture_fills_a_pane_of_any_size() {
+        let mut cache = Cache::default();
+        for name in [
+            "Amiri-Regular.ttf",
+            "BricolageGrotesque[opsz,wdth,wght].ttf",
+            "Nabla[EDPT,EHLT].ttf",
+            "SourceSerif4-Regular.otf",
+            "inter-latin-400-normal.woff",
+            "inter-latin-400-normal.woff2",
+        ] {
+            let f = face(name);
+            let text = sample_for(&f);
+            assert!(!text.is_empty(), "{name} has no sample text");
+            for cols in [4u32, 20, 80, 200] {
+                for rows in [2u32, 3, 8, 30] {
+                    let opts = RenderOptions {
+                        text: text.clone(),
+                        size: 14.0,
+                        padding: 1,
+                        max_width: Some(cols),
+                        ..Default::default()
+                    };
+                    let lines = cache.lines(&f, &opts, rows * 2);
+                    assert!(
+                        lines.len() <= rows as usize,
+                        "{name}: {} lines into {rows} rows",
+                        lines.len(),
+                    );
+                    assert!(
+                        lines.iter().all(|l| l.width() <= cols as usize),
+                        "{name}: a line wider than the {cols}-column pane",
+                    );
+                    assert!(
+                        text_of(&lines).contains('▀'),
+                        "{name} at {cols}x{rows}: an empty preview",
+                    );
+                }
+            }
+        }
+    }
+}
