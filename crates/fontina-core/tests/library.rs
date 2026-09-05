@@ -1139,6 +1139,7 @@ fn schemas_cover_the_new_types() {
         "CollectionExport",
         "ImportReport",
         "BundleReport",
+        "TagSyncReport",
         "Source",
         "ActivationRecord",
         "Conflict",
