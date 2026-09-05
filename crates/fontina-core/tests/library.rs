@@ -512,6 +512,62 @@ fn a_script_filter_can_ask_how_much_of_it() {
     assert_eq!(latin(deepest + 1), 0, "nothing is deeper than the deepest");
 }
 
+/// The script facet is ordered by how much of each script there is.
+///
+/// `Zyyy` and `Zinh` — common punctuation and inherited marks — are in almost every font
+/// and are never what it is for. Ordering by face count puts them at the top of the list
+/// a person is scanning for "which of my fonts do Arabic". Depth says which is which, and
+/// the index has counted it since the `face_scripts` table.
+#[test]
+fn the_script_facet_leads_with_the_scripts_a_font_is_actually_for() {
+    let index = indexed();
+    let facets = index.facets(&FaceFilter::default()).unwrap();
+    let order: Vec<&str> = facets.script.iter().map(|c| c.value.as_str()).collect();
+
+    let pos = |s: &str| order.iter().position(|v| *v == s).unwrap_or(usize::MAX);
+    assert!(
+        pos("Arab") < pos("Zinh"),
+        "Amiri's thousands of Arabic codepoints outrank marks every font has: {order:?}"
+    );
+    assert!(pos("Latn") < pos("Zinh"), "{order:?}");
+    assert!(
+        pos("Zyyy") < pos("Zinh"),
+        "and depth orders the two common scripts against each other: {order:?}"
+    );
+
+    // The count is faces, which is what the facet means and what clicking it returns.
+    for c in &facets.script {
+        let found = index
+            .list(&FaceFilter {
+                scripts: vec![c.value.clone()],
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(
+            found.len() as i64,
+            c.count,
+            "the facet offers {} for {} and the filter returns {}",
+            c.count,
+            c.value,
+            found.len()
+        );
+    }
+
+    // Following the filter, as every other facet does.
+    let arabic = index
+        .facets(&FaceFilter {
+            scripts: vec!["Arab".into()],
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(arabic.faces, 1);
+    assert!(
+        arabic.script.iter().all(|c| c.count == 1),
+        "one face, so every script it has is offered once: {:?}",
+        arabic.script
+    );
+}
+
 /// The table is filled from the metadata already stored, so an older index answers the
 /// new question without anyone rescanning.
 #[test]

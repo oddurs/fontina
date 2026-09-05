@@ -23,11 +23,11 @@ expression: drawn
 │  color       │ Sheets      w waterfalls the face down the size ladder; C compares every face          │              │
 │Script        │             the selection stands for. j/k scroll, +/- resize a comparison              │              │
 │  Latn        │ Specimen    s writes an HTML specimen for the selection and opens it in your           │              │
-│  Zinh        │             browser, for the things a terminal cannot show honestly                    │              │
+│  Arab        │             browser, for the things a terminal cannot show honestly                    │              │
 │  Zyyy        │ Index       R rescans every source (fontina scan --prune)                              │              │
-│  Grek        │ Quit        q                                                                          │              │
-│  Arab        │                                                                                        │              │
-│  Cyrl        │ The status line shows the CLI command for what you see. Everything here is a command.  │              │
+│  Cyrl        │ Quit        q                                                                          │              │
+│  Zinh        │                                                                                        │              │
+│  Grek        │ The status line shows the CLI command for what you see. Everything here is a command.  │              │
 │License       │                                                                                        │              │
 │  OFL-1.1     │ any key to close                                                                       │              │
 │Freedom       │                                                                                        │              │
