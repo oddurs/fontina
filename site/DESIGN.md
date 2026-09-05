@@ -38,6 +38,7 @@ rather than overriding it.
 
 | Token | Value | At 16px | Used for |
 |---|---|---|---|
+| `--text-3xl` | `clamp(2rem, …, 2.75rem)` | 32 → 44px | the hero's opening line |
 | `--text-2xl` | `clamp(1.75rem, …, 2.25rem)` | 28 → 36px | `h1` |
 | `--text-xl` | `clamp(1.5rem, …, 1.75rem)` | 24 → 28px | a section opener |
 | `--text-lg` | `clamp(1.25rem, …, 1.375rem)` | 20 → 22px | `h2` |
@@ -46,7 +47,11 @@ rather than overriding it.
 | `--text-sm` | `0.875rem` | 14px | nav, meta, tables, code |
 | `--text-xs` | `0.75rem` | 12px | labels, badges |
 
-The top three steps interpolate with the viewport rather than snapping at a
+`--text-3xl` is used in one place. A landing page's opening line is the only type on the
+site with a job no other size can do, and borrowing the `h1` step left it looking like a
+chapter heading with buttons underneath.
+
+The top four steps interpolate with the viewport rather than snapping at a
 breakpoint: a 36px `h1` is right at the top of a desktop column and too loud on a
 phone. The scale still names both endpoints, and the four steps below `--text-lg` do
 not move — body text should be the size the reader asked for.
@@ -217,18 +222,33 @@ hairline, one radius. The last child loses its margin.
 ### Hero
 
 ```html
-<header class="hero">
-  <h1>fontina</h1>
-  <p class="tagline">A font manager for the terminal.</p>
-  <p class="lead">One paragraph of what it is.</p>
+<section class="hero">
+  <h1>Find any font you have. Use it in anything. Install nothing.</h1>
+  <p class="lead">What it is, and how.</p>
   <p class="btn-row">…</p>
-</header>
+  <ul class="strip">…refusals…</ul>
+  <pre class="term">…the tool running…</pre>
+</section>
 ```
 
-The block a landing page opens with. Not a marketing hero: no ornament, no full-bleed
-anything, no ornamental type. It exists so that the first screen answers *what is this*
-before the page starts answering *what has happened lately*. The old front page led with
-news and release status, which is a project's own view of itself rather than a reader's.
+A section, and the only one that opens rather than continues. Not a marketing hero: no
+ornament, no full-bleed anything, nothing that moves. The rule underneath closes it, the
+way every other section is opened by one.
+
+**It does not repeat the name.** The masthead six lines above already says what this is
+called, and a mark and a wordmark twice in one screen is an identity arguing with itself.
+The opening line does the job a landing page's opening line is for instead: what you can
+do, in the plainest words that are true.
+
+Benefits are allowed here; adjectives are not. Every claim in the hero is a verb or a
+refusal — *find*, *use*, *install nothing*, *no network*, *no telemetry* — and each is
+answered further down by the section that proves it. The transcript sits inside the hero
+rather than after it, under the refusals, so the last thing before the page moves on is
+the tool running rather than another sentence about it. That is the concept: the claim
+and its evidence in one screen, with no adjective between them.
+
+The manual's index uses the same hero with a `.tagline` under the heading, because there
+the `h1` is a title rather than a sentence and needs a line to say what the thing is.
 
 ### Section
 

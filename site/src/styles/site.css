@@ -31,6 +31,10 @@
   --text-lg: clamp(1.25rem, 1.16rem + 0.38vw, 1.375rem);   /* 20 -> 22px  h2 */
   --text-xl: clamp(1.5rem, 1.34rem + 0.7vw, 1.75rem);      /* 24 -> 28px  opener */
   --text-2xl: clamp(1.75rem, 1.35rem + 1.75vw, 2.25rem);   /* 28 -> 36px  h1 */
+  /* An eighth step, used in one place. A landing page's opening line is the one
+     piece of type on the site with a job no other size can do, and borrowing the
+     h1 step left it looking like a chapter heading with buttons under it. */
+  --text-3xl: clamp(2rem, 1.4rem + 2.6vw, 2.75rem);        /* 32 -> 44px  hero */
 
   --leading-tight: 1.25;  /* headings */
   --leading-snug: 1.45;   /* dense lists, code, nav */
@@ -535,12 +539,33 @@ a:focus-visible {
 .panel > :last-child { margin-bottom: 0; }
 
 /* ------------------------------------------------------------------ Hero */
-/* The title block a landing page opens with. Not a marketing hero: no ornament,
-   no full-bleed anything. It exists so the first screen answers "what is this"
-   before it starts answering "what has happened lately". */
-.hero { margin-bottom: var(--space-7); }
-.hero h1 { margin-bottom: var(--space-2); }
-.hero h1 .lockup { gap: 0.3em; }
+/* A section, and the only one that opens rather than continues. Not a marketing
+   hero: no ornament, no full-bleed anything, nothing that moves.
+
+   It does not repeat the name. The masthead six lines above already says what
+   this is called, and a mark and a wordmark twice in one screen is an identity
+   arguing with itself. So the opening line does the job a landing page's
+   opening line is for: what you can do, in the plainest words that are true.
+   Benefits are allowed. Adjectives are not — every claim in the hero is either
+   a verb or a refusal, and each one is answered further down the page by the
+   section that proves it.
+   
+   The rule underneath closes it, the way every other section is opened by one. */
+.hero {
+  padding-bottom: var(--space-7);
+  margin-bottom: var(--space-7);
+  border-bottom: 1px solid var(--line);
+}
+.hero h1 {
+  font-size: var(--text-3xl);
+  letter-spacing: -0.022em;
+  /* Narrower than the prose measure: an opening line wants to break where the
+     sense breaks, and at this size a full measure is four words a line anyway. */
+  max-width: 24ch;
+  margin-bottom: var(--space-4);
+}
+/* A subtitle for a hero that has one; the manual's index does, the landing page
+   does not, because there the h1 is already the sentence. */
 .hero .tagline {
   font-size: var(--text-md);
   color: var(--ink);
@@ -548,6 +573,10 @@ a:focus-visible {
   max-width: var(--measure);
 }
 .hero .lead { margin-bottom: var(--space-5); }
+/* The proof belongs to the claim: the transcript sits inside the hero, under
+   the refusals, so the last thing before the page moves on is the tool running
+   rather than another sentence about it. */
+.hero .term { margin-bottom: 0; }
 
 /* --------------------------------------------------------------- Section */
 /* Rhythm. A long page of undifferentiated blocks is the thing that makes a
