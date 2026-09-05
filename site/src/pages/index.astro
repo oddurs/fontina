@@ -2,34 +2,8 @@
 import Base from '../layouts/Base.astro';
 import { getCollection } from 'astro:content';
 import { current } from '../releases';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { frame } from '../frames';
 
-// The browser is neither a screenshot nor a recording. `fontina ui` draws text, so
-// these are that text: three frames of the same terminal, read at build time from the
-// snapshots a test in the CLI asserts on every run. They cannot go stale without a
-// test going red first, and the sequence is a real session — the family list, a family
-// opened, the help overlay — rather than a story about one. site.yml lists this
-// directory so moving a snapshot rebuilds the site.
-//
-// Resolved from the working directory, which is site/ for both `npm run build` and the
-// deploy workflow, the same assumption Base.astro makes for `git log`.
-const SNAPS = 'crates/fontina-cli/src/ui/snapshots';
-function frame(name: string): string {
-  const path = resolve(process.cwd(), `../${SNAPS}/fontina__ui__tests__${name}.snap`);
-  try {
-    return readFileSync(path, 'utf8')
-      .split(/^---$/m)
-      .slice(2)
-      .join('---')
-      .replace(/^\n/, '')
-      .trimEnd();
-  } catch {
-    throw new Error(
-      `the front page draws the browser from ${path}, which is missing. If the snapshot moved, update this path and the one in .github/workflows/site.yml.`,
-    );
-  }
-}
 // One session in five frames, in the order a person meets them: the list, a family
 // opened, what that face covers, the axes it can be moved along, and the keys. Each
 // caption is the key that got there, so the strip reads as a session rather than a
