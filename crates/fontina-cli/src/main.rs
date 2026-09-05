@@ -1233,7 +1233,13 @@ fn print_table(faces: &[FaceSummary]) {
         .unwrap_or(5)
         .clamp(5, 28);
     let any_tags = faces.iter().any(|f| !f.tags.is_empty());
-    println!(
+    // One `println!` per row is one `write` syscall per row: Rust's stdout is line
+    // buffered whether or not it is a terminal. Listing five thousand faces spent more
+    // time in the kernel than in the query. Lock it once and buffer the whole table.
+    let stdout = std::io::stdout();
+    let mut out = std::io::BufWriter::new(stdout.lock());
+    let _ = writeln!(
+        out,
         "{:>6}  {:<w_fam$}  {:<w_sub$}  {:>4}  {:>4}  {:<5}  {:<12}  path{}",
         "id",
         "family",
@@ -1245,8 +1251,16 @@ fn print_table(faces: &[FaceSummary]) {
         if any_tags { "  [tags]" } else { "" }
     );
     for f in faces {
-        let flags = format!(
-            "{}{}{}{}{}",
+        // The flags column is exactly five characters, so it goes straight into the row
+        // rather than through a `format!` and an allocation for every face listed.
+        let _ = writeln!(
+            out,
+            "{:>6}  {:<w_fam$}  {:<w_sub$}  {:>4}  {:>4}  {}{}{}{}{}  {:<12}  {}{}{}",
+            f.id,
+            truncate(&f.family, w_fam),
+            truncate(&f.subfamily, w_sub),
+            f.weight.round() as i64,
+            f.width.round() as i64,
             if f.variable { "V" } else { "-" },
             if f.color { "C" } else { "-" },
             if f.italic { "I" } else { "-" },
@@ -1256,16 +1270,7 @@ fn print_table(faces: &[FaceSummary]) {
                 Some(ActivationState::Installed) => "i",
                 None => "-",
             },
-            freedom_flag(f.freedom)
-        );
-        println!(
-            "{:>6}  {:<w_fam$}  {:<w_sub$}  {:>4}  {:>4}  {:<5}  {:<12}  {}{}{}",
-            f.id,
-            truncate(&f.family, w_fam),
-            truncate(&f.subfamily, w_sub),
-            f.weight.round() as i64,
-            f.width.round() as i64,
-            flags,
+            freedom_flag(f.freedom),
             truncate(f.license.as_deref().unwrap_or("-"), 12),
             f.path,
             if f.index > 0 || f.container == "ttc" {
@@ -1280,7 +1285,10 @@ fn print_table(faces: &[FaceSummary]) {
             }
         );
     }
-    println!("{} face(s)", faces.len());
+    let _ = writeln!(out, "{} face(s)", faces.len());
+    // BufWriter swallows a failed flush in its destructor, and a closed pipe is the
+    // ordinary way this ends; `die_on_broken_pipe` has already made that a signal.
+    let _ = out.flush();
 }
 
 /// The fifth character of the `flags` column: `F` free, `N` nonfree, `?` a license
@@ -1294,11 +1302,13 @@ fn freedom_flag(f: Freedom) -> &'static str {
     }
 }
 
-fn truncate(s: &str, n: usize) -> String {
+/// Shorten to `n` characters, borrowing when it already fits. Listing a large library
+/// formats two of these per row, and almost every one of them fits.
+fn truncate(s: &str, n: usize) -> std::borrow::Cow<'_, str> {
     if s.chars().count() <= n {
-        s.to_string()
+        std::borrow::Cow::Borrowed(s)
     } else {
-        s.chars().take(n.saturating_sub(1)).collect::<String>() + "…"
+        std::borrow::Cow::Owned(s.chars().take(n.saturating_sub(1)).collect::<String>() + "…")
     }
 }
 

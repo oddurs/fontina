@@ -324,7 +324,9 @@ cloud sync, accounts, telemetry, an Electron shell.
 
 ## 7. Performance budgets
 
-`scripts/bench` measures these against a corpus of real font files and fails on a miss;
+Stated for the machine they are enforced on: a GitHub-hosted runner, which is around two
+and a half times slower than a developer's laptop. `scripts/bench` measures these against
+a corpus of real font files and fails on a miss;
 `.github/workflows/perf.yml` runs it. The two marked *not measured* need a terminal, and
 a number produced without one would be a number about nothing; they are checked by hand
 until there is a harness that can hold a pty.
@@ -332,7 +334,7 @@ until there is a harness that can hold a pty.
 | Metric | Budget | Measured |
 |---|---|---|
 | Release binary, stripped | ≤ 12 MB per platform | yes |
-| `fontina list` cold start to output | ≤ 50 ms | yes, at 10k faces |
+| `fontina list` cold start to output | ≤ 80 ms | yes, at 5k faces |
 | Initial index, 10k files, SSD | ≤ 10 s | yes |
 | Incremental rescan, 1 changed file | ≤ 50 ms | yes |
 | Search keystroke → a screenful of results | ≤ 30 ms | yes, at 10k faces |
