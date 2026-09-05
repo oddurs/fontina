@@ -634,6 +634,7 @@ dependencies = [
  "blake3",
  "core-foundation",
  "directories",
+ "libc",
  "serde",
  "thiserror 2.0.20",
  "windows-sys 0.61.2",

@@ -30,6 +30,7 @@
 //! the per-user font directory, registrations are the OS's own per-user mechanisms.
 
 pub mod agent;
+pub mod tags;
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -75,6 +76,8 @@ pub enum PlatformError {
     AlreadyPresent(PathBuf),
     #[error("no per-user font directory on this system")]
     NoUserDir,
+    #[error("{0} is on a filesystem that does not keep file tags")]
+    NoTags(PathBuf),
     #[error("{0}")]
     Os(String),
 }

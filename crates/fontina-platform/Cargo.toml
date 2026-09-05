@@ -20,6 +20,11 @@ serde.workspace = true
 thiserror.workspace = true
 blake3.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+# getxattr/setxattr/removexattr for `tags`. Already in the tree through rusqlite and
+# notify, so this adds a direct use of a crate that was being built anyway.
+libc = "0.2"
+
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.10"
 
