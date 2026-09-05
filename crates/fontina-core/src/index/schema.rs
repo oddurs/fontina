@@ -182,6 +182,17 @@ CREATE INDEX face_languages_tag ON face_languages(tag COLLATE NOCASE);
 ALTER TABLE faces ADD COLUMN is_fixed_pitch INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX faces_fixed_pitch ON faces(is_fixed_pitch);
 "#,
+    // 8: the script filter compares `COLLATE NOCASE`, and migration 5's index is on the
+    // column's default collation, so SQLite could not use it — `EXPLAIN QUERY PLAN` said
+    // `SCAN fs`. That is the very thing migration 5 was added to stop doing, moved from
+    // `faces` to `face_scripts`. `face_languages_tag` already had this right.
+    //
+    // A new index rather than a corrected one: migrations are append-only, and an index
+    // is cheap enough that dropping the old one is not worth the risk of an index still
+    // being useful to a query someone adds later on the exact-case column.
+    r#"
+CREATE INDEX face_scripts_script_nocase ON face_scripts(script COLLATE NOCASE, codepoints);
+"#,
 ];
 
 pub fn migrate(conn: &mut Connection) -> Result<()> {
