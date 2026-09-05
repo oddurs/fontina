@@ -39,9 +39,11 @@ was found.
 |---|---|---|
 | `name/family` | error | no family name (name IDs 1 and 16 are empty) |
 | `name/postscript` | error, warn | no PostScript name; or one that is over 63 characters or contains characters outside printable ASCII |
-| `name/full` | warn | full name does not start with the family name |
+| `name/full-name` | warn | full name does not start with the family name |
 | `name/version` | warn | no version string (name ID 5), or one that is not parseable |
 | `name/designer` | info | no designer or manufacturer recorded (name IDs 8, 9) |
+| `name/empty` | warn | a `name` record is present but carries no text |
+| `name/whitespace` | warn | a `name` record has leading or trailing whitespace |
 | `os2/missing` | error | no `OS/2` table |
 | `os2/weight-class` | error | `usWeightClass` outside 1..1000 |
 | `os2/width-class` | error | `usWidthClass` outside 1..9 |
@@ -51,6 +53,8 @@ was found.
 | `os2/fs-type` | info | `fsType` restricts embedding: no embedding, preview and print only, or bitmap only |
 | `os2/vendor-id` | info | `achVendID` is unset or `UKWN` |
 | `metrics/typo-vs-hhea` | warn | `OS/2` typo metrics differ from `hhea` and USE_TYPO_METRICS is not set; line height will vary by platform |
+| `metrics/line-gap` | info | `hhea.lineGap` is not zero, so line height varies by platform |
+| `metrics/x-height` | warn | `sxHeight` is above `sCapHeight` |
 | `head/units-per-em` | error | `unitsPerEm` outside 16..16384 |
 | `head/created` | info | `head.created` is unset |
 | `hhea/ascender` | error | `hhea.ascender` is not positive |
@@ -61,9 +65,12 @@ was found.
 | `cmap/empty` | error | `cmap` maps no codepoints |
 | `cmap/space` | warn | U+0020 SPACE is not mapped |
 | `cmap/nbsp` | info | U+00A0 NO-BREAK SPACE is not mapped |
+| `cmap/private-use` | info | more than a handful of codepoints in a Private Use Area, which mean nothing without this font |
 | `cmap/basic-latin` | warn | a Latin font does not map all of A to Z |
 | `fvar/stat` | warn | variable font without a `STAT` table; style linking will be wrong in many apps |
 | `fvar/instances` | warn | variable font without named instances |
+| `fvar/instance-range` | error | a named instance sits outside its own axis range |
+| `fvar/wght-os2` | warn | the `wght` axis default disagrees with `usWeightClass` |
 | `fvar/instance-name` | warn | named instance without a resolvable name |
 | `fvar/axis-range` | warn | an axis has a zero-width range |
 | `fvar/axis-tag` | warn | a lowercase axis tag that is not a registered axis; custom tags should be uppercase |
@@ -73,6 +80,9 @@ was found.
 | `license/unknown` | warn | license text present but not recognised as any SPDX license |
 | `license/url` | info | OFL font without a license URL (name ID 14) |
 | `license/rfn` | info | a Reserved Font Name is declared that does not match the family name |
+| `license/free` | info | the licence grants the four freedoms |
+| `license/nonfree` | warn | the licence withholds the freedom to change or redistribute the font |
+| `license/embedding` | info | `OS/2.fsType` restricts embedding; fontina reports it and does not act on it |
 | `license/copyright` | warn | no copyright notice (name ID 0) |
 | `file/extension` | warn | the file extension does not match the container and outline format |
 

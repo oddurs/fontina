@@ -109,6 +109,7 @@ pub fn check_face(f: &FaceMetadata) -> CheckReport {
     layout(&mut c);
     license(&mut c);
     embedding(&mut c);
+    records(&mut c);
     file(&mut c);
     c.out
         .sort_by(|a, b| b.severity.cmp(&a.severity).then_with(|| a.id.cmp(b.id)));
@@ -303,6 +304,29 @@ fn metrics(c: &mut Ctx) {
             format!("hhea.descender is positive ({})", m.descender),
         );
     }
+    // fontbakery asks for a lineGap of 0, with the leading carried in the typo metrics
+    // instead: the two are combined differently on each platform, and a non-zero gap is
+    // the usual reason one paragraph sets taller on Windows than on macOS.
+    if m.line_gap != 0 {
+        c.info(
+            "metrics/line-gap",
+            format!(
+                "hhea.lineGap is {}; 0, with the leading in the typo metrics, sets the same everywhere",
+                m.line_gap
+            ),
+        );
+    }
+    // `OS/2.sCapHeight` is `Some(0)` for any v2+ font that leaves it unset, which is
+    // ordinary for a script with no capitals. Zero is "not stated", not "no capitals".
+    if let (Some(x), Some(cap)) = (m.x_height, m.cap_height)
+        && cap > 0
+        && x > cap
+    {
+        c.warn(
+            "metrics/x-height",
+            format!("xHeight {x} is above capHeight {cap}, which no Latin design does"),
+        );
+    }
     if m.created.is_none() {
         c.info("head/created", "head.created is unset");
     }
@@ -320,6 +344,33 @@ fn coverage(c: &mut Ctx) {
         // about, so this no longer returns.
         c.error("cmap/empty", "cmap maps no codepoints");
     } else {
+        // Private Use characters mean nothing without the font that defines them, so a
+        // font leaning on them is worth knowing about before it is used to set text.
+        let pua: u32 = cov
+            .ranges
+            .iter()
+            .map(|&[lo, hi]| {
+                [(0xE000, 0xF8FF), (0xF0000, 0xFFFFD), (0x100000, 0x10FFFD)]
+                    .iter()
+                    .map(|&(a, b)| {
+                        let (from, to) = (lo.max(a), hi.min(b));
+                        if from <= to { to - from + 1 } else { 0 }
+                    })
+                    .sum::<u32>()
+            })
+            .sum();
+        // A font or two of PUA is a logo — U+F8FF alone is the Apple mark, and most
+        // fonts on a Mac carry it. The finding is about a font that *leans* on private
+        // codepoints, so that text set with it means nothing without it.
+        const PUA_NOISE: u32 = 16;
+        if pua > PUA_NOISE {
+            c.info(
+                "cmap/private-use",
+                format!(
+                    "{pua} codepoints in a Private Use Area; text using them means nothing without this font"
+                ),
+            );
+        }
         let has = |cp: u32| cov.ranges.iter().any(|[lo, hi]| *lo <= cp && cp <= *hi);
         if !has(0x20) {
             c.warn("cmap/space", "U+0020 SPACE is not mapped");
@@ -490,6 +541,51 @@ fn embedding(c: &mut Ctx) {
                 os2.fs_type, os2.embedding.level
             ),
         );
+    }
+}
+
+/// The `name` table as a whole, rather than the few records the other checks read by
+/// id. Whitespace and empty strings here reach every menu that lists the font, and they
+/// are invisible in the tools that show them.
+fn records(c: &mut Ctx) {
+    // A `name` string is repeated across platforms and languages, so the same fault
+    // appears in several records. Report each one once: every other check in this file
+    // fires at most once per id, and ten identical warnings would drown the report.
+    let mut seen: Vec<(u16, bool)> = Vec::new();
+    for r in &c.f.name_records {
+        let empty = r.value.is_empty();
+        if !empty && r.value.trim() == r.value {
+            continue;
+        }
+        if seen.contains(&(r.name_id, empty)) {
+            continue;
+        }
+        seen.push((r.name_id, empty));
+        if empty {
+            c.warn(
+                "name/empty",
+                format!("name ID {} is present but empty", r.name_id),
+            );
+        } else {
+            // Name ID 13 carries the whole licence, which is often thousands of
+            // characters; the fault is the padding, so the value is only a hint.
+            c.warn(
+                "name/whitespace",
+                format!(
+                    "name ID {} has leading or trailing whitespace: {:?}",
+                    r.name_id,
+                    ellipsis(&r.value, 40)
+                ),
+            );
+        }
+    }
+}
+
+/// `s` clipped to `max` characters, with an ellipsis when it was longer.
+fn ellipsis(s: &str, max: usize) -> String {
+    match s.char_indices().nth(max) {
+        Some((i, _)) => format!("{}…", &s[..i]),
+        None => s.to_string(),
     }
 }
 

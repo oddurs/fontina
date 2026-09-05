@@ -679,6 +679,66 @@ fn cases() -> Vec<Case> {
                 f
             },
         ),
+        case(
+            AMIRI,
+            "name/empty",
+            Severity::Warn,
+            "a name record that exists but carries no text, which shows as a blank entry in every font menu",
+            || {
+                let mut f = face(AMIRI);
+                f.name_records[0].value = String::new();
+                f
+            },
+        ),
+        case(
+            AMIRI,
+            "name/whitespace",
+            Severity::Warn,
+            "a name record padded with space: invisible in the tools that show it, and it sorts wrongly in the ones that do not",
+            || {
+                let mut f = face(AMIRI);
+                f.name_records[0].value = format!(" {} ", f.name_records[0].value);
+                f
+            },
+        ),
+        case(
+            AMIRI,
+            "metrics/line-gap",
+            Severity::Info,
+            "a non-zero hhea.lineGap, the usual reason a paragraph sets taller on one platform than another",
+            || {
+                let mut f = face(AMIRI);
+                f.metrics.line_gap = 200;
+                f
+            },
+        ),
+        case(
+            AMIRI,
+            "metrics/x-height",
+            Severity::Warn,
+            "an xHeight above the capHeight, which no Latin design has",
+            || {
+                let mut f = face(AMIRI);
+                f.metrics.cap_height = Some(700);
+                f.metrics.x_height = Some(900);
+                // A stated cap height, not the Some(0) that means "unset".
+                assert!(f.metrics.cap_height.is_some_and(|c| c > 0));
+                f
+            },
+        ),
+        case(
+            AMIRI,
+            "cmap/private-use",
+            Severity::Info,
+            "coverage inside a Private Use Area, where the codepoints mean nothing without this font",
+            || {
+                let mut f = face(AMIRI);
+                // Comfortably over the threshold that separates an icon set from a
+                // font that merely carries a logo.
+                f.coverage.ranges.push([0xE000, 0xE0FF]);
+                f
+            },
+        ),
         healthy_case(
             "license/free",
             Severity::Info,
@@ -743,6 +803,7 @@ const ALL_IDS: &[&str] = &[
     "cmap/basic-latin",
     "cmap/empty",
     "cmap/nbsp",
+    "cmap/private-use",
     "cmap/space",
     "file/extension",
     "fvar/axis-range",
@@ -768,12 +829,16 @@ const ALL_IDS: &[&str] = &[
     "license/rfn",
     "license/unknown",
     "license/url",
+    "metrics/line-gap",
     "metrics/typo-vs-hhea",
+    "metrics/x-height",
     "name/designer",
+    "name/empty",
     "name/family",
     "name/full-name",
     "name/postscript",
     "name/version",
+    "name/whitespace",
     "os2/bold-weight",
     "os2/fs-selection",
     "os2/fs-type",
@@ -794,11 +859,45 @@ const UNTRIGGERABLE: &[(&str, &str)] = &[];
 
 const CHECK_RS: &str = include_str!("../src/check.rs");
 
+/// The published table of check ids on the web site. It states that every check has an
+/// identifier and then lists them, which is a promise that goes stale silently: `ALL_IDS`
+/// is guarded by a test and this table was not, so it had drifted by eleven ids.
+const CHECKS_DOC: &str = include_str!("../../../site/src/content/docs/checks.md");
+
 /// The ids `check.rs` really emits, read out of the source. Every finding is raised
 /// through `Ctx::error`, `Ctx::warn` or `Ctx::info` with the id as a literal first
 /// argument, so the set can be recovered without running anything. A future check that
 /// computes its id would break this and should be caught here rather than silently
 /// escape coverage.
+/// Ids the web site documents, read out of its table.
+fn ids_in_doc() -> BTreeSet<&'static str> {
+    CHECKS_DOC
+        .lines()
+        .filter_map(|l| l.strip_prefix("| `"))
+        .filter_map(|l| l.split_once('`'))
+        .map(|(id, _)| id)
+        .filter(|id| id.contains('/'))
+        .collect()
+}
+
+/// The documented table and the code agree, in both directions.
+///
+/// Documentation that lists identifiers is a promise, and this one had quietly fallen
+/// eleven ids behind while claiming to be complete. A reader filtering on an id they
+/// read there deserves it to exist.
+#[test]
+fn the_documented_check_ids_are_the_real_ones() {
+    let code = ids_in_source();
+    let doc = ids_in_doc();
+    let missing: Vec<_> = code.difference(&doc).collect();
+    let stale: Vec<_> = doc.difference(&code).collect();
+    assert!(
+        missing.is_empty() && stale.is_empty(),
+        "site/src/content/docs/checks.md is out of step with check.rs\n  \
+         undocumented: {missing:?}\n  documented but gone: {stale:?}"
+    );
+}
+
 fn ids_in_source() -> BTreeSet<&'static str> {
     let mut ids = BTreeSet::new();
     for marker in [".error(", ".warn(", ".info("] {
