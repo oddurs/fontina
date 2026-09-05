@@ -331,7 +331,47 @@ that pipes candidates in).
 Explicit non-goals, unchanged: font editing, format conversion/subsetting (point to
 `fonttools`), cloud sync, accounts, telemetry, an Electron shell.
 
-### M4 — Ask (everything the index knows, askable)
+### M4 — Ask — delivered 2026-09-05
+Laid out as pull requests in §12 and shipped in that order.
+1. **Find a variable font at every weight it spans** (#94). `faces.weight` held the
+   default instance and the filter was a point test against it, so `list --weight 400`
+   did not return a font whose `wght` axis plainly reaches 400. Four columns and an
+   overlap test.
+2. **Say what it can be set to** (#95). The range in `list`, and a variable face counted
+   into every facet bucket it covers, so the facet and the filter beside it agree.
+3. **Script coverage as a table** (#99), with the depth `Coverage.scripts` had counted
+   since M0 and the query had thrown away.
+4. **Ask for two scripts, and for depth** (#100). `--script` repeats and means *and*;
+   `--script-min` is the floor; the facet leads with the scripts a font is *for* rather
+   than with the marks every font carries.
+5. **Languages, and which claim each one is** (#101). A language system tag says the
+   shaping engine has rules for it; a BCP 47 name record says only that the font names
+   itself in it. Different claims, kept apart.
+6. **`--lang`, the facet, and the two lists in `info`** (#102).
+7. **`--mono` and `--proportional`** (#103), reporting `post.isFixedPitch` and never
+   second-guessing it: a font whose advances contradict its own flag is a health check,
+   not a filter that quietly disagrees with the file.
+8. **`Index::related`** (#104). Jaccard over `face_ranges`, computed on demand. The
+   first thing fontina works out for itself rather than being told — and nothing is
+   stored, so when it is wrong it is wrong once.
+9. **`fontina variants`** (#105), printing the score beside the metrics because covering
+   the same characters is not the same as being the same design.
+
+§12 items 10 and 11 were not separate pull requests: a fixture-backed test and the
+schema regeneration shipped inside each item, which is what `CLAUDE.md` asks for anyway.
+
+Reviewed as a whole afterwards, as M2 was in #76, and it found four things nine separate
+reviews had not: a facet whose browser command meant the opposite of the screen, a
+`--lang-source` that silently widened the filter it was meant to narrow, a `COLLATE
+NOCASE` that made the new script index unusable so the query still scanned, and a
+`related()` that a single unreadable row could abort. Two of those were invisible to any
+test of the *answers* — the rows were right and the plan or the command was wrong — which
+is the argument for reviewing a milestone as a whole rather than a pull request at a
+time.
+
+What follows is the case as it stood before the work, kept because §12 argues from it and
+because the fifth gap it describes is the one worth returning to.
+
 The metadata model has been complete since M0. The query surface has not caught up with
 it, so four kinds of question the index holds the answer to cannot be put to it.
 
@@ -373,8 +413,8 @@ There is no standard to read the answer from, which makes what to build here a n
 question than it first looks. §12 says what to do, and what not to.
 
 M4 does not depend on M3 and M3 does not depend on M4; the numbering is order of
-discovery, not order of work. Item 1 is closer to a bug than a milestone item and should
-be pulled out and shipped whenever someone has an hour.
+discovery, not order of work. Item 1 was closer to a bug than a milestone item and was
+pulled out and shipped first (#94).
 
 
 ---
@@ -709,6 +749,19 @@ once rather than permanently.
     facets and the `variants` output type. `schemas/face.json` does not move —
     `FaceMetadata` is unchanged, which is worth saying out loud in the pull request so no
     one goes looking for a `SCHEMA_VERSION` bump that should not be there.
+
+Items 1-9 are delivered (#94, #95, #99, #100, #101, #102, #103, #104, #105). Items 10 and
+11 were not separate pull requests: each item carried its own fixture-backed test and its
+own schema regeneration, and `face.json` never moved.
+
+Two things learned in the doing, recorded because the next migration will meet both.
+`ALTER TABLE ... DEFAULT` is a decision, not a formality: the span columns had to be
+seeded from the static values before any JSON was read, or a face whose stored metadata
+would not parse became unfindable by weight — a font vanishing from an index that still
+lists it. The spacing column's `DEFAULT 0` needed no such seed, because "the font did not
+say so" is what a missing `post` table means. And the three migration-rollback tests have
+to learn every new migration; a migration that forgets fails them loudly, which is the
+point, but it is the place to look when a new one lands.
 
 ### The two questions behind all of it
 
