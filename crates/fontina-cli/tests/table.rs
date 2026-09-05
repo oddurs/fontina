@@ -234,9 +234,11 @@ fn the_tag_table_lines_up_with_a_japanese_tag() {
 #[test]
 fn a_path_or_a_name_is_never_cut_short_to_fit_its_column() {
     let s = session("whole-path");
+    // One long name rather than a deep tree: Windows still has a path-length limit and
+    // the sandbox is already inside a temporary directory.
     let deep = s
         .root
-        .join("a-directory-with-a-deliberately-long-name/and-another-one-below-it/and-a-third");
+        .join("a-directory-with-a-deliberately-long-name-to-fill-the-column");
     std::fs::create_dir_all(&deep).unwrap();
     let deep_str = deep.to_string_lossy().into_owned();
     assert!(
