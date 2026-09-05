@@ -88,6 +88,37 @@
       ],
       "type": "object"
     },
+    "BundleReport": {
+      "description": "What writing a bundle did.",
+      "properties": {
+        "bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "dir": {
+          "type": "string"
+        },
+        "faces": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "files": {
+          "description": "Font files copied. Fewer than `faces` when one file holds several of them.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "dir",
+        "faces",
+        "files",
+        "bytes"
+      ],
+      "type": "object"
+    },
     "CheckReport": {
       "properties": {
         "errors": {

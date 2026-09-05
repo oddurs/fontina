@@ -51,9 +51,9 @@ pub use check::{CheckReport, Finding, Severity, check_face};
 pub use error::{Error, Result};
 pub use freedom::Freedom;
 pub use index::{
-    ActivationRecord, ActivationState, CollectionExport, CollectionFace, CollectionInfo, Conflict,
-    DuplicateGroup, FaceFilter, FaceSummary, Facets, Family, ImportReport, Index, Source,
-    SourceKind, TagInfo,
+    ActivationRecord, ActivationState, BUNDLE_FILE, BUNDLE_FONTS, BundleReport, CollectionExport,
+    CollectionFace, CollectionInfo, Conflict, DuplicateGroup, FaceFilter, FaceSummary, Facets,
+    Family, ImportReport, Index, Source, SourceKind, TagInfo,
 };
 pub use model::{Container, FaceMetadata, FileInfo};
 pub use scan::{ScanOptions, ScanReport};
@@ -144,6 +144,7 @@ pub fn cli_output_schema() -> serde_json::Value {
     add::<CollectionInfo>(&mut g);
     add::<CollectionExport>(&mut g);
     add::<ImportReport>(&mut g);
+    add::<BundleReport>(&mut g);
     add::<Source>(&mut g);
     add::<ActivationRecord>(&mut g);
     add::<Conflict>(&mut g);

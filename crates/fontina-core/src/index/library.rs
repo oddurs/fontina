@@ -213,6 +213,101 @@ impl CollectionExport {
         self.relative_paths = false;
         escaped
     }
+
+    /// Write this collection as a bundle in `dir`: the JSON beside a copy of every font
+    /// it names, with every path relative to `dir`.
+    ///
+    /// This is the shareable form. A collection file on its own is a list of names and
+    /// hashes, useful only to somebody who already has the fonts; a bundle is the whole
+    /// thing, and it opens the same on any machine because nothing in it is absolute.
+    ///
+    /// `self` is left alone. The rewritten paths belong to the copy on disk, not to the
+    /// export the caller is holding.
+    pub fn write_bundle(&self, dir: &Path) -> Result<BundleReport> {
+        if dir.join(BUNDLE_FILE).exists() {
+            return Err(Error::Other(format!(
+                "{} already holds a bundle; write to a new directory rather than mixing \
+                 two collections' fonts",
+                dir.display()
+            )));
+        }
+        let fonts = dir.join(BUNDLE_FONTS);
+        std::fs::create_dir_all(&fonts).map_err(|e| Error::Io(fonts, e))?;
+        // `relative_to` strips a canonical base, and the caller's `dir` need not be one —
+        // `.`, a trailing `..`, or /tmp on macOS all fail to match otherwise.
+        let dir = dir
+            .canonicalize()
+            .map_err(|e| Error::Io(dir.to_path_buf(), e))?;
+        let fonts = dir.join(BUNDLE_FONTS);
+
+        let mut bundled = self.clone();
+        // One file holds several faces whenever the collection has a TrueType collection
+        // or two instances of the same variable font in it, so copy per source path and
+        // let those faces point at the single copy.
+        let mut copied: HashMap<String, std::path::PathBuf> = HashMap::new();
+        let mut taken: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut bytes = 0u64;
+        for f in &mut bundled.faces {
+            if let Some(dest) = copied.get(&f.path) {
+                f.path = dest.to_string_lossy().into_owned();
+                continue;
+            }
+            let source = std::mem::take(&mut f.path);
+            let src = Path::new(&source);
+            let name = src
+                .file_name()
+                .ok_or_else(|| Error::Other(format!("{} does not name a file", src.display())))?;
+            // Two families both shipping Regular.ttf are one collision away from the
+            // bundle holding one of them twice under the other's name.
+            let dest = fonts.join(unique_name(&name.to_string_lossy(), &mut taken));
+            bytes += std::fs::copy(src, &dest).map_err(|e| Error::Io(src.to_path_buf(), e))?;
+            f.path = dest.to_string_lossy().into_owned();
+            copied.insert(source, dest);
+        }
+        bundled.relative_to(&dir)?;
+
+        let json = serde_json::to_string_pretty(&bundled)
+            .map_err(|e| Error::Other(format!("serialising the collection: {e}")))?;
+        let marker = dir.join(BUNDLE_FILE);
+        std::fs::write(&marker, format!("{json}\n")).map_err(|e| Error::Io(marker, e))?;
+
+        Ok(BundleReport {
+            dir: dir.to_string_lossy().into_owned(),
+            faces: bundled.faces.len(),
+            files: copied.len(),
+            bytes,
+        })
+    }
+}
+
+/// The JSON file at the root of a bundle.
+pub const BUNDLE_FILE: &str = "collection.json";
+/// The directory inside a bundle that holds the fonts themselves.
+pub const BUNDLE_FONTS: &str = "fonts";
+
+/// What writing a bundle did.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct BundleReport {
+    pub dir: String,
+    pub faces: usize,
+    /// Font files copied. Fewer than `faces` when one file holds several of them.
+    pub files: usize,
+    pub bytes: u64,
+}
+
+/// `name`, or `name-2`, `name-3`, ... until it is one nothing else in the bundle has.
+fn unique_name(name: &str, taken: &mut std::collections::HashSet<String>) -> String {
+    let (stem, ext) = match name.rsplit_once('.') {
+        Some((stem, ext)) if !stem.is_empty() => (stem, format!(".{ext}")),
+        _ => (name, String::new()),
+    };
+    let mut candidate = name.to_string();
+    let mut n = 1;
+    while !taken.insert(candidate.clone()) {
+        n += 1;
+        candidate = format!("{stem}-{n}{ext}");
+    }
+    candidate
 }
 
 /// One face in an exported collection. On import, faces are matched by identity hash,
