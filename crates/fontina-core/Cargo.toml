@@ -16,7 +16,6 @@ read-fonts.workspace = true
 woff2-patched.workspace = true
 flate2.workspace = true
 blake3.workspace = true
-rayon.workspace = true
 walkdir.workspace = true
 notify.workspace = true
 rusqlite.workspace = true

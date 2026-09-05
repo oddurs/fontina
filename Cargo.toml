@@ -30,7 +30,6 @@ read-fonts = "0.43"
 woff2-patched = "0.4"
 flate2 = "1"
 blake3 = "1"
-rayon = "1"
 walkdir = "2"
 notify = { version = "8", default-features = false, features = ["macos_fsevent"] }
 rusqlite = { version = "0.40", features = ["bundled"] }

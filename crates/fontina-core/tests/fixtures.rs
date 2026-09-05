@@ -426,3 +426,36 @@ fn specimen_is_self_contained_html() {
     assert!(!linked.contains("base64"));
     assert!(!linked.contains("<section class=\"compare\">"));
 }
+
+/// `parse_paths` hands work to a pool of threads that claim paths as they finish, so the
+/// order results come back in is not the order they were produced in. The scan report
+/// lists failures in the order the user gave the paths, so the restored order is part of
+/// the contract rather than an accident of the pool.
+#[test]
+fn parse_paths_keeps_input_order_and_length() {
+    // Enough paths to outnumber the cores on any machine that runs this, so the work is
+    // genuinely spread and a lost or reordered result would show. Missing files are in
+    // the mix because a failure has to keep its place too.
+    let mut paths = Vec::new();
+    for i in 0..64 {
+        paths.push(match i % 4 {
+            0 => fixture("Amiri-Regular.ttf"),
+            1 => fixture("inter-latin-400-normal.woff2"),
+            2 => fixture("SourceSerif4-Regular.otf"),
+            _ => fixture(&format!("does-not-exist-{i}.ttf")),
+        });
+    }
+
+    let results = fontina_core::scan::parse_paths(&paths);
+
+    assert_eq!(results.len(), paths.len(), "one result per input path");
+    for (i, (path, result)) in results.iter().enumerate() {
+        assert_eq!(path, &paths[i], "result {i} is out of order");
+        assert_eq!(
+            result.is_ok(),
+            i % 4 != 3,
+            "result {i} should {} have parsed",
+            if i % 4 == 3 { "not" } else { "" }
+        );
+    }
+}
