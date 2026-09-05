@@ -180,17 +180,32 @@ fi
 
 # And the other direction: an activation on top of an install has to remove the copy,
 # which used to be left in the font directory with nothing naming it.
-if "$fontina" install family:Amiri >"$root/t3.out" 2>&1 &&
-    "$fontina" activate family:Amiri >"$root/t4.out" 2>&1; then
-    ok "install, then activate"
+if "$fontina" install family:Amiri >"$root/t3.out" 2>&1; then
+    ok "install, before activating over it"
 else
-    no "install, then activate"
-    cat "$root/t3.out" "$root/t4.out"
+    no "install, before activating over it"
+    cat "$root/t3.out"
 fi
-copy_dir=$("$fontina" dirs 2>/dev/null | grep 'install target' | head -1 | sed 's/  *[a-z].*$//; s/ *$//')
-[ -n "$copy_dir" ] || copy_dir="$XDG_DATA_HOME/fonts"
-if find "$copy_dir" -name '*Amiri*' 2>/dev/null | grep -q .; then
-    no "the installed copy survived the activation ($copy_dir)"
+# Where the copy went, from the record fontina keeps rather than from a guess about the
+# directory: on GNU/Linux an install and an activation both leave a link under
+# `$XDG_DATA_HOME/fonts`, so looking for the font by name there finds the activation and
+# says the copy survived when it did not.
+copy=$("$fontina" activations --json 2>/dev/null |
+    tr ',' '\n' | grep '"installed_path"' | head -1 |
+    sed 's/.*"installed_path": *"//; s/".*//')
+if [ -n "$copy" ] && [ -e "$copy" ]; then
+    ok "the copy is where the record says it is ($copy)"
+else
+    no "no installed copy to take back (record said: ${copy:-nothing})"
+fi
+if "$fontina" activate family:Amiri >"$root/t4.out" 2>&1; then
+    ok "activate over the install"
+else
+    no "activate over the install"
+    cat "$root/t4.out"
+fi
+if [ -e "$copy" ]; then
+    no "the installed copy survived the activation ($copy)"
 else
     ok "activating took the installed copy back"
 fi
