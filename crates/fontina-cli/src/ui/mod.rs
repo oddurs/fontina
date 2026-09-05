@@ -2039,6 +2039,81 @@ mod tests {
         App::with_activator(Index::open(&db).unwrap(), Box::new(Harmless)).unwrap()
     }
 
+    /// The activation keys record what they did, and the keys that undo them clear it.
+    ///
+    /// Nothing tested this before, because it could not be tested: the browser reached
+    /// for the real backend, so a test of `a` would have registered a fixture with the
+    /// developer's own session. With the activator behind a field the whole path is
+    /// exercised — including the part that only the browser has, which is that the state
+    /// a reader sees in the listing is the state that was recorded.
+    #[test]
+    fn the_activation_keys_record_what_they_did() {
+        let press = |app: &mut App, c: char| {
+            app.on_key(event::KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE))
+                .unwrap()
+        };
+
+        for (key, want) in [
+            ('a', ActivationState::User),
+            ('A', ActivationState::Session),
+            ('i', ActivationState::Installed),
+        ] {
+            let mut app = app();
+            let ids = app.current_face_ids();
+            assert!(!ids.is_empty(), "the first family is selected");
+            press(&mut app, key);
+            for id in &ids {
+                let record = app.index.activation(*id).unwrap();
+                assert_eq!(
+                    record.as_ref().map(|r| r.state),
+                    Some(want),
+                    "{key:?} recorded {:?}",
+                    record.as_ref().map(|r| r.state)
+                );
+            }
+            assert!(
+                app.detail_summary
+                    .as_ref()
+                    .is_some_and(|s| s.activation == Some(want)),
+                "and the pane the reader is looking at says so"
+            );
+
+            // `d` for the two in-place states, `u` for the installed one: what the
+            // command line calls deactivate and uninstall.
+            press(
+                &mut app,
+                if want == ActivationState::Installed {
+                    'u'
+                } else {
+                    'd'
+                },
+            );
+            for id in &ids {
+                assert!(
+                    app.index.activation(*id).unwrap().is_none(),
+                    "the record survived the key that undoes it"
+                );
+            }
+        }
+    }
+
+    /// Pressing an activation key with nothing selected says so and changes nothing.
+    #[test]
+    fn activating_nothing_is_a_message_rather_than_a_mistake() {
+        let mut app = app();
+        app.query = "no font is called this".into();
+        app.reload().unwrap();
+        assert_eq!(app.list_len(), 0, "the listing is empty");
+        app.on_key(event::KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE))
+            .unwrap();
+        assert!(
+            app.status.contains("nothing selected"),
+            "the status says why nothing happened: {:?}",
+            app.status
+        );
+        assert!(app.index.activations().unwrap().is_empty());
+    }
+
     /// The graphical escape hatch, and the whole of it: a specimen for what is selected,
     /// written and handed to the desktop.
     #[test]
