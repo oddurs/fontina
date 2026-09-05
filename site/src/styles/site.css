@@ -13,6 +13,12 @@
     "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
     "Liberation Mono", monospace;
+  /* Named explicitly rather than left to the body stack: a system sans will
+     happily render U+1F9C0 from whatever fallback it finds first, which on
+     some machines is a monochrome symbol face. Asking for the colour emoji
+     font by name is the difference between a cheese and an outline of one. */
+  --font-emoji: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji",
+    "Twemoji Mozilla", "EmojiOne Color", "Android Emoji", sans-serif;
 
   /* Type scale. Seven steps, ratio ~1.25, in rem so it follows the reader's
      browser setting rather than overriding it. */
@@ -198,7 +204,9 @@ a:focus-visible {
    user agent stylesheet. Wrapping is the honest answer at this size. */
 .masthead {
   border-bottom: 1px solid var(--line);
-  margin-bottom: var(--space-6);
+  /* No bottom margin: the frame below already sets its own top margin, and the
+     two together left 80px of empty page under the rule. The frame owns that
+     gap, here and at both narrow breakpoints. */
 }
 .masthead .inner {
   max-width: var(--frame);
@@ -209,11 +217,47 @@ a:focus-visible {
   align-items: baseline;
   gap: var(--space-3) var(--space-5);
 }
+/* ---------------------------------------------------------------- Lockup */
+/* The mark and the name, set once and used at two sizes. Everything is in `em`
+   so the masthead's 18px and the hero's 36px need one rule between them.
+   fontina is a cheese; the mark is the joke, and it is the only ornament on
+   the site.
+
+   Centred rather than baseline-aligned: an emoji glyph does not share a
+   baseline with the text around it in any predictable way, because it is drawn
+   to fill its em box rather than to sit on a line. Filling the em box is also
+   why it is set below 1em — at 1em it reads a size larger than the capitals
+   beside it. `line-height: 1` keeps it from stretching the masthead, and the
+   nudge is optical, not metric.
+
+   It is `aria-hidden`, and that is the fallback: the word carries the name, so
+   a machine with no emoji font shows a tofu box beside a wordmark that still
+   reads, and a screen reader does not announce "cheese wedge fontina". The
+   favicon is drawn as SVG for the same reason — nothing there can rely on a
+   font being present at all. */
+.lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38em;
+}
+.lockup .mark {
+  font-family: var(--font-emoji);
+  font-size: 0.92em;
+  line-height: 1;
+  flex: none;
+  transform: translateY(0.02em);
+  /* A tofu box should not become a selection target in the middle of a name. */
+  user-select: none;
+}
+
 .masthead .wordmark {
   font-size: var(--text-md);
   font-weight: var(--weight-semi);
   letter-spacing: -0.015em;
   margin-right: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 .masthead .wordmark a:link, .masthead .wordmark a:visited { color: var(--ink); }
 .masthead nav { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); }
@@ -223,7 +267,33 @@ a:focus-visible {
 }
 .masthead nav a:link, .masthead nav a:visited { color: var(--ink-soft); }
 .masthead nav a:hover { color: var(--accent); text-decoration: none; }
-.masthead nav a[aria-current="page"] { color: var(--ink); }
+/* Where you are, said with a rule rather than a shade. `--ink` against
+   `--ink-soft` at 14px is a difference you have to be told about to see; a
+   2px rule sitting on the masthead's own hairline is one you cannot miss.
+   The transparent border is on every item so nothing shifts. */
+.masthead nav a {
+  padding-bottom: var(--space-3);
+  margin-bottom: calc(var(--space-3) * -1 - 1px);
+  border-bottom: 2px solid transparent;
+}
+.masthead nav a[aria-current="page"] {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+}
+/* A link that leaves the site says so. Decorative, so a text browser that
+   ignores generated content loses nothing. */
+.masthead nav a[rel~="external"]::after {
+  content: "\2197";
+  margin-left: 0.15em;
+  color: var(--ink-faint);
+}
+.masthead .version {
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+  font-weight: var(--weight-normal);
+  letter-spacing: 0;
+  margin-left: var(--space-2);
+}
 @media (max-width: 30rem) {
   /* The wordmark takes its own line and the destinations sit under it, rather
      than four links squeezing onto one. */
@@ -279,7 +349,7 @@ a:focus-visible {
   gap: var(--gutter);
   align-items: flex-start;
   max-width: var(--frame);
-  margin: var(--space-7) auto 0;
+  margin: var(--space-6) auto 0;
 }
 .main { flex: 1 1 auto; min-width: 0; }
 
@@ -464,6 +534,7 @@ a:focus-visible {
    before it starts answering "what has happened lately". */
 .hero { margin-bottom: var(--space-7); }
 .hero h1 { margin-bottom: var(--space-2); }
+.hero h1 .lockup { gap: 0.3em; }
 .hero .tagline {
   font-size: var(--text-md);
   color: var(--ink);
@@ -701,6 +772,33 @@ pre.astro-code, pre.astro-code span {
   gap: var(--space-5);
 }
 .sitemap .navitem { margin-bottom: 0; }
+/* The nav column's rail says "you are here in this list". A footer index is
+   not a list you are anywhere in, so the rail comes off: no indent with no
+   cause, and no hover affordance implying a position that does not exist. */
+.sitemap .navhead { padding-left: 0; }
+.sitemap .navbody a {
+  padding: var(--space-1) 0;
+  border-left: 0;
+}
+.sitemap .navbody a:hover { border-left-color: transparent; text-decoration: underline; }
+.sitemap .navbody a[aria-current="page"] { border-left-color: transparent; }
+.sitemap .navbody .sub { padding-left: var(--space-3); }
+
+/* --------------------------------------------------------------- Colophon */
+/* What a free software project's footer owes the reader: which licence, for
+   the program and for the prose, named rather than linked past. It sits
+   between the index and the small print because it is neither. */
+.colophon {
+  max-width: var(--frame);
+  margin: var(--space-6) auto 0;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+}
+.colophon p { margin: 0 0 var(--space-2); max-width: var(--measure); }
+.colophon p:last-child { margin-bottom: 0; }
+.colophon strong { color: var(--ink); font-weight: var(--weight-semi); }
 /* The notice follows it, so it should not draw a second rule of its own. */
 .sitemap + .notice { border-top: 0; margin-top: var(--space-6); padding-top: 0; }
 

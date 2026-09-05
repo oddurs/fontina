@@ -1,1 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" fill="#fff"/><text x="8" y="13" font-family="serif" font-size="14" text-anchor="middle" fill="#000">u</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="fontina">
+  <title>fontina</title>
+  <!-- Drawn, not set: a favicon cannot rely on the renderer having an emoji font,
+       and the old one was a serif "u" left over from the name before this one. -->
+  <rect width="32" height="32" rx="7" fill="#ffffff"/>
+  <path d="M4.5 24.2V14.1c0-.63.39-1.19.98-1.4L26.02 5.3c.97-.35 1.98.37 1.98 1.4v17.5c0 .83-.67 1.5-1.5 1.5H6c-.83 0-1.5-.67-1.5-1.5z"
+        fill="#f0c24b" stroke="#c9932a" stroke-width="1.1" stroke-linejoin="round"/>
+  <circle cx="10.6" cy="20.2" r="2.1" fill="#fffdf5"/>
+  <circle cx="19.4" cy="16.6" r="1.7" fill="#fffdf5"/>
+  <circle cx="24.2" cy="21.4" r="1.25" fill="#fffdf5"/>
+</svg>

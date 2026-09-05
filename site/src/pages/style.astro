@@ -108,12 +108,34 @@ const colour = [
   </p>
   <p class="small soft">Primary marks the one action a page is for; there is never more than one. Quiet is for an action that is available but not being suggested.</p>
 
-  <h2 id="chrome">Masthead and sitemap</h2>
+  <h2 id="lockup">Lockup</h2>
+  <p>The mark and the name, one rule at both sizes. It is the only ornament on the site.</p>
+  <p style="font-size: var(--text-md); font-weight: 600; letter-spacing: -0.015em;">
+    <span class="lockup"><span class="mark" aria-hidden="true">&#x1F9C0; </span>fontina</span>
+    <span class="version">0.1.1</span>
+  </p>
+  <p style="font-size: var(--text-2xl); font-weight: 600; letter-spacing: -0.02em;">
+    <span class="lockup"><span class="mark" aria-hidden="true">&#x1F9C0; </span>fontina</span>
+  </p>
+  <p class="small soft">
+    Centred rather than baseline-aligned, set below <code>1em</code>, and
+    <code>aria-hidden</code> &mdash; the word carries the name, so a machine with no
+    emoji font loses only the joke. The favicon is drawn as SVG, because nothing about a
+    favicon can rely on a font at all.
+  </p>
+
+  <h2 id="chrome">Masthead, sitemap and colophon</h2>
   <p>
     Both are on this page already, because they are on every page: the masthead above,
     the sitemap at the foot. Navigation is three tiers &mdash; the masthead carries the
     five destinations most people want, the nav column carries what is contextual (on a
     manual chapter, its chapters), and the sitemap at the foot carries everything.
+  </p>
+  <p>
+    The sitemap reuses the nav item's markup but not its rail: the nav column's left
+    border says <em>you are here in this list</em>, and a footer index is not a list you
+    are anywhere in. Below it the colophon names the two licences, and below that the
+    notice carries the small print.
   </p>
 
   <h2 id="strip">Property strip</h2>

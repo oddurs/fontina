@@ -20,10 +20,16 @@ text browser. Colour carries hierarchy, never meaning on its own.
 |---|---|
 | `--font-sans` | `ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif` |
 | `--font-mono` | `ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace` |
+| `--font-emoji` | `"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", "EmojiOne Color", "Android Emoji", sans-serif` |
 
 Nothing is fetched. `ui-sans-serif` and `system-ui` resolve to the interface face the
 machine already draws its own menus in, which is the face its owner reads fastest;
 the rest of the stack is there for the machines that have neither.
+
+`--font-emoji` exists for one character. Left to the body stack, a system sans will
+render U+1F9C0 out of whatever fallback it reaches first, which on some machines is a
+monochrome symbol face; asking for the colour emoji font by name is the difference
+between a cheese and an outline of one.
 
 ## Type scale
 
@@ -281,6 +287,35 @@ to `--help`.
 The manual index, which was an `<ol>` of ten links. The number keeps the reading order the
 manual is written in; the description is what lets someone skip to the chapter they need.
 
+### Lockup
+
+```html
+<span class="lockup"><span class="mark" aria-hidden="true">🧀 </span>fontina</span>
+```
+
+The mark and the name, set once and used at two sizes — 18px in the masthead, 36px in
+the hero. Everything is in `em`, so one rule serves both. fontina is a cheese; the mark
+is the joke, and it is the only ornament on the site.
+
+Three decisions worth writing down, because each is the opposite of the obvious one:
+
+- **Centred, not baseline-aligned.** An emoji does not share a baseline with the text
+  around it in any predictable way: it is drawn to fill its em box rather than to sit on
+  a line.
+- **Below `1em`.** Filling the em box is also why it reads a size larger than the
+  capitals beside it at nominal parity. It is set at `0.92em`, with `line-height: 1` so
+  it cannot stretch the masthead, and a `0.02em` nudge that is optical rather than
+  metric.
+- **`aria-hidden`, and that is the fallback.** The word carries the name. A machine with
+  no emoji font shows a tofu box next to a wordmark that still reads, and a screen reader
+  says "fontina" rather than "cheese wedge fontina". There is no way to detect a missing
+  emoji font without script, so the honest design is one where its absence costs nothing.
+  The trailing space inside the mark collapses under CSS and separates the two in a text
+  browser.
+
+The favicon is drawn as SVG rather than set as this character, for the same reason in a
+harder form: nothing about a favicon can rely on a font being present at all.
+
 ### Masthead
 
 ```html
@@ -319,6 +354,26 @@ a licence named in a badge and never explained is a sticker.
 The complete index, at the foot, in as many columns as fit. This is where the twenty-four
 links went when the masthead took the five that matter and the nav column became
 contextual.
+
+It reuses the nav item's markup but not its rail. The nav column's 2px left border says
+*you are here in this list*; a footer index is not a list you are anywhere in, so in the
+sitemap the border comes off and the indent with it. A component carried into a place
+where its affordance does not apply is worse than a new one, because it makes a promise
+the page cannot keep.
+
+### Colophon
+
+```html
+<div class="colophon">
+  <p><strong>fontina is free software.</strong> …GPL for the program, GFDL for the prose…</p>
+</div>
+```
+
+Between the index and the small print, because it is neither. What a free software
+project's footer owes a reader is which licence covers the program and which covers the
+words, named rather than linked past — followed by the three things it refuses to do, so
+the claim on the front page is repeated where someone who scrolled to the bottom looking
+for it will find it.
 
 ### Frame
 

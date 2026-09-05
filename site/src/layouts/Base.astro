@@ -3,6 +3,7 @@
 // link groups on the right, and a copyright box across the bottom. See DESIGN.md.
 import '../styles/site.css';
 import { execSync } from 'node:child_process';
+import { current } from '../releases';
 
 interface Props {
   title: string;
@@ -83,7 +84,14 @@ const groups: [string, [string, string, boolean?][]][] = [
 
 <header class="masthead">
   <div class="inner">
-    <p class="wordmark">{isHome ? <span>fontina</span> : <a href={u('/')}>fontina</a>}</p>
+    <p class="wordmark">
+      {isHome ? (
+        <span class="lockup"><span class="mark" aria-hidden="true">&#x1F9C0; </span>fontina</span>
+      ) : (
+        <a class="lockup" href={u('/')}><span class="mark" aria-hidden="true">&#x1F9C0; </span>fontina</a>
+      )}
+      {current && <span class="version">{current.version}</span>}
+    </p>
     <nav aria-label="Main">
       {([
         ['Manual', u('/docs/')],
@@ -92,7 +100,11 @@ const groups: [string, [string, string, boolean?][]][] = [
         ['Free software', u('/license/')],
         ['Source', repo],
       ] as [string, string][]).map(([label, href]) => (
-        <a href={href} aria-current={href === Astro.url.pathname ? 'page' : undefined}>{label}</a>
+        <a
+          href={href}
+          rel={href.startsWith('http') ? 'external' : undefined}
+          aria-current={href === Astro.url.pathname ? 'page' : undefined}
+        >{label}</a>
       ))}
     </nav>
   </div>
@@ -135,6 +147,20 @@ const groups: [string, [string, string, boolean?][]][] = [
     ))}
   </div>
 </nav>
+<div class="colophon">
+  <p>
+    <strong>fontina is free software.</strong> The program is under the
+    <a href={u('/license/')}>GNU General Public License, version 3 or later</a>; this
+    manual and these pages are under the GNU Free Documentation License, version 1.3 or
+    later. You may run it, read it, change it and share it, and nothing here asks you to
+    give any of that up.
+  </p>
+  <p>
+    It makes no network connections, collects nothing, and never asks for elevation.
+    Announcements are an <a href={u('/feed.xml')}>RSS feed</a>; there is no mailing list
+    and nothing to sign up for.
+  </p>
+</div>
 <div class="notice">
   <address set:html={`For questions about using fontina, please consult these pages and the <a href="${u('/docs/')}">manual</a>. If that fails, the <a href="${repo}/issues">bug tracker</a> is the place to ask. Comments on these pages are welcome as pull requests; every page links its source.`} />
   <p>
