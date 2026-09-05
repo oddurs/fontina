@@ -140,6 +140,12 @@ style, already active or living in an OS font directory.
 @item fontina activations
 Everything fontina has activated or installed.  @code{restore} re-applies the record,
 for a login agent or after a reboot.
+@item fontina agent install
+Have the operating system run @code{restore} when you log in, so activations come back
+after a reboot without anyone remembering to ask.  Off until you install it, per-user
+everywhere — a systemd user unit, a LaunchAgent, or an entry in your Startup folder —
+and removed by @code{fontina agent uninstall}.  Nothing is written outside your home
+directory and nothing needs elevation, so it cannot affect anyone else on the machine.
 @item fontina watch [PATH@dots{}]
 Follow the watched sources and keep the index current until interrupted.  One line per
 batch of changes, or one JSON object per line with @option{--json}.
