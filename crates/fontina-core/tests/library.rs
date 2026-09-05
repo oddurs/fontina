@@ -360,6 +360,183 @@ fn scratch(what: &str) -> PathBuf {
     std::fs::canonicalize(&dir).unwrap()
 }
 
+/// A variable font is not one weight, and filtering on its default instance loses it.
+///
+/// Bricolage spans `wght` 200 to 800 and defaults to 800, so `--weight 400` used to
+/// return everything except the one font in the fixtures that actually does 400 across
+/// the whole range. This is the assertion the fix exists for.
+#[test]
+fn a_variable_font_is_found_at_every_weight_it_spans() {
+    let index = indexed();
+    let at = |lo: u16, hi: u16| -> Vec<String> {
+        let mut families: Vec<String> = index
+            .list(&FaceFilter {
+                weight: Some((lo, hi)),
+                ..Default::default()
+            })
+            .unwrap()
+            .into_iter()
+            .map(|f| f.family)
+            .collect();
+        families.sort();
+        families.dedup();
+        families
+    };
+
+    assert!(
+        at(400, 400).contains(&"Bricolage Grotesque".to_string()),
+        "wght 200-800 covers 400: {:?}",
+        at(400, 400)
+    );
+    assert!(
+        at(200, 200) == vec!["Bricolage Grotesque".to_string()],
+        "and nothing static reaches 200: {:?}",
+        at(200, 200)
+    );
+    assert!(
+        at(800, 800).contains(&"Bricolage Grotesque".to_string()),
+        "its default instance still matches"
+    );
+
+    // The range is a range, not a licence to match everything.
+    assert!(
+        at(900, 900).is_empty(),
+        "nothing in the fixtures reaches 900: {:?}",
+        at(900, 900)
+    );
+    assert!(
+        !at(100, 199).contains(&"Bricolage Grotesque".to_string()),
+        "below the axis is below the axis"
+    );
+
+    // A static face is still exactly its own weight, which is the old behaviour.
+    let regulars = at(400, 400);
+    assert!(regulars.contains(&"Amiri".to_string()));
+    assert!(!at(500, 500).contains(&"Amiri".to_string()));
+
+    // An asked-for range that merely overlaps is a match: 350-450 crosses Bricolage.
+    assert!(at(350, 450).contains(&"Bricolage Grotesque".to_string()));
+}
+
+/// The same for width, over `wdth`.
+#[test]
+fn width_spans_its_axis_too() {
+    let index = indexed();
+    let faces = index
+        .list(&FaceFilter {
+            width: Some((75, 90)),
+            ..Default::default()
+        })
+        .unwrap();
+    let families: Vec<&str> = faces.iter().map(|f| f.family.as_str()).collect();
+    assert_eq!(
+        families,
+        vec!["Bricolage Grotesque"],
+        "only the face with a wdth axis reaches below 100%: {families:?}"
+    );
+}
+
+/// A row whose stored metadata will not parse keeps the behaviour it had before v4.
+///
+/// The migration seeds the four columns from the static values before reading any JSON,
+/// so a face the backfill has to skip is still findable at the weight it reports. Without
+/// that seed the `DEFAULT 0` would give it a zero-width span and no weight filter could
+/// ever match it again — a font quietly disappearing from the index that still lists it.
+#[test]
+fn a_face_whose_metadata_will_not_parse_keeps_its_static_weight() {
+    let dir = std::env::temp_dir().join(format!("fontina-spans-bad-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let db = dir.join("v3.db");
+    {
+        let mut idx = Index::open(&db).unwrap();
+        fontina_core::scan::scan(
+            &mut idx,
+            &[fixtures().join("Amiri-Regular.ttf")],
+            &ScanOptions::default(),
+        )
+        .unwrap();
+    }
+    {
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        conn.execute_batch(
+            "DROP INDEX faces_weight_span; DROP INDEX faces_width_span;
+             ALTER TABLE faces DROP COLUMN weight_min;
+             ALTER TABLE faces DROP COLUMN weight_max;
+             ALTER TABLE faces DROP COLUMN width_min;
+             ALTER TABLE faces DROP COLUMN width_max;
+             PRAGMA user_version = 3;",
+        )
+        .unwrap();
+        // Whatever wrote this row, this build cannot read it.
+        conn.execute("UPDATE faces SET metadata = '{ not json'", [])
+            .unwrap();
+    }
+
+    let idx = Index::open(&db).unwrap();
+    let at_400 = idx
+        .list(&FaceFilter {
+            weight: Some((400, 400)),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(at_400.len(), 1, "still found at the weight the row says");
+    let at_700 = idx
+        .list(&FaceFilter {
+            weight: Some((700, 700)),
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(at_700.is_empty(), "and not found anywhere else");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The columns are filled from the metadata already stored, so an index built by an
+/// older fontina answers the new question without anyone rescanning their library.
+#[test]
+fn an_older_index_learns_the_ranges_without_a_rescan() {
+    let dir = std::env::temp_dir().join(format!("fontina-spans-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let db = dir.join("v3.db");
+    {
+        let mut idx = Index::open(&db).unwrap();
+        fontina_core::scan::scan(
+            &mut idx,
+            &[fixtures().join("BricolageGrotesque[opsz,wdth,wght].ttf")],
+            &ScanOptions::default(),
+        )
+        .unwrap();
+    }
+    {
+        // Make the file look like a v3 index: the columns gone, the version rolled back.
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        conn.execute_batch(
+            "DROP INDEX faces_weight_span; DROP INDEX faces_width_span;
+             ALTER TABLE faces DROP COLUMN weight_min;
+             ALTER TABLE faces DROP COLUMN weight_max;
+             ALTER TABLE faces DROP COLUMN width_min;
+             ALTER TABLE faces DROP COLUMN width_max;
+             PRAGMA user_version = 3;",
+        )
+        .unwrap();
+    }
+
+    let idx = Index::open(&db).unwrap();
+    let found = idx
+        .list(&FaceFilter {
+            weight: Some((400, 400)),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(
+        found.len(),
+        1,
+        "the migration read the axes out of the stored metadata"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn collections_keep_order_and_export_import() {
     let mut index = indexed();
@@ -913,13 +1090,26 @@ fn families_group_faces_and_pick_a_representative() {
         })
         .unwrap();
     assert_eq!(by_ids.len(), 2);
+    // Bricolage's `wdth` axis runs 75-100, so a face that reaches into 50-99 is found
+    // there. This assertion used to read `is_empty`, which was the filter looking only at
+    // the default instance; see `width_spans_its_axis_too`.
     let width = index
         .list(&FaceFilter {
             width: Some((50, 99)),
             ..Default::default()
         })
         .unwrap();
-    assert!(width.is_empty());
+    assert_eq!(
+        width.iter().map(|f| f.family.as_str()).collect::<Vec<_>>(),
+        vec!["Bricolage Grotesque"]
+    );
+    let narrower = index
+        .list(&FaceFilter {
+            width: Some((50, 74)),
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(narrower.is_empty(), "below the axis is still below it");
     let vendor = index
         .list(&FaceFilter {
             vendor: by_ids[0].vendor.clone(),

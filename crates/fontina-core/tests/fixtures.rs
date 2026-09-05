@@ -376,12 +376,17 @@ fn covering_finds_faces_for_text_and_migrates_old_indexes() {
     }
     {
         let conn = rusqlite::Connection::open(&db).unwrap();
-        // Undo migrations 2 and 3 so the file looks like a v1 index.
+        // Undo migrations 2, 3 and 4 so the file looks like a v1 index.
         conn.execute_batch(
             "DROP TABLE face_ranges;
              ALTER TABLE activations DROP COLUMN installed_path;
              ALTER TABLE sources DROP COLUMN kind;
              DROP INDEX faces_vendor; DROP INDEX face_tags_tag; DROP INDEX collection_faces_face;
+             DROP INDEX faces_weight_span; DROP INDEX faces_width_span;
+             ALTER TABLE faces DROP COLUMN weight_min;
+             ALTER TABLE faces DROP COLUMN weight_max;
+             ALTER TABLE faces DROP COLUMN width_min;
+             ALTER TABLE faces DROP COLUMN width_max;
              PRAGMA user_version = 1;",
         )
         .unwrap();

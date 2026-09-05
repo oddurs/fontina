@@ -130,6 +130,24 @@ CREATE INDEX faces_vendor ON faces(vendor);
 CREATE INDEX face_tags_tag ON face_tags(tag_id);
 CREATE INDEX collection_faces_face ON collection_faces(face_id);
 "#,
+    // 4: the range a variable face spans, so `--weight 400` finds a font whose `wght`
+    // axis reaches 400 rather than only one whose default instance sits there. Equal to
+    // the static value for a face with no such axis, which is what makes the filter one
+    // clause rather than two.
+    r#"
+ALTER TABLE faces ADD COLUMN weight_min REAL NOT NULL DEFAULT 0;
+ALTER TABLE faces ADD COLUMN weight_max REAL NOT NULL DEFAULT 0;
+ALTER TABLE faces ADD COLUMN width_min  REAL NOT NULL DEFAULT 0;
+ALTER TABLE faces ADD COLUMN width_max  REAL NOT NULL DEFAULT 0;
+-- Seed every row with the static value it already had, so a face whose stored metadata
+-- will not parse keeps exactly the behaviour it had before v4 instead of collapsing to
+-- a zero-width span that no weight filter can ever match. `backfill_spans` then widens
+-- the ones with an axis.
+UPDATE faces SET weight_min = weight, weight_max = weight,
+                 width_min  = width,  width_max  = width;
+CREATE INDEX faces_weight_span ON faces(weight_min, weight_max);
+CREATE INDEX faces_width_span ON faces(width_min, width_max);
+"#,
 ];
 
 pub fn migrate(conn: &mut Connection) -> Result<()> {
@@ -153,6 +171,9 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
         if i == 1 {
             backfill_ranges(&tx)?;
         }
+        if i == 3 {
+            backfill_spans(&tx)?;
+        }
         tx.pragma_update(None, "user_version", (i + 1) as i64)?;
         tx.commit()?;
     }
@@ -170,6 +191,33 @@ fn backfill_ranges(tx: &rusqlite::Transaction) -> Result<()> {
         if let Ok(face) = serde_json::from_str::<crate::model::FaceMetadata>(&json) {
             super::insert_ranges(tx, id, &face.coverage.ranges)?;
         }
+    }
+    Ok(())
+}
+
+/// Populate the weight and width spans of an index created before v4.
+///
+/// Nothing is parsed and nothing is rescanned: the axes are already in the stored
+/// metadata JSON, which is the whole reason this is a migration and not a re-index.
+fn backfill_spans(tx: &rusqlite::Transaction) -> Result<()> {
+    let rows: Vec<(i64, String)> = {
+        let mut stmt = tx.prepare("SELECT id, metadata FROM faces")?;
+        let it = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        it.collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    let mut stmt = tx.prepare(
+        "UPDATE faces SET weight_min = ?2, weight_max = ?3, width_min = ?4, width_max = ?5
+         WHERE id = ?1",
+    )?;
+    for (id, json) in rows {
+        // A row whose metadata will not parse keeps the static value it already has,
+        // which is what every pre-v4 filter was using anyway.
+        let Ok(face) = serde_json::from_str::<crate::model::FaceMetadata>(&json) else {
+            continue;
+        };
+        let (wmin, wmax) = face.weight_span();
+        let (dmin, dmax) = face.width_span();
+        stmt.execute(rusqlite::params![id, wmin, wmax, dmin, dmax])?;
     }
     Ok(())
 }
