@@ -32,7 +32,9 @@ pub struct FacetCount {
 /// Counts of faces per facet value, for the faces matching a filter.
 #[derive(Debug, Clone, Default, Serialize, JsonSchema)]
 pub struct Facets {
+    /// Faces matching the filter these counts were taken under.
     pub faces: i64,
+    /// Distinct families among them.
     pub families: i64,
     /// CSS weight buckets, `100`..`900`.
     pub weight: Vec<FacetCount>,
@@ -40,8 +42,11 @@ pub struct Facets {
     pub width: Vec<FacetCount>,
     /// `upright` or `italic`.
     pub style: Vec<FacetCount>,
+    /// How many have axes.
     pub variable: i64,
+    /// How many carry colour.
     pub color: i64,
+    /// Faces per container format.
     pub container: Vec<FacetCount>,
     /// ISO 15924 script codes.
     pub script: Vec<FacetCount>,
@@ -51,11 +56,15 @@ pub struct Facets {
     pub language: Vec<FacetCount>,
     /// `monospace` or `proportional`, from `post.isFixedPitch`.
     pub spacing: Vec<FacetCount>,
+    /// Faces per SPDX identifier.
     pub license: Vec<FacetCount>,
     /// `free`, `nonfree`, `unknown` or `unstated`, derived from the license.
     pub freedom: Vec<FacetCount>,
+    /// Faces per vendor id.
     pub vendor: Vec<FacetCount>,
+    /// Faces per tag.
     pub tag: Vec<FacetCount>,
+    /// Faces per collection.
     pub collection: Vec<FacetCount>,
     /// `session`, `user`, `installed`, or `none`.
     pub activation: Vec<FacetCount>,
@@ -66,26 +75,39 @@ pub struct Facets {
 /// Faces grouped by typographic family name.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct Family {
+    /// Typographic family name; the key faces are grouped by.
     pub name: String,
+    /// How many faces are in it.
     pub faces: usize,
+    /// Index ids of the members.
     pub ids: Vec<i64>,
     /// The face to show for the family: upright, closest to weight 400 and width 100.
     pub representative: i64,
+    /// At least one member has axes.
     pub variable: bool,
+    /// At least one member carries colour.
     pub color: bool,
+    /// At least one member is italic or oblique.
     pub italic: bool,
     /// Lowest and highest weight in the family.
     pub weights: [f32; 2],
+    /// Lowest and highest CSS width across the members.
     pub widths: [f32; 2],
+    /// ISO 15924 codes covered by any member.
     pub scripts: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// SPDX identifier, when every member agrees on one.
     pub license: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Vendor id, when every member agrees on one.
     pub vendor: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Designer, when every member agrees on one.
     pub designer: Option<String>,
+    /// Container formats present among the members.
     pub containers: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    /// Tags on any member.
     pub tags: Vec<String>,
     /// Faces with an activation record.
     pub active: usize,

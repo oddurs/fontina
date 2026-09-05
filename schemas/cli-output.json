@@ -171,12 +171,14 @@
           "type": "string"
         },
         "faces": {
+          "description": "The members, in collection order.",
           "items": {
             "$ref": "#/$defs/CollectionFace"
           },
           "type": "array"
         },
         "name": {
+          "description": "The collection's name in the index it came from.",
           "type": "string"
         },
         "relative_paths": {
@@ -184,6 +186,7 @@
           "type": "boolean"
         },
         "schema_version": {
+          "description": "Bumped when a reader could no longer make sense of the file.",
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
@@ -201,33 +204,41 @@
       "description": "One face in an exported collection. On import, faces are matched by identity hash,\nthen PostScript name, then path and index, so a collection survives re-encoding the\nfont (TTF to WOFF2) or moving it.",
       "properties": {
         "blake3": {
+          "description": "BLAKE3 of the whole file, which differs across containers.",
           "type": "string"
         },
         "family": {
+          "description": "Typographic family, for a human reading the file.",
           "type": "string"
         },
         "identity_hash": {
+          "description": "BLAKE3 over the name and outline tables: the first thing import matches on.",
           "type": "string"
         },
         "index": {
           "default": 0,
+          "description": "Face index within its file, 0 unless a collection.",
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
         },
         "path": {
+          "description": "Absolute, or relative to this file when `relative_paths` is set.",
           "type": "string"
         },
         "postscript_name": {
+          "description": "Name ID 6; the second thing import matches on.",
           "type": [
             "string",
             "null"
           ]
         },
         "subfamily": {
+          "description": "Typographic subfamily.",
           "type": "string"
         },
         "tags": {
+          "description": "Tags carried across with the face.",
           "items": {
             "type": "string"
           },
@@ -323,18 +334,22 @@
           "description": "Activation state recorded by fontina, if any."
         },
         "color": {
+          "description": "The face carries at least one colour format.",
           "type": "boolean"
         },
         "container": {
+          "description": "Container format: ttf, otf, ttc, woff, woff2.",
           "type": "string"
         },
         "designer": {
+          "description": "Name ID 9.",
           "type": [
             "string",
             "null"
           ]
         },
         "family": {
+          "description": "Typographic family.",
           "type": "string"
         },
         "freedom": {
@@ -343,24 +358,29 @@
           "description": "Whether `license` grants the four freedoms. Derived on read, never stored."
         },
         "glyph_count": {
+          "description": "`maxp.numGlyphs`.",
           "format": "uint16",
           "maximum": 65535,
           "minimum": 0,
           "type": "integer"
         },
         "id": {
+          "description": "Index id. Stable while the face stays indexed; not a content identity.",
           "format": "int64",
           "type": "integer"
         },
         "index": {
+          "description": "Face index within the file, 0 unless a collection.",
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
         },
         "italic": {
+          "description": "Italic or oblique.",
           "type": "boolean"
         },
         "license": {
+          "description": "SPDX identifier where one was recognised.",
           "type": [
             "string",
             "null"
@@ -372,21 +392,25 @@
           "type": "boolean"
         },
         "path": {
+          "description": "Absolute path of the file.",
           "type": "string"
         },
         "postscript_name": {
+          "description": "Name ID 6.",
           "type": [
             "string",
             "null"
           ]
         },
         "scripts": {
+          "description": "ISO 15924 codes the face covers, most-covered first.",
           "items": {
             "type": "string"
           },
           "type": "array"
         },
         "subfamily": {
+          "description": "Typographic subfamily.",
           "type": "string"
         },
         "tags": {
@@ -396,15 +420,18 @@
           "type": "array"
         },
         "variable": {
+          "description": "The face has variation axes.",
           "type": "boolean"
         },
         "vendor": {
+          "description": "`OS/2.achVendID`.",
           "type": [
             "string",
             "null"
           ]
         },
         "weight": {
+          "description": "CSS weight, 1-1000. For a variable face this is the default instance.",
           "format": "float",
           "type": "number"
         },
@@ -422,6 +449,7 @@
           ]
         },
         "width": {
+          "description": "CSS width as a percentage, 100 being normal.",
           "format": "float",
           "type": "number"
         },
@@ -483,26 +511,31 @@
           "type": "array"
         },
         "collection": {
+          "description": "Faces per collection.",
           "items": {
             "$ref": "#/$defs/FacetCount"
           },
           "type": "array"
         },
         "color": {
+          "description": "How many carry colour.",
           "format": "int64",
           "type": "integer"
         },
         "container": {
+          "description": "Faces per container format.",
           "items": {
             "$ref": "#/$defs/FacetCount"
           },
           "type": "array"
         },
         "faces": {
+          "description": "Faces matching the filter these counts were taken under.",
           "format": "int64",
           "type": "integer"
         },
         "families": {
+          "description": "Distinct families among them.",
           "format": "int64",
           "type": "integer"
         },
@@ -521,6 +554,7 @@
           "type": "array"
         },
         "license": {
+          "description": "Faces per SPDX identifier.",
           "items": {
             "$ref": "#/$defs/FacetCount"
           },
@@ -555,16 +589,19 @@
           "type": "array"
         },
         "tag": {
+          "description": "Faces per tag.",
           "items": {
             "$ref": "#/$defs/FacetCount"
           },
           "type": "array"
         },
         "variable": {
+          "description": "How many have axes.",
           "format": "int64",
           "type": "integer"
         },
         "vendor": {
+          "description": "Faces per vendor id.",
           "items": {
             "$ref": "#/$defs/FacetCount"
           },
@@ -617,26 +654,31 @@
           "type": "integer"
         },
         "color": {
+          "description": "At least one member carries colour.",
           "type": "boolean"
         },
         "containers": {
+          "description": "Container formats present among the members.",
           "items": {
             "type": "string"
           },
           "type": "array"
         },
         "designer": {
+          "description": "Designer, when every member agrees on one.",
           "type": [
             "string",
             "null"
           ]
         },
         "faces": {
+          "description": "How many faces are in it.",
           "format": "uint",
           "minimum": 0,
           "type": "integer"
         },
         "ids": {
+          "description": "Index ids of the members.",
           "items": {
             "format": "int64",
             "type": "integer"
@@ -644,15 +686,18 @@
           "type": "array"
         },
         "italic": {
+          "description": "At least one member is italic or oblique.",
           "type": "boolean"
         },
         "license": {
+          "description": "SPDX identifier, when every member agrees on one.",
           "type": [
             "string",
             "null"
           ]
         },
         "name": {
+          "description": "Typographic family name; the key faces are grouped by.",
           "type": "string"
         },
         "representative": {
@@ -661,21 +706,25 @@
           "type": "integer"
         },
         "scripts": {
+          "description": "ISO 15924 codes covered by any member.",
           "items": {
             "type": "string"
           },
           "type": "array"
         },
         "tags": {
+          "description": "Tags on any member.",
           "items": {
             "type": "string"
           },
           "type": "array"
         },
         "variable": {
+          "description": "At least one member has axes.",
           "type": "boolean"
         },
         "vendor": {
+          "description": "Vendor id, when every member agrees on one.",
           "type": [
             "string",
             "null"
@@ -692,6 +741,7 @@
           "type": "array"
         },
         "widths": {
+          "description": "Lowest and highest CSS width across the members.",
           "items": {
             "format": "float",
             "type": "number"
@@ -908,45 +958,56 @@
     "Stats": {
       "properties": {
         "activations": {
+          "description": "Faces currently activated.",
           "format": "int64",
           "type": "integer"
         },
         "collections": {
+          "description": "Collections.",
           "format": "int64",
           "type": "integer"
         },
         "color_faces": {
+          "description": "Faces carrying a colour format.",
           "format": "int64",
           "type": "integer"
         },
         "db_path": {
+          "description": "Where this index lives on disk.",
           "type": "string"
         },
         "faces": {
+          "description": "Faces across those files.",
           "format": "int64",
           "type": "integer"
         },
         "failed_files": {
+          "description": "Files that failed to parse, with the reason recorded.",
           "format": "int64",
           "type": "integer"
         },
         "families": {
+          "description": "Distinct typographic families.",
           "format": "int64",
           "type": "integer"
         },
         "files": {
+          "description": "Files in the index.",
           "format": "int64",
           "type": "integer"
         },
         "sources": {
+          "description": "Directories the index was built from.",
           "format": "int64",
           "type": "integer"
         },
         "tags": {
+          "description": "Distinct tags.",
           "format": "int64",
           "type": "integer"
         },
         "variable_faces": {
+          "description": "Faces with variation axes.",
           "format": "int64",
           "type": "integer"
         }

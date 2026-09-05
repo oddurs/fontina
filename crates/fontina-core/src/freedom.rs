@@ -195,12 +195,16 @@ fn expression(expr: &str) -> Verdict {
         let parts: Vec<&str> = expr.split(sep).collect();
         (parts.len() > 1).then(|| parts.iter().map(|p| expression(p.trim())).collect())
     };
+    // Both `expect`s are unreachable: `split` returns `Some` only when it produced more
+    // than one part, so the iterator is never empty.
+    #[expect(clippy::expect_used, reason = "split() returns Some only when len > 1")]
     if let Some(parts) = split(" OR ") {
         return parts
             .into_iter()
             .min_by_key(|v| rank(v.freedom))
             .expect("split yields at least two parts");
     }
+    #[expect(clippy::expect_used, reason = "split() returns Some only when len > 1")]
     if let Some(parts) = split(" AND ") {
         return parts
             .into_iter()

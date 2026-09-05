@@ -117,7 +117,9 @@ pub struct ActivationRecord {
 /// A collection as written by `collection export`; `schemas/collection.json`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CollectionExport {
+    /// Bumped when a reader could no longer make sense of the file.
     pub schema_version: u32,
+    /// The collection's name in the index it came from.
     pub name: String,
     /// RFC 3339.
     pub exported_at: String,
@@ -132,6 +134,7 @@ pub struct CollectionExport {
     /// on where the file lives.
     #[serde(default, skip_serializing_if = "is_false")]
     pub relative_paths: bool,
+    /// The members, in collection order.
     pub faces: Vec<CollectionFace>,
 }
 
@@ -315,16 +318,24 @@ fn unique_name(name: &str, taken: &mut std::collections::HashSet<String>) -> Str
 /// font (TTF to WOFF2) or moving it.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CollectionFace {
+    /// Typographic family, for a human reading the file.
     pub family: String,
+    /// Typographic subfamily.
     pub subfamily: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Name ID 6; the second thing import matches on.
     pub postscript_name: Option<String>,
+    /// BLAKE3 over the name and outline tables: the first thing import matches on.
     pub identity_hash: String,
+    /// BLAKE3 of the whole file, which differs across containers.
     pub blake3: String,
+    /// Absolute, or relative to this file when `relative_paths` is set.
     pub path: String,
     #[serde(default)]
+    /// Face index within its file, 0 unless a collection.
     pub index: u32,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    /// Tags carried across with the face.
     pub tags: Vec<String>,
 }
 

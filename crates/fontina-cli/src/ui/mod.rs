@@ -741,6 +741,10 @@ impl App {
                 }
             }
             KeyCode::Enter => {
+                #[expect(
+                    clippy::expect_used,
+                    reason = "only reached when input.is_some(); see the call site"
+                )]
                 let Input { kind, buf } = self.input.take().expect("checked");
                 let value = buf.trim().to_string();
                 match kind {

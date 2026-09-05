@@ -78,7 +78,11 @@ Ubuntu and Fedora, and runs `scripts/acceptance` against the binary the package 
 ## Conventions
 
 - Rust 2024 edition, MSRV 1.88 (`rust-version` in `Cargo.toml`). Format with rustfmt,
-  zero clippy warnings.
+  zero clippy warnings. Each crate root declares the lints that hold it to its own
+  contract — the core forbids `unsafe` and denies every way of panicking; the CLI keeps
+  the panic rules and may print. Exemptions are `#[expect(..., reason = "…")]`, never
+  `#[allow]`, and the reason names a guard a reader can go and check. `CONTRIBUTING.md`
+  §Code has the rest, including what to do about comments and naming.
 - Public types in `fontina-core::model` are the schema. Any change to them bumps
   `SCHEMA_VERSION` if it is not backwards-compatible, and regenerates `schemas/face.json`.
   Every type printed with `--json` derives `JsonSchema` and is listed in

@@ -31,6 +31,35 @@
 //! - [`freedom`]: whether a font's license grants the four freedoms.
 //! - [`typography`]: the judgements a specimen makes, shared by every client.
 
+// The rules in CLAUDE.md that a compiler can check, checked by the compiler. Each of
+// these is at zero today; they are denied so that they stay there.
+//
+// `unsafe_code` is forbidden rather than denied: the core parses hostile input and has
+// never needed a raw pointer to do it, and `forbid` cannot be lifted by an inner
+// `allow` further down the tree.
+//
+// "Errors are values. The core never panics on font input" is the rule; `unwrap`,
+// `panic`, `todo` and `unimplemented` are the ways that rule gets broken by accident.
+// `expect` is denied too, with `#[expect]` at the handful of sites that are infallible
+// by construction, each stating why. `#[expect]` rather than `#[allow]` so that an
+// exemption which stops being needed becomes a warning instead of dead paperwork.
+//
+// The core never talks to a terminal: printing is the CLI's job, and a library that
+// writes to stdout cannot be embedded by anything.
+#![forbid(unsafe_code)]
+#![deny(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::todo,
+    clippy::unimplemented,
+    clippy::dbg_macro,
+    clippy::print_stdout,
+    clippy::print_stderr
+)]
+// A test that cannot unwrap is a test written around the lint rather than the subject.
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
+
 pub mod check;
 pub mod container;
 pub mod css;
@@ -117,11 +146,19 @@ pub fn load_bytes(bytes: &[u8], name: &str) -> Result<(FileInfo, Vec<FaceMetadat
 }
 
 /// JSON Schema (draft 2020-12) for `FaceMetadata`.
+#[expect(
+    clippy::expect_used,
+    reason = "our own types; a failure here is a test failure"
+)]
 pub fn face_schema() -> serde_json::Value {
     serde_json::to_value(schemars::schema_for!(FaceMetadata)).expect("schema serialises")
 }
 
 /// JSON Schema for a collection export (`fontina collection export`).
+#[expect(
+    clippy::expect_used,
+    reason = "our own types; a failure here is a test failure"
+)]
 pub fn collection_schema() -> serde_json::Value {
     serde_json::to_value(schemars::schema_for!(CollectionExport)).expect("schema serialises")
 }
