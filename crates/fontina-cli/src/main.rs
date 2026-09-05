@@ -902,6 +902,7 @@ fn run() -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(&conflicts)?);
             } else if conflicts.is_empty() {
                 println!("no conflicts");
+                note_the_blind_spot(&index);
             } else {
                 print_conflicts(&conflicts);
                 std::process::exit(2);
@@ -2824,11 +2825,57 @@ fn print_facets(f: &fontina_core::Facets) {
     row("source", &f.source, &|v| v.to_string());
 }
 
+/// The operating system's font directories, in the form the index stores paths in.
+///
+/// Canonical, because a conflict is found by matching a stored path against these as a
+/// prefix, and the index canonicalises every path it stores. Where any component of a
+/// font directory is a symlink the two spellings differ and the prefix never matches:
+/// `/var/…` against a stored `/private/var/…` on macOS, or a home directory that is
+/// itself a link. The answer then is a confident "no conflicts" about a font that is
+/// sitting right there.
+///
+/// A directory that does not exist keeps the name the platform gave it: there is nothing
+/// to canonicalise, and nothing indexed under it either.
 fn system_roots() -> Vec<String> {
     fontina_platform::system_font_dirs()
         .into_iter()
-        .map(|d| d.path.to_string_lossy().into_owned())
+        .map(|d| {
+            std::fs::canonicalize(&d.path)
+                .unwrap_or(d.path)
+                .to_string_lossy()
+                .into_owned()
+        })
         .collect()
+}
+
+/// Whether the index holds anything from the operating system's own font directories.
+///
+/// `conflicts` can only report a clash with a face it knows about, and the faces that
+/// matter most are the ones some other program installed: Font Book's copies in
+/// `~/Library/Fonts`, a distribution's packages in `/usr/share/fonts`. If none of those
+/// directories has ever been scanned, the answer to "does this clash with anything?" is
+/// "nothing I can see", and printing that as "no conflicts" is a confident wrong answer
+/// to the one question where being wrong costs something.
+fn system_dirs_are_indexed(index: &Index) -> bool {
+    system_roots().iter().any(|root| {
+        index
+            .list(&FaceFilter {
+                path_prefix: Some(root.clone()),
+                limit: Some(1),
+                ..FaceFilter::default()
+            })
+            .is_ok_and(|faces| !faces.is_empty())
+    })
+}
+
+/// Say what this index cannot see, once, on stderr.
+fn note_the_blind_spot(index: &Index) {
+    if !system_dirs_are_indexed(index) {
+        eprintln!(
+            "note: no operating-system font directory is in this index, so this cannot see \
+             fonts installed outside fontina; `fontina scan --system` puts them in"
+        );
+    }
 }
 
 pub(crate) fn collect_conflicts(index: &Index, ids: &[i64]) -> Result<Vec<fontina_core::Conflict>> {
@@ -2934,6 +2981,10 @@ fn run_activate(
     let ids = resolve_all_ids(&index, targets)?;
     let activator = fontina_platform::activator();
     let conflicts = collect_conflicts(&index, &ids)?;
+    if conflicts.is_empty() {
+        // Nothing to report, and possibly nothing to report *with*: say which.
+        note_the_blind_spot(&index);
+    }
     if !conflicts.is_empty() {
         if !replace {
             print_conflicts(&conflicts);
