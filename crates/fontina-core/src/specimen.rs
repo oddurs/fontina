@@ -196,8 +196,8 @@ pub fn render(faces: &[FaceMetadata], opts: &SpecimenOptions) -> Result<String> 
         if !toggles.is_empty() {
             h.push_str("<div class=\"controls features\">");
             for t in toggles {
-                let label = typography::feature_label(t).unwrap_or("");
-                write!(h, "<label><input type=\"checkbox\" class=\"feat\" data-tag=\"{}\"><code>{}</code> {}</label>", esc(t), esc(t), esc(label)).ok();
+                let label = typography::feature_label(t);
+                write!(h, "<label><input type=\"checkbox\" class=\"feat\" data-tag=\"{}\"><code>{}</code> {}</label>", esc(t), esc(t), esc(&label)).ok();
             }
             h.push_str("</div>\n");
         }

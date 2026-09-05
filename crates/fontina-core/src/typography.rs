@@ -193,15 +193,34 @@ impl Direction {
     }
 }
 
-/// A human label for an OpenType feature tag, when there is a useful one.
+/// A human label for an OpenType feature tag.
+///
+/// Stylistic sets and character variants are numbered to `ss20` and `cv99`, so they are
+/// derived rather than listed: a table that stopped at `ss10` left a font like Inter,
+/// which declares `cv01`-`cv13`, showing rows with a tag and a blank beside it.
 ///
 /// A label existing does not mean the feature is offered: `ordn` and `aalt` are labelled
 /// here and hidden by [`is_toggleable`], which wins.
-pub fn feature_label(tag: &str) -> Option<&'static str> {
+pub fn feature_label(tag: &str) -> String {
+    if let Some((kind, digits)) = numbered(tag) {
+        return format!("{kind} {digits}");
+    }
     FEATURE_LABELS
         .iter()
         .find(|(k, _)| *k == tag)
-        .map(|(_, label)| *label)
+        .map(|(_, label)| (*label).to_string())
+        .unwrap_or_default()
+}
+
+/// `ss07` as ("Stylistic set", 7), `cv13` as ("Character variant", 13).
+fn numbered(tag: &str) -> Option<(&'static str, u32)> {
+    let kind = match &tag[..tag.len().min(2)] {
+        "ss" => "Stylistic set",
+        "cv" => "Character variant",
+        _ => return None,
+    };
+    let n: u32 = tag.get(2..)?.parse().ok()?;
+    (n > 0).then_some((kind, n))
 }
 
 /// Whether a feature is a typographic choice a reader should be able to make, rather
@@ -323,9 +342,16 @@ mod tests {
 
     #[test]
     fn labels_the_features_a_reader_can_choose() {
-        assert_eq!(feature_label("smcp"), Some("Small capitals"));
-        assert_eq!(feature_label("ss03"), Some("Stylistic set 3"));
-        assert_eq!(feature_label("zzzz"), None);
+        assert_eq!(feature_label("smcp"), "Small capitals");
+        assert_eq!(feature_label("zzzz"), "", "an unknown tag gets no label");
+        // Numbered sets are derived, so the table cannot fall behind the spec.
+        assert_eq!(feature_label("ss03"), "Stylistic set 3");
+        assert_eq!(feature_label("ss20"), "Stylistic set 20");
+        assert_eq!(feature_label("cv13"), "Character variant 13");
+        assert_eq!(feature_label("cv99"), "Character variant 99");
+        // `ss00` is not a set, and `ssab` is not a number.
+        assert_eq!(feature_label("ss00"), "");
+        assert_eq!(feature_label("ssab"), "");
     }
 
     #[test]

@@ -14,12 +14,12 @@ expression: "stable_frame(&mut app, 120, 36)"
 │  variable            2 ││                                              ││state     not active                        │
 │Color                   ││                                              ││file                                        │
 │  color               1 ││                                              ││../../fixtures/inter-latin-400-normal.woff  │
-│Script                  ││                                              ││features                                    │
-│  Latn                6 ││                                              ││  calt [ ] Contextual alternates            │
-│  Zinh                6 ││                                              ││  frac [ ] Fractions                        │
-│  Zyyy                6 ││                                              ││  pnum [ ] Proportional figures             │
-│  Grek                2 ││                                              ││  tnum [ ] Tabular figures                  │
-│  Arab                1 ││                                              ││                                            │
+│Script                  ││                                              ││                                            │
+│  Latn                6 ││                                              ││features                                    │
+│  Zinh                6 ││                                              ││  calt [ ] Contextual alternates            │
+│  Zyyy                6 ││                                              ││  frac [ ] Fractions                        │
+│  Grek                2 ││                                              ││  pnum [ ] Proportional figures             │
+│  Arab                1 ││                                              ││  tnum [ ] Tabular figures                  │
 │  Cyrl                1 ││                                              ││                                            │
 │License                 ││                                              ││                                            │
 │  OFL-1.1             6 ││                                              ││                                            │

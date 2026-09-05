@@ -43,7 +43,7 @@ pub struct Axis {
 /// One feature the reader can force on.
 pub struct Feature {
     pub tag: String,
-    pub label: &'static str,
+    pub label: String,
     pub on: bool,
 }
 
@@ -93,7 +93,7 @@ impl Controls {
             .into_iter()
             .map(|tag| Feature {
                 tag: tag.to_string(),
-                label: typography::feature_label(tag).unwrap_or(""),
+                label: typography::feature_label(tag),
                 on: false,
             })
             .collect();
@@ -209,15 +209,24 @@ impl Controls {
             None if dir >= 0 => 0,
             None => n - 1,
         };
-        let target = &self.instances[next as usize];
-        if target.coordinates.len() != self.axes.len() {
-            return false;
+        // Step over instances whose coordinates do not describe this axis list — stale
+        // metadata, or a malformed font. Returning on the first one left `self.instance`
+        // unchanged, so the next press recomputed the same index and every instance
+        // beyond it became unreachable.
+        let step = if dir >= 0 { 1 } else { -1 };
+        for hop in 0..n {
+            let i = (next + hop * step).rem_euclid(n);
+            let target = &self.instances[i as usize];
+            if target.coordinates.len() != self.axes.len() {
+                continue;
+            }
+            for (axis, value) in self.axes.iter_mut().zip(&target.coordinates) {
+                axis.value = value.clamp(axis.min, axis.max);
+            }
+            self.instance = Some(i as usize);
+            return true;
         }
-        for (axis, value) in self.axes.iter_mut().zip(&target.coordinates) {
-            axis.value = value.clamp(axis.min, axis.max);
-        }
-        self.instance = Some(next as usize);
-        true
+        false
     }
 
     /// Current coordinates, in axis order and covering every axis, so they can be
@@ -227,8 +236,16 @@ impl Controls {
     }
 
     /// The name of the instance the axes are sitting on, if they are on one.
+    ///
+    /// The remembered index wins over re-deriving it. A font may declare an instance
+    /// outside its own axis range; `cycle_instance` clamps it, and the clamped
+    /// coordinates then match nothing — so the reader would watch the axes jump to a
+    /// style and see the pane call it "custom".
     pub fn instance_name<'a>(&self, face: &'a FaceMetadata) -> Option<&'a str> {
         let v = face.variable.as_ref()?;
+        if let Some(i) = self.instance {
+            return v.instances.get(i)?.name.as_deref();
+        }
         typography::matching_instance(v, &self.coords())?
             .name
             .as_deref()
