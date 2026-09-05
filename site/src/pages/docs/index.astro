@@ -1,13 +1,14 @@
 ---
 import Base from '../../layouts/Base.astro';
 import { getCollection } from 'astro:content';
+import { current } from '../../releases';
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const u = (p: string) => `${base}${p}`;
 const docs = (await getCollection('docs')).sort((a, b) => a.data.order - b.data.order);
 ---
 <Base title="Manual" description="The fontina manual: installation, concepts, command reference, JSON output, health checks, specimens, platform notes." source="site/src/content/docs">
   <h1>The fontina manual</h1>
-  <p class="smaller">For fontina 0.0.1. This manual is maintained in the repository under <code>site/src/content/docs</code>; corrections are pull requests.</p>
+  <p class="smaller">For fontina {current?.version ?? "main"}. This manual is maintained in the repository under <code>site/src/content/docs</code>; corrections are pull requests.</p>
   <p>
     This manual describes the <code>fontina</code> command line and the concepts behind
     it. It is written to be read in order once and consulted by chapter after that.

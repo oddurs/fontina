@@ -181,6 +181,19 @@ a:focus-visible {
 }
 
 /* ----------------------------------------------------------------- Frame */
+/* Off-screen until it is tabbed to, which is the only time it is wanted. */
+.skip {
+  position: absolute;
+  left: -9999px;
+  top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  z-index: 1;
+}
+.skip:focus { left: var(--space-4); }
+
 .frame {
   display: flex;
   gap: var(--gutter);
@@ -219,8 +232,11 @@ a:focus-visible {
 }
 
 /* -------------------------------------------------------------- Nav item */
-/* Was a blue title bar over a filled box. Now a label over a list: the same three
-   levels of hierarchy, drawn with weight and space instead of fill. */
+/* Was a blue title bar over a filled box. Now a label over a rail: the same three
+   levels of hierarchy, drawn with weight, space and one 2px edge instead of fill.
+
+   Every item carries a transparent left border, so hover and the current page can
+   colour it without the text moving by a pixel. */
 .navitem { margin-bottom: var(--space-5); }
 .navhead {
   font-size: var(--text-xs);
@@ -228,18 +244,30 @@ a:focus-visible {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ink-faint);
-  padding-bottom: var(--space-2);
-  margin-bottom: var(--space-2);
-  border-bottom: 1px solid var(--line);
+  padding-left: var(--space-3);
+  margin-bottom: var(--space-1);
 }
 .navbody { font-size: var(--text-sm); line-height: var(--leading-snug); }
-.navbody a, .navbody strong { display: block; padding: var(--space-1) 0; }
+.navbody a {
+  display: block;
+  padding: var(--space-1) 0 var(--space-1) var(--space-3);
+  border-left: 2px solid transparent;
+}
 .navbody a:link, .navbody a:visited { color: var(--ink-soft); }
-.navbody a:hover { color: var(--accent); text-decoration: none; }
-/* The current page, marked in the markup with <strong>. */
-.navbody strong { color: var(--ink); font-weight: var(--weight-semi); }
+.navbody a:hover {
+  color: var(--accent);
+  border-left-color: var(--line-strong);
+  text-decoration: none;
+}
+/* Where you are. The rail is the only thing on the page that says it, so it says it
+   in the accent and holds the weight. */
+.navbody a[aria-current="page"] {
+  color: var(--accent);
+  font-weight: var(--weight-medium);
+  border-left-color: var(--accent);
+}
 /* A sub-item belongs to the line above it. */
-.navbody .sub { padding-left: var(--space-3); }
+.navbody .sub { padding-left: var(--space-5); }
 
 /* --------------------------------------------------------------- Buttons */
 /* One button, three intents, two sizes. An <a> and a <button> look identical. */
@@ -422,7 +450,15 @@ kbd {
   padding: 0.1em 0.4em;
   background: var(--bg);
 }
-/* Shiki inlines colours; the house style is monochrome. */
+/* A terminal transcript is not source code. Syntax colours would say nothing about
+   it, so it gets the one distinction that matters instead: what you typed, and what
+   came back. Set smaller too — a transcript is evidence, not prose. */
+pre.term { color: var(--ink-soft); }
+pre.term .cmd { color: var(--accent); font-weight: var(--weight-medium); }
+
+/* Every fenced block in the manual is an untagged terminal transcript, so Shiki
+   tokenises none of them and contributes only an inline background. Override it back
+   to the palette; see DESIGN.md for why the manual is not syntax-coloured. */
 pre.astro-code, pre.astro-code span {
   color: inherit !important;
   background-color: var(--bg-inset) !important;

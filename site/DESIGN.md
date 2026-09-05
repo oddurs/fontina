@@ -189,17 +189,21 @@ hairline, one radius. The last child loses its margin.
   <div class="navbody">
     <a href="...">Manual</a>
     <a href="..." class="sub">Command reference</a>
-    <strong>The current page</strong>
+    <a href="..." aria-current="page">The current page</a>
   </div>
 </div>
 ```
 
-A tracked-out uppercase label over a rule, then a list of links. This replaces the blue
-title bar over a filled box: the same three levels of hierarchy — group, member, current
-— drawn with weight, space and one hairline instead of two fills and two borders. Links
-are block-level, so the markup needs no `<br>`; a sub-item takes `.sub` and is indented
-rather than prefixed with a middot. This is the whole site navigation; there is no top
-bar.
+A tracked-out uppercase label, then a rail of links. This replaces the blue title bar
+over a filled box: the same three levels of hierarchy — group, member, current — drawn
+with weight, space and one 2px edge instead of two fills and two borders.
+
+Every item carries a transparent 2px left border, so hover can colour it `--line-strong`
+and the current page `--accent` without the text shifting by a pixel. The current page
+stays a real link marked `aria-current="page"`, which the keyboard can still reach and a
+screen reader announces; it is not `<strong>` text. Links are block-level, so the markup
+needs no `<br>`; a sub-item takes `.sub` and is indented rather than prefixed with a
+middot. This is the whole site navigation; there is no top bar.
 
 ### Columns
 
@@ -281,14 +285,25 @@ table its own horizontal scroll so the page never scrolls sideways.
 `--bg-inset` inside a hairline at `--radius`, `--text-sm`, `--leading-snug`, tab width
 4, its own horizontal scroll. Inline `code` takes the same ground and a small radius,
 except inside a heading, a term or a link, where the tint is only noise. `kbd` is drawn
-as a key. Shiki inlines its own colours; the house style overrides them back to
-monochrome.
+as a key.
+
+The manual is not syntax-coloured, and that is a finding rather than a preference:
+all 110 of its fenced blocks are terminal transcripts, none carries a language, and
+Shiki's `console` grammar does not separate the prompt from the output under this
+theme. It therefore tokenises nothing and contributes only an inline background,
+which the stylesheet overrides back to the palette.
+
+`pre.term` does the one distinction a transcript actually has: the command in
+`--accent`, marked up as `<span class="cmd">`, against the output in `--ink-soft`.
+It is applied by hand where the markup is ours. Applying it to the manual's 110
+blocks would need either `@astrojs/markdown-remark` as a dependency or a build-time
+pass over the emitted HTML; neither is done here.
 
 ### Helpers
 
 `.lead` (an opening paragraph at `--text-md` in `--ink-soft`), `.label` (the uppercase
-micro label), `.small`, `.smaller`, `.soft`, `.faint`, `.highlight`, `.wide`.
-Nothing else.
+micro label), `.small`, `.smaller`, `.soft`, `.faint`, `.highlight`, `.wide`,
+and `.skip`, the skip link that sits off-screen until it is tabbed to. Nothing else.
 
 ## Print
 
