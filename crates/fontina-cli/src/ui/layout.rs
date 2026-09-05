@@ -25,6 +25,7 @@
 //! width at which the pane it protects stops being able to say what it knows.
 
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use std::ops::Range;
 
 /// Which pane the reader is in. The browser's `Focus` has a fourth state — the
 /// controls — that lives *inside* the face pane; it maps to [`Pane::Detail`] here,
@@ -154,6 +155,42 @@ pub fn split(area: Rect, focus: Pane) -> Panes {
             overlay: false,
         },
     }
+}
+
+/// Rows of scrolloff: the cursor is kept this far from the edge of a pane while there
+/// is list left to show, so a reader can see where they are going as well as where
+/// they are.
+const MARGIN: usize = 2;
+
+/// The slice of a long list that a pane `height` rows tall should draw.
+///
+/// ratatui scrolls a `List` on its own, but only after being handed a widget for every
+/// item in it. At the fixture scale that is six of them and free; on a real library it
+/// is ten thousand `format!` calls per keystroke to fill thirty rows, and it is paid
+/// again on the next keystroke because the frame is built from scratch. So the
+/// scrolling moves here, and the pane is handed the rows it draws and nothing else.
+///
+/// `offset` is where the pane was looking on the last frame. It is an input rather than
+/// something derived, because a list scrolled halfway down and then filtered should
+/// stay where the reader left it rather than jumping to the cursor.
+pub fn window(len: usize, selected: usize, height: usize, offset: usize) -> Range<usize> {
+    if len == 0 || height == 0 {
+        return 0..0;
+    }
+    // Never past the end: a pane showing the last screenful shows a full screenful.
+    let last = len.saturating_sub(height);
+    let mut start = offset.min(last);
+    // Scrolloff, but never so much that it pushes the cursor off the other edge, which
+    // is what happens on a pane shorter than twice the margin.
+    let margin = MARGIN.min(height.saturating_sub(1) / 2);
+    let selected = selected.min(len - 1);
+    if selected < start + margin {
+        start = selected.saturating_sub(margin);
+    } else if selected + margin >= start + height {
+        start = (selected + margin + 1).saturating_sub(height);
+    }
+    let start = start.min(last);
+    start..(start + height).min(len)
 }
 
 /// Every key the browser answers to, in the order a reader needs them.
@@ -312,6 +349,83 @@ mod tests {
         assert!(!Shape::Two.detail_takes_focus(false));
         assert!(Shape::One.detail_takes_focus(false));
         assert!(Shape::One.detail_takes_focus(true));
+    }
+
+    /// The property the whole change rests on: what a pane builds is bounded by what
+    /// it can show, never by what it holds.
+    #[test]
+    fn a_window_is_the_size_of_the_pane_and_not_of_the_list() {
+        for len in [0usize, 1, 5, 30, 1_000, 10_000] {
+            for height in [0usize, 1, 3, 30] {
+                for selected in [0, len / 2, len.saturating_sub(1)] {
+                    let w = window(len, selected, height, 0);
+                    assert!(
+                        w.len() <= height,
+                        "{len}/{height}/{selected}: built {} rows for {height}",
+                        w.len()
+                    );
+                    assert!(w.end <= len, "{len}/{height}/{selected}: past the end");
+                    if len >= height {
+                        assert_eq!(w.len(), height, "and a full pane is filled");
+                    }
+                }
+            }
+        }
+    }
+
+    /// A cursor you cannot see is a cursor you cannot follow.
+    #[test]
+    fn the_selection_is_always_inside_the_window() {
+        for selected in 0..200usize {
+            // Walking down, carrying the offset the way a frame does.
+            let mut offset = 0;
+            for i in 0..=selected {
+                let w = window(200, i, 20, offset);
+                offset = w.start;
+                assert!(
+                    w.contains(&i),
+                    "{i}: the cursor scrolled out of its own pane"
+                );
+            }
+        }
+    }
+
+    /// Scrolloff, and the two ends where it has to give way: at the top and bottom of
+    /// a list there is nothing to keep the cursor away from.
+    #[test]
+    fn the_cursor_keeps_its_distance_from_the_edge_except_at_the_ends() {
+        let w = window(200, 100, 20, 0);
+        assert!(w.contains(&100));
+        assert!(
+            100 - w.start >= MARGIN && w.end - 100 > MARGIN,
+            "{w:?} put the cursor on the edge with list left on both sides"
+        );
+
+        assert_eq!(window(200, 0, 20, 0), 0..20, "the top is the top");
+        assert_eq!(
+            window(200, 199, 20, 180),
+            180..200,
+            "and the bottom the bottom"
+        );
+
+        // A pane too short for the margin still shows the cursor.
+        for height in [1usize, 2, 3, 4] {
+            let w = window(200, 100, height, 0);
+            assert!(w.contains(&100), "{height} rows: {w:?} lost the cursor");
+        }
+    }
+
+    /// A filter that shortens the list must not leave the pane looking past the end of
+    /// it, and a list the reader scrolled must not jump back to the cursor.
+    #[test]
+    fn the_window_survives_the_list_changing_under_it() {
+        assert_eq!(
+            window(10, 0, 20, 500),
+            0..10,
+            "an offset past a shortened list comes back to the top"
+        );
+        let scrolled = window(1_000, 300, 20, 290);
+        assert_eq!(scrolled.start, 290, "a pane the reader scrolled stays put");
     }
 
     #[test]
