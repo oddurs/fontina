@@ -544,10 +544,39 @@ decoration, and on this site they would be costume rather than information.
 It is the only place with a radius above 5px and the only filled ground on the page,
 because a terminal is a thing being *quoted* rather than part of the page.
 
-**The cursor is the only animation on the site.** A cursor that does not blink reads as a
-screenshot; one that does says the transcript is a session someone is in the middle of.
-Two lines of CSS, no script, and it stops under `prefers-reduced-motion: reduce` —
-that is a setting a person chose, not a hint.
+### Animated demos
+
+Two of them, both CSS, neither with a line of script. The site's no-script rule is not
+relaxed for a demo; what follows is what that rule permits, which turns out to be most of
+what a recording would give and none of the weight.
+
+**The session types itself.** Monospace is what makes this possible: every glyph is one
+`ch` wide, so animating a width in `steps(n)` reveals exactly one character per step and
+reads as typing rather than as a box growing. The timeline lives in one comment in the
+stylesheet so it can be reasoned about rather than reverse-engineered — command types,
+output appears, second command types, table appears, prompt returns. Output is *revealed*
+rather than inserted, so the frame is its full height from the first paint and nothing
+below it moves.
+
+It **plays once and settles**. A landing page that loops a demo forever asks the reader to
+watch it instead of reading the page, and the final state is the one worth leaving up.
+
+**The browser plays three real frames.** They are the snapshot files a test in the CLI
+asserts on, stacked in one grid cell and cross-faded: the family list, a family opened,
+the help overlay. What animates is the program's actual output in three states, not an
+impression of one. This loop *does* repeat, because it is a slideshow rather than a
+session and no frame is more true than the others.
+
+The step count and the string length have to agree or the last character never appears —
+they did not, once, and the check is worth running when the copy changes.
+
+Everything stops under `prefers-reduced-motion: reduce`: the session shows as already
+typed, the browser shows its first frame and stays there. That is a setting a person
+chose, not a hint.
+
+**What this cannot do.** Asciinema-grade playback — scrubbing, pausing, arbitrary
+timing, a real recording of a real session — needs JavaScript. That is a change to the
+rules rather than a feature, and it should be made deliberately if it is made at all.
 
 ### Code
 
