@@ -57,22 +57,29 @@ fn src_for(face: &FaceMetadata, link: bool) -> Result<String> {
         String::new()
     };
     if link {
+        // Through `css::file_url`, not by hand: a path is embedded here inside a
+        // `<style>` element, and a directory named `</style>` would otherwise close it
+        // and put the rest of the document's markup at the mercy of a file name.
+        // Percent-encoding leaves no `<` to find.
         return Ok(format!(
-            "url(\"file://{}{}\") format(\"{}\")",
-            face.file.path.replace('\\', "/"),
-            fragment,
-            face.style.css.format
+            "url({}) format({})",
+            crate::css::css_string(&format!(
+                "{}{fragment}",
+                crate::css::file_url(&face.file.path)
+            )),
+            crate::css::css_string(&face.style.css.format)
         ));
     }
     let bytes =
         std::fs::read(&face.file.path).map_err(|e| Error::Io(face.file.path.clone().into(), e))?;
     let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
     Ok(format!(
-        "url(\"data:{};base64,{}{}\") format(\"{}\")",
-        mime(face.file.container),
-        b64,
-        fragment,
-        face.style.css.format
+        "url({}) format({})",
+        crate::css::css_string(&format!(
+            "data:{};base64,{b64}{fragment}",
+            mime(face.file.container)
+        )),
+        crate::css::css_string(&face.style.css.format)
     ))
 }
 

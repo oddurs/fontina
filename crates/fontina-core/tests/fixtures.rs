@@ -438,6 +438,52 @@ fn specimen_is_self_contained_html() {
     assert!(!linked.contains("<section class=\"compare\">"));
 }
 
+/// A file name cannot close the specimen's `<style>` element.
+///
+/// `--link` writes the font's path into a URL inside `<style>`, and an HTML parser ends
+/// that element at the first `</style>` whatever it is nested in: a quoted CSS string
+/// does not protect it, because the string is CSS and the parser looking for the end tag
+/// is HTML. A directory called `</style><script>…` would then be running as markup in a
+/// document the person opened to look at a font. The path is percent-encoded, so there
+/// is no `<` left to find.
+#[test]
+fn a_hostile_path_cannot_escape_the_specimen_style_element() {
+    let (_, faces) = load_file(&fixture("Amiri-Regular.ttf")).unwrap();
+    let mut face = faces[0].clone();
+    face.file.path = "/fonts/</style><script>alert(1)</script>/Amiri.ttf".into();
+    let html = fontina_core::specimen::render(
+        std::slice::from_ref(&face),
+        &fontina_core::specimen::SpecimenOptions {
+            link: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        html.matches("</style>").count(),
+        1,
+        "the document has one style element and it ends where fontina ends it"
+    );
+    assert_eq!(
+        html.matches("<script>").count(),
+        1,
+        "the document has the one script element the specimen writes itself"
+    );
+    assert!(
+        !html.contains("alert(1)"),
+        "a path put its own code into the document"
+    );
+    // The slash stays a slash, because it separates path segments; the `<` and `>` are
+    // what an HTML parser looks for and they are gone.
+    assert!(
+        html.contains("%3C/style%3E"),
+        "the path is still there, encoded:\n{}",
+        html.lines()
+            .find(|l| l.contains("@font-face"))
+            .unwrap_or_default()
+    );
+}
+
 /// `parse_paths` hands work to a pool of threads that claim paths as they finish, so the
 /// order results come back in is not the order they were produced in. The scan report
 /// lists failures in the order the user gave the paths, so the restored order is part of
