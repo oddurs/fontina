@@ -186,6 +186,87 @@ and the optional `.label` above it. Takes any content; the last child loses its 
 Groups something that is not prose — a summary, a set of figures. `--bg-subtle`, one
 hairline, one radius. The last child loses its margin.
 
+### Hero
+
+```html
+<header class="hero">
+  <h1>fontina</h1>
+  <p class="tagline">A font manager for the terminal.</p>
+  <p class="lead">One paragraph of what it is.</p>
+  <p class="btn-row">…</p>
+</header>
+```
+
+The block a landing page opens with. Not a marketing hero: no ornament, no full-bleed
+anything, no ornamental type. It exists so that the first screen answers *what is this*
+before the page starts answering *what has happened lately*. The old front page led with
+news and release status, which is a project's own view of itself rather than a reader's.
+
+### Section
+
+```html
+<section class="section"><h2>…</h2>…</section>
+```
+
+A rule and a wider gap. A long page of undifferentiated blocks is what makes a page of
+this era feel like an archive rather than a document, and this is the cheapest thing that
+says "new subject". No card, no shadow, no background: one hairline.
+
+### Grid and tile
+
+```html
+<div class="grid">
+  <div class="tile"><h3><a href="…">Activates</a></h3><p>… <code>activate</code></p></div>
+</div>
+```
+
+Scannable units — one claim each, each linking to the chapter that proves it, each naming
+the command that does it. `auto-fit` with a `15rem` minimum, so it becomes one column on a
+phone without a breakpoint of its own. This replaces a paragraph that carried fifteen
+inline links, which nobody reads as a list because it is not one.
+
+### Properties
+
+```html
+<dl class="props">
+  <dt>It makes no network connections</dt>
+  <dd>How you would check that.</dd>
+</dl>
+```
+
+For claims that have to be checkable: the term is the property, the definition says how
+you would verify it. Used for the free-software section, where a vague promise would be
+worse than none — "respects your freedom" says nothing, "contains no networking code, and
+a catalogue feature would have to live in a separate package to keep it that way" can be
+confirmed by reading the source.
+
+### On-page contents
+
+```html
+<nav class="toc" aria-label="On this page">
+  <span class="label">On this page</span>
+  <ul><li><a href="#slug">Section</a></li></ul>
+</nav>
+```
+
+Built from the chapter's own depth-2 headings, which Astro hands back from `render()`, so
+it cannot drift from the page. Two columns on a wide screen, one under `40rem`. It appears
+only where there are more than two sections: the command reference runs to eleven, and
+arriving at the top of that with no map is why a reader gives up on a manual and goes back
+to `--help`.
+
+### Chapter row
+
+```html
+<div class="chapter">
+  <div class="num">5</div>
+  <div class="body"><a href="…">Command reference</a><p>The sentence that says whether this is the chapter you want.</p></div>
+</div>
+```
+
+The manual index, which was an `<ol>` of ten links. The number keeps the reading order the
+manual is written in; the description is what lets someone skip to the chapter they need.
+
 ### Frame
 
 ```html

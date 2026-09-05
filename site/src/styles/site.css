@@ -404,6 +404,106 @@ a:focus-visible {
 }
 .panel > :last-child { margin-bottom: 0; }
 
+/* ------------------------------------------------------------------ Hero */
+/* The title block a landing page opens with. Not a marketing hero: no ornament,
+   no full-bleed anything. It exists so the first screen answers "what is this"
+   before it starts answering "what has happened lately". */
+.hero { margin-bottom: var(--space-7); }
+.hero h1 { margin-bottom: var(--space-2); }
+.hero .tagline {
+  font-size: var(--text-md);
+  color: var(--ink);
+  margin: 0 0 var(--space-4);
+  max-width: var(--measure);
+}
+.hero .lead { margin-bottom: var(--space-5); }
+
+/* --------------------------------------------------------------- Section */
+/* Rhythm. A long page of undifferentiated blocks is the thing that makes a
+   GNU-era page feel like an archive; a rule and a wider gap is enough to say
+   "new subject" without inventing a card for everything. */
+.section { margin: var(--space-8) 0 0; padding-top: var(--space-6); border-top: 1px solid var(--line); }
+.section > h2:first-child { margin-top: 0; }
+.section > p:first-of-type { max-width: var(--measure); }
+
+/* ------------------------------------------------------------------ Grid */
+/* Scannable units: what the thing does, one claim each, each linking to the
+   chapter that proves it. Auto-fit rather than a fixed column count, so it is
+   one column on a phone without a breakpoint of its own. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: var(--space-5);
+  margin: 0 0 var(--space-4);
+}
+.tile > h3 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semi);
+}
+.tile > p { margin: 0; font-size: var(--text-sm); color: var(--ink-soft); }
+.tile > p + p { margin-top: var(--space-2); }
+/* The command that does it, under the claim. */
+.tile code { font-size: 0.85em; }
+
+/* ----------------------------------------------------------- Properties */
+/* Claims that have to be checkable. The term is the property, the definition
+   says how you would verify it. Used for the free-software section, where a
+   vague promise would be worse than none. */
+.props { margin: 0 0 var(--space-4); }
+.props dt {
+  font-weight: var(--weight-semi);
+  margin-top: var(--space-4);
+  color: var(--ink);
+}
+.props dt:first-child { margin-top: 0; }
+.props dd {
+  margin: var(--space-1) 0 0;
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
+  max-width: var(--measure);
+}
+
+/* ------------------------------------------------------------------- TOC */
+/* On-page contents for a manual chapter. The command reference is 331 lines
+   over eleven sections; arriving at the top of that with no map is the reason
+   people give up on a manual and go back to --help. */
+.toc {
+  margin: 0 0 var(--space-6);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.toc .label { display: block; margin-bottom: var(--space-2); }
+.toc ul { list-style: none; padding: 0; margin: 0; columns: 2; column-gap: var(--space-6); }
+.toc li { margin: 0; break-inside: avoid; }
+.toc a { display: block; padding: var(--space-1) 0; font-size: var(--text-sm); }
+.toc a:link, .toc a:visited { color: var(--ink-soft); }
+.toc a:hover { color: var(--accent); text-decoration: none; }
+@media (max-width: 40rem) { .toc ul { columns: 1; } }
+
+/* --------------------------------------------------------------- Chapter */
+/* The manual index: a row per chapter, numbered, with the sentence that says
+   whether this is the chapter you want. */
+.chapters { margin: 0 0 var(--space-5); }
+.chapter {
+  display: flex;
+  gap: var(--space-4);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--line);
+}
+.chapter:first-of-type { border-top: 1px solid var(--line); }
+.chapter .num {
+  flex: 0 0 1.5rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+  font-size: var(--text-sm);
+  padding-top: 0.15em;
+}
+.chapter .body { min-width: 0; }
+.chapter .body a { font-weight: var(--weight-medium); }
+.chapter .body p { margin: var(--space-1) 0 0; font-size: var(--text-sm); color: var(--ink-soft); }
+
 /* --------------------------------------------------------------- Columns */
 .columns { display: flex; gap: var(--space-7); align-items: flex-start; }
 .col { flex: 1 1 50%; min-width: 0; }

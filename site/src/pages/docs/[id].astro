@@ -12,7 +12,11 @@ export async function getStaticPaths() {
 
 const { entry, prev, next } = Astro.props;
 const chapters = (await getCollection('docs')).sort((a, b) => a.data.order - b.data.order);
-const { Content } = await render(entry);
+const { Content, headings } = await render(entry);
+// Depth-2 only: a chapter's own sections. The command reference runs to eleven of
+// them, and arriving at the top of that with no map is why people give up on a
+// manual and go back to `--help`.
+const sections = headings.filter((h) => h.depth === 2);
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const u = (p: string) => `${base}${p}`;
 ---
@@ -24,6 +28,15 @@ const u = (p: string) => `${base}${p}`;
     Up: <a href={u('/docs/')}>Manual</a>
   </p>
   <h1>{entry.data.order}. {entry.data.title}</h1>
+  <p class="lead">{entry.data.description}</p>
+  {sections.length > 2 && (
+    <nav class="toc" aria-label="On this page">
+      <span class="label">On this page</span>
+      <ul>
+        {sections.map((h) => <li><a href={`#${h.slug}`}>{h.text}</a></li>)}
+      </ul>
+    </nav>
+  )}
   <Content />
   <p class="node-nav">
     {next && <>Next: <a href={u(`/docs/${next.id}/`)}>{next.data.title}</a>, &nbsp;</>}

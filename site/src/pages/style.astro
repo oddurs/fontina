@@ -125,6 +125,54 @@ const colour = [
     <p class="small soft">Subtle ground, one hairline, one radius.</p>
   </div>
 
+  <h2 id="layout">Hero, section, grid</h2>
+  <p>The three pieces a landing page is built from. A hero states what the thing is; a section is a rule and a gap; a grid holds one claim per tile.</p>
+  <header class="hero">
+    <h1>fontina</h1>
+    <p class="tagline">A font manager for the terminal.</p>
+    <p class="lead">One paragraph saying what it is, before the page says anything about itself.</p>
+    <p class="btn-row"><a class="btn btn--primary" href="#layout">Download</a> <a class="btn" href="#layout">Get started</a></p>
+  </header>
+  <div class="grid">
+    <div class="tile"><h3><a href="#layout">Finds and indexes</a></h3><p>One claim, the chapter that proves it, and the command that does it. <code>scan</code></p></div>
+    <div class="tile"><h3><a href="#layout">Activates</a></h3><p>Per user, in place, never a system directory. <code>activate</code></p></div>
+    <div class="tile"><h3><a href="#layout">Exports</a></h3><p>CSS, specimens, JSON against a published schema. <code>specimen</code></p></div>
+  </div>
+
+  <section class="section">
+  <h2 id="props">Properties</h2>
+  <p>The rule and the gap above this heading are <code>.section</code>: the cheapest thing that says "new subject" without inventing a card for it.</p>
+  <p>Properties are for claims that have to be checkable: the term is the property, the definition says how you would verify it.</p>
+  <dl class="props">
+    <dt>It makes no network connections</dt>
+    <dd>The core and the command line contain no networking code at all.</dd>
+    <dt>It never asks for elevation</dt>
+    <dd>Everything is per user; system font directories are left alone.</dd>
+  </dl>
+
+  </section>
+
+  <h2 id="toc">On-page contents, and a chapter row</h2>
+  <nav class="toc" aria-label="On this page">
+    <span class="label">On this page</span>
+    <ul>
+      <li><a href="#toc">NAME</a></li>
+      <li><a href="#toc">SYNOPSIS</a></li>
+      <li><a href="#toc">COMMANDS</a></li>
+      <li><a href="#toc">FILTERS</a></li>
+    </ul>
+  </nav>
+  <div class="chapters">
+    <div class="chapter">
+      <div class="num">5</div>
+      <div class="body"><a href="#toc">Command reference</a><p>Every command, its options and its exit codes, laid out as a manual page.</p></div>
+    </div>
+    <div class="chapter">
+      <div class="num">6</div>
+      <div class="body"><a href="#toc">JSON output and schemas</a><p>What every <code>--json</code> output is guaranteed to contain.</p></div>
+    </div>
+  </div>
+
   <h2 id="nav">Nav item</h2>
   <p>The site navigation, and the only navigation there is: a tracked-out label over a list. The current page is set in <code>&lt;strong&gt;</code>; a sub-item takes <code>.sub</code>.</p>
   <div style="max-width: 13rem">

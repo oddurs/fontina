@@ -73,27 +73,25 @@ const status = `
   <a href="${repo}/pulls">Open pull requests</a>.
   </div></dd>
 </dl>
-
-<h2>Get our announcements</h2>
-<p class="smaller">Subscribe to the <a href="${u('/feed.xml')}">news feed</a>, or watch
-<a href="${repo}/releases">releases on GitHub</a>. There is no mailing list and nothing
-to sign up for.</p>
-
-<h2>Get fontina</h2>
-<p class="smaller"><a href="${u('/download/')}">Binaries</a> for each release, with
-checksums and provenance, or <a href="${u('/download/#building-from-source')}">from
-source</a> with Rust 1.88 or newer.</p>
 `;
 ---
-<Base title="fontina" description="fontina is a free software font manager: a Rust library, a command line, and soon a desktop application. Open standards end to end." source="site/src/pages/index.astro">
-  <h1>fontina, a font manager</h1>
-  <Fragment set:html={intro} />
-  <p class="btn-row">
-    <a class="btn btn--primary" href={u('/download/')}>Download fontina</a>
-    <a class="btn" href={u('/docs/')}>Read the manual</a>
-    <a class="btn btn--quiet" href={repo}>Source on GitHub</a>
-  </p>
-  <h2 id="what-it-looks-like">What it looks like</h2>
+<Base title="fontina" description="A font manager for the terminal. Finds every font on a machine, reads what is actually in it, and makes any of them available to every application — per user, in place, on GNU/Linux, macOS and Windows." source="site/src/pages/index.astro">
+
+  <header class="hero">
+    <h1>fontina</h1>
+    <p class="tagline">A font manager for the terminal.</p>
+    <p class="lead">
+      It finds every font on a machine, reads what is actually inside it, and makes any
+      of them available to every application &mdash; per user, in place, on GNU/Linux,
+      macOS and Windows.
+    </p>
+    <p class="btn-row">
+      <a class="btn btn--primary" href={u('/download/')}>Download</a>
+      <a class="btn" href={u('/docs/getting-started/')}>Get started</a>
+      <a class="btn btn--quiet" href={repo}>Source</a>
+    </p>
+  </header>
+
   <p>Real output, on the fonts the test fixtures ship. Only the paths are shortened.</p>
   <pre class="term"><span class="cmd">$ fontina scan ~/Fonts</span>
 scanned 5 candidates in 0.00s: 5 parsed (5 faces), 0 unchanged, 0 removed, 0 failed
@@ -106,30 +104,131 @@ scanned 5 candidates in 0.00s: 5 parsed (5 faces), 0 unchanged, 0 removed, 0 fai
      3  Nabla                Regular          400   100  VC--F  OFL-1.1   ~/Fonts/Nabla[EDPT,EHLT].ttf
      4  Source Serif 4       Regular          400   100  ----F  OFL-1.1   ~/Fonts/SourceSerif4-Regular.otf
 5 face(s)</pre>
-  <p>
-    <code>fontina ui</code> is the same index, keyboard first: facets on the left,
-    families in the middle, the face itself on the right. The frame below is not a
-    screenshot — the browser draws text, so this is that text, taken from the
-    snapshot a test in the command line asserts on every run.
-  </p>
-  <pre class="term">{browser}</pre>
-  <hr />
-  <div class="columns">
-    <section class="col">
-      <h2 id="news"><a href="#news">News</a></h2>
-      <dl class="news">
-        {news.map((n) => (
-          <>
-            <dt><a href={u(`/news/${n.id}/`)}>{n.data.title}</a> <span class="date">[{day(n.data.date)}]</span></dt>
-            <dd></dd>
-          </>
-        ))}
-      </dl>
-      <div><a href={u('/news/')}>Older news</a> | <span class="smaller">Announcements are also an <a href={u('/feed.xml')}>RSS feed</a>.</span></div>
-    </section>
-    <section class="col">
-      <h2>Supported releases</h2>
-      <Fragment set:html={status} />
-    </section>
-  </div>
+
+  <section class="section">
+    <h2 id="what-it-does">What it does</h2>
+    <p>Six things, each with the chapter that explains it.</p>
+    <div class="grid">
+      <div class="tile">
+        <h3><a href={u('/docs/index-and-paths/')}>Finds and indexes</a></h3>
+        <p>Every container format &mdash; TTF, OTF, TTC, WOFF, WOFF2 &mdash; parsed through
+        fontations into a searchable SQLite index. <code>scan</code></p>
+      </div>
+      <div class="tile">
+        <h3><a href={u('/docs/getting-started/#looking')}>Answers questions</a></h3>
+        <p>Which faces cover a script, which are variable, which file duplicates which,
+        what licence each one carries. <code>list</code>, <code>facets</code>, <code>dupes</code></p>
+      </div>
+      <div class="tile">
+        <h3><a href={u('/docs/activation/')}>Activates</a></h3>
+        <p>Makes a font visible to every application, per user and in place, with conflict
+        detection. It never touches a system directory. <code>activate</code></p>
+      </div>
+      <div class="tile">
+        <h3><a href={u('/docs/terminal/#previews')}>Draws real glyphs</a></h3>
+        <p>Shaped, rasterised previews in the terminal over kitty graphics, iTerm2, sixel
+        or half-block text. <code>preview</code></p>
+      </div>
+      <div class="tile">
+        <h3><a href={u('/docs/specimen/')}>Exports</a></h3>
+        <p>CSS <code>@font-face</code> rules, self-contained HTML specimens, and JSON
+        against a published schema. <code>css</code>, <code>specimen</code>, <code>--json</code></p>
+      </div>
+      <div class="tile">
+        <h3><a href={u('/docs/checks/')}>Checks</a></h3>
+        <p>Health checks with stable identifiers, so a broken name table or a missing
+        hinting program is a finding rather than a surprise. <code>check</code></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2 id="browse">And a browser over the same index</h2>
+    <p>
+      <code>fontina ui</code> is keyboard first: facets on the left, families in the
+      middle, the face itself on the right. Not a screenshot &mdash; the browser draws
+      text, so this is that text, read from the snapshot a test asserts on every run.
+    </p>
+    <pre class="term">{browser}</pre>
+  </section>
+
+  <section class="section">
+    <h2 id="install">Install</h2>
+    <p>
+      A release archive holds one static binary, the manual, shell completions and man
+      pages. There is no installer and nothing to configure.
+    </p>
+    <pre class="term"><span class="cmd"># GNU/Linux and macOS: put the binary on your PATH</span>
+tar xf fontina-vX.Y.Z-x86_64-unknown-linux-musl.tar.gz
+install -Dm755 fontina ~/.local/bin/fontina
+
+<span class="cmd"># Debian and Fedora packages are built from the same binary</span>
+sudo dpkg -i fontina_X.Y.Z-1_amd64.deb
+sudo rpm -i fontina-X.Y.Z-1.x86_64.rpm
+
+<span class="cmd"># or from source, with Rust 1.88 or newer</span>
+cargo install --git https://github.com/oddurs/fontina fontina-cli</pre>
+    <p class="small">
+      <a href={u('/download/')}>Every archive, with checksums and provenance</a>, and how
+      to verify one.
+    </p>
+  </section>
+
+  <section class="section">
+    <h2 id="free">Free software, in these specific ways</h2>
+    <p>
+      fontina is <a href={u('/license/')}>GPL-3.0-or-later</a> and the manual is GFDL
+      1.3-or-later. That is the licence. These are the properties it was built to have,
+      each of which you can check.
+    </p>
+    <dl class="props">
+      <dt>It makes no network connections</dt>
+      <dd>Not for updates, not for metadata, not for anything. The core and the command
+      line contain no networking code at all, and a catalogue feature would have to live
+      in a separate package to stay that way.</dd>
+
+      <dt>It collects nothing</dt>
+      <dd>No analytics, no crash reporting, no identifiers. There is nothing to opt out
+      of because there is nothing there.</dd>
+
+      <dt>It never asks for elevation</dt>
+      <dd>Everything is per user. It does not modify system font directories, and a
+      font manager that needs administrator rights to show you your own fonts has
+      misunderstood the problem.</dd>
+
+      <dt>It reports restrictions rather than enforcing them</dt>
+      <dd>A font's <code>OS/2.fsType</code> bits are data <em>about</em> the file, not
+      permission the program grants you. fontina tells you what a font claims and then
+      does what you asked. Deciding what you may do with a file on your own machine is
+      not a font manager's job.</dd>
+
+      <dt>It keeps its answers in open formats</dt>
+      <dd>An SQLite index you can open with any tool, JSON against a
+      <a href={u('/docs/json-and-schemas/')}>published schema</a>, CSS Fonts Level 4 as
+      the style model, SPDX for licences. Nothing here is a format only fontina can
+      read.</dd>
+    </dl>
+  </section>
+
+  <section class="section">
+    <h2 id="project">The project</h2>
+    <div class="columns">
+      <section class="col">
+        <h3 id="news"><a href="#news">News</a></h3>
+        <dl class="news">
+          {news.map((n) => (
+            <>
+              <dt><a href={u(`/news/${n.id}/`)}>{n.data.title}</a> <span class="date">{day(n.data.date)}</span></dt>
+              <dd></dd>
+            </>
+          ))}
+        </dl>
+        <p class="small"><a href={u('/news/')}>Older news</a>, or the <a href={u('/feed.xml')}>RSS feed</a>.</p>
+      </section>
+      <section class="col">
+        <h3>Releases</h3>
+        <Fragment set:html={status} />
+      </section>
+    </div>
+  </section>
 </Base>
