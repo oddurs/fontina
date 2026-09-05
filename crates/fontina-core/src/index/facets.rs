@@ -53,9 +53,12 @@ pub struct Facets {
     pub container: Vec<FacetCount>,
     /// ISO 15924 script codes.
     pub script: Vec<FacetCount>,
-    /// Languages the matched faces claim, most-claimed first. The value carries which
-    /// kind of claim it is, because the two are different questions: `TRK` is a shaping
-    /// rule, `tr` is a name record.
+    /// Languages the matched faces claim, most-claimed first.
+    ///
+    /// The value is the tag alone. Both kinds of claim are offered on the one list and
+    /// the tag is what tells them apart — `TRK` is an OpenType language system, `tr` a
+    /// BCP 47 name record — so a face claiming a language both ways appears twice, under
+    /// two tags. Ask `Index::languages` for the source of a particular claim.
     pub language: Vec<FacetCount>,
     /// `monospace` or `proportional`, from `post.isFixedPitch`.
     pub spacing: Vec<FacetCount>,
@@ -227,7 +230,7 @@ impl Index {
         let sql = format!(
             "SELECT f.family, f.weight_min, f.weight_max, f.width_min, f.width_max,
                     f.italic, f.is_variable, f.is_color, f.is_fixed_pitch, fi.container,
-                    f.scripts, f.license_spdx, f.vendor, a.scope, fi.path
+                    f.license_spdx, f.vendor, a.scope, fi.path
              FROM faces f JOIN files fi ON fi.id = f.file_id LEFT JOIN activations a ON a.face_id = f.id{}",
             w.sql()
         );
@@ -260,11 +263,10 @@ impl Index {
                 r.get::<_, bool>(7)?,
                 r.get::<_, bool>(8)?,
                 r.get::<_, String>(9)?,
-                r.get::<_, String>(10)?,
+                r.get::<_, Option<String>>(10)?,
                 r.get::<_, Option<String>>(11)?,
                 r.get::<_, Option<String>>(12)?,
-                r.get::<_, Option<String>>(13)?,
-                r.get::<_, String>(14)?,
+                r.get::<_, String>(13)?,
             ))
         })?;
         for row in rows {
@@ -279,7 +281,6 @@ impl Index {
                 color,
                 monospace,
                 cont,
-                scripts,
                 lic,
                 ven,
                 act,
