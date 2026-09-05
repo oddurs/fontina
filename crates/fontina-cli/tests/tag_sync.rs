@@ -16,6 +16,7 @@
 
 //! `fontina tag sync`, against the running system's real tag store.
 
+#[cfg(unix)]
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -43,6 +44,10 @@ fn run(db: &Path, args: &[&str]) -> String {
 }
 
 /// The index's tags for every face, as `(id, tags)`.
+///
+/// Only the tests that actually sync use it, and those are Unix-only; CI builds with
+/// `-D warnings`, so an ungated helper is a build failure on Windows.
+#[cfg(unix)]
 fn indexed(db: &Path) -> Vec<(i64, Vec<String>)> {
     let faces: Value = serde_json::from_str(&run(db, &["list", "--json"])).unwrap();
     faces
