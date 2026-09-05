@@ -418,6 +418,134 @@ fn a_variable_font_is_found_at_every_weight_it_spans() {
     assert!(at(350, 450).contains(&"Bricolage Grotesque".to_string()));
 }
 
+/// Two scripts mean a face that covers both.
+///
+/// `faces.scripts` is a comma-joined string matched with `LIKE '%,Arab,%'`, and one
+/// `LIKE` cannot express two scripts at once. `face_scripts` is a row per script, so
+/// each one asked for is its own clause and they compose.
+#[test]
+fn asking_for_two_scripts_means_a_face_that_has_both() {
+    let index = indexed();
+    let of = |scripts: &[&str]| -> Vec<String> {
+        let mut names: Vec<String> = index
+            .list(&FaceFilter {
+                scripts: scripts.iter().map(|s| s.to_string()).collect(),
+                ..Default::default()
+            })
+            .unwrap()
+            .into_iter()
+            .map(|f| f.family)
+            .collect();
+        names.sort();
+        names.dedup();
+        names
+    };
+
+    assert_eq!(of(&["Arab"]), vec!["Amiri".to_string()]);
+    assert_eq!(of(&["Cyrl"]), vec!["Source Serif 4".to_string()]);
+    // Both, from two different faces, is not a face that has both.
+    assert!(
+        of(&["Arab", "Cyrl"]).is_empty(),
+        "no fixture covers Arabic and Cyrillic: {:?}",
+        of(&["Arab", "Cyrl"])
+    );
+    // But Source Serif has Cyrillic and Greek.
+    assert_eq!(
+        of(&["Cyrl", "Grek"]),
+        vec!["Source Serif 4".to_string()],
+        "{:?}",
+        of(&["Cyrl", "Grek"])
+    );
+    // A script nothing has takes everything else with it.
+    assert!(of(&["Latn", "Hani"]).is_empty());
+    // And no script asked for is no clause at all.
+    assert_eq!(of(&[]).len(), 5, "{:?}", of(&[]));
+}
+
+/// Coverage has depth, and three Arabic codepoints is not an Arabic font.
+///
+/// `Coverage.scripts` has counted this since M0 and the filter threw it away.
+#[test]
+fn a_script_filter_can_ask_how_much_of_it() {
+    let index = indexed();
+    let latin = |min: u32| -> usize {
+        index
+            .list(&FaceFilter {
+                scripts: vec!["Latn".into()],
+                script_min: Some(min),
+                ..Default::default()
+            })
+            .unwrap()
+            .len()
+    };
+    let all = latin(1);
+    assert_eq!(all, 6, "every fixture has some Latin");
+
+    // The depth the fixtures actually hold, so the test says something real rather than
+    // asserting a number somebody typed.
+    let depths: Vec<u32> = index
+        .list(&FaceFilter::default())
+        .unwrap()
+        .iter()
+        .map(|f| {
+            index
+                .script_coverage(f.id)
+                .unwrap()
+                .into_iter()
+                .find(|(s, _)| s == "Latn")
+                .map(|(_, n)| n)
+                .unwrap_or(0)
+        })
+        .collect();
+    let deepest = *depths.iter().max().unwrap();
+    let shallowest = *depths.iter().min().unwrap();
+    assert!(
+        deepest > shallowest,
+        "the fixtures differ in how much Latin they have: {depths:?}"
+    );
+
+    assert_eq!(latin(shallowest), 6, "the floor keeps everyone");
+    assert!(
+        latin(shallowest + 1) < 6,
+        "and asking for more drops the shallowest: {depths:?}"
+    );
+    assert_eq!(latin(deepest + 1), 0, "nothing is deeper than the deepest");
+}
+
+/// The table is filled from the metadata already stored, so an older index answers the
+/// new question without anyone rescanning.
+#[test]
+fn an_older_index_learns_its_scripts_without_a_rescan() {
+    let dir = std::env::temp_dir().join(format!("fontina-scripts-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let db = dir.join("v4.db");
+    {
+        let mut idx = Index::open(&db).unwrap();
+        fontina_core::scan::scan(
+            &mut idx,
+            &[fixtures().join("Amiri-Regular.ttf")],
+            &ScanOptions::default(),
+        )
+        .unwrap();
+    }
+    {
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        conn.execute_batch("DROP TABLE face_scripts; PRAGMA user_version = 4;")
+            .unwrap();
+    }
+    let idx = Index::open(&db).unwrap();
+    let found = idx
+        .list(&FaceFilter {
+            scripts: vec!["Arab".into()],
+            script_min: Some(100),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(found.len(), 1, "the depth came out of the stored metadata");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// The facet and the filter beside it must give the same answer.
 ///
 /// A facet is a menu of what asking would return. Counting a variable face only under
@@ -584,7 +712,8 @@ fn a_face_whose_metadata_will_not_parse_keeps_its_static_weight() {
     {
         let conn = rusqlite::Connection::open(&db).unwrap();
         conn.execute_batch(
-            "DROP INDEX faces_weight_span; DROP INDEX faces_width_span;
+            "DROP TABLE face_scripts;
+             DROP INDEX faces_weight_span; DROP INDEX faces_width_span;
              ALTER TABLE faces DROP COLUMN weight_min;
              ALTER TABLE faces DROP COLUMN weight_max;
              ALTER TABLE faces DROP COLUMN width_min;
@@ -636,7 +765,8 @@ fn an_older_index_learns_the_ranges_without_a_rescan() {
         // Make the file look like a v3 index: the columns gone, the version rolled back.
         let conn = rusqlite::Connection::open(&db).unwrap();
         conn.execute_batch(
-            "DROP INDEX faces_weight_span; DROP INDEX faces_width_span;
+            "DROP TABLE face_scripts;
+             DROP INDEX faces_weight_span; DROP INDEX faces_width_span;
              ALTER TABLE faces DROP COLUMN weight_min;
              ALTER TABLE faces DROP COLUMN weight_max;
              ALTER TABLE faces DROP COLUMN width_min;
@@ -1165,7 +1295,7 @@ fn facets_count_every_dimension() {
     // Facets follow the filter.
     let arabic = index
         .facets(&FaceFilter {
-            script: Some("Arab".into()),
+            scripts: vec!["Arab".into()],
             ..Default::default()
         })
         .unwrap();

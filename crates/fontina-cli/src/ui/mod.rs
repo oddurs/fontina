@@ -235,7 +235,7 @@ impl App {
                 Facet::Style => f.italic = Some(v == "italic"),
                 Facet::Variable => f.variable = Some(true),
                 Facet::Color => f.color = Some(true),
-                Facet::Script => f.script = Some(v.clone()),
+                Facet::Script => f.scripts = vec![v.clone()],
                 Facet::License => f.license = Some(v.clone()),
                 Facet::Freedom => f.freedom = v.parse().ok(),
                 Facet::Vendor => f.vendor = Some(v.clone()),

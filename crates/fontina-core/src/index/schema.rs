@@ -148,6 +148,20 @@ UPDATE faces SET weight_min = weight, weight_max = weight,
 CREATE INDEX faces_weight_span ON faces(weight_min, weight_max);
 CREATE INDEX faces_width_span ON faces(width_min, width_max);
 "#,
+    // 5: one row per script a face covers, with how many codepoints of it. `faces.scripts`
+    // is a denormalised comma-joined string matched with `LIKE '%,Arab,%'`: it cannot ask
+    // for two scripts at once, it throws away the depth `Coverage.scripts` already counts,
+    // and it scans. `faces.scripts` stays for now — the browser's facet list reads it, and
+    // one change at a time.
+    r#"
+CREATE TABLE face_scripts (
+    face_id    INTEGER NOT NULL REFERENCES faces(id) ON DELETE CASCADE,
+    script     TEXT NOT NULL,
+    codepoints INTEGER NOT NULL,
+    PRIMARY KEY (face_id, script)
+);
+CREATE INDEX face_scripts_script ON face_scripts(script, codepoints);
+"#,
 ];
 
 pub fn migrate(conn: &mut Connection) -> Result<()> {
@@ -173,6 +187,9 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
         }
         if i == 3 {
             backfill_spans(&tx)?;
+        }
+        if i == 4 {
+            backfill_scripts(&tx)?;
         }
         tx.pragma_update(None, "user_version", (i + 1) as i64)?;
         tx.commit()?;
@@ -218,6 +235,24 @@ fn backfill_spans(tx: &rusqlite::Transaction) -> Result<()> {
         let (wmin, wmax) = face.weight_span();
         let (dmin, dmax) = face.width_span();
         stmt.execute(rusqlite::params![id, wmin, wmax, dmin, dmax])?;
+    }
+    Ok(())
+}
+
+/// Populate `face_scripts` from the stored metadata JSON of an index created before v5.
+///
+/// Same shape as `backfill_ranges`: the counts are already in `coverage.scripts`, so
+/// nothing is parsed and nobody rescans.
+fn backfill_scripts(tx: &rusqlite::Transaction) -> Result<()> {
+    let rows: Vec<(i64, String)> = {
+        let mut stmt = tx.prepare("SELECT id, metadata FROM faces")?;
+        let it = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        it.collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    for (id, json) in rows {
+        if let Ok(face) = serde_json::from_str::<crate::model::FaceMetadata>(&json) {
+            super::insert_scripts(tx, id, &face.coverage.scripts)?;
+        }
     }
     Ok(())
 }
