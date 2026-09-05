@@ -20,7 +20,9 @@ use anyhow::{Context, Result, bail};
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use fontina_core::{
     ActivationState, FaceFilter, FaceSummary, Freedom, Index, ScanOptions, SourceKind,
+    TagSyncChange, TagSyncReport, TagSyncSkip,
 };
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write as _;
 use std::path::PathBuf;
 
@@ -384,6 +386,31 @@ enum TagCmd {
     /// Delete a tag from every face.
     Delete {
         tag: String,
+    },
+    /// Copy tags between fontina's index and the files themselves, in one direction.
+    ///
+    /// A tag in the index is fast and searchable and invisible to everything else. A tag
+    /// on the file is one your file manager shows and a backup carries. This moves them
+    /// across: macOS Finder tags, `user.xdg.tags` on GNU/Linux, nothing on Windows.
+    ///
+    /// The direction is required, and the side you name wins: the other is made to match
+    /// it, tags removed as well as added. Two tag sets with no common ancestor cannot
+    /// tell a deletion from an addition, so guessing would lose tags quietly. Use
+    /// `--dry-run` first.
+    Sync {
+        /// The index is right: write its tags onto the files.
+        #[arg(long)]
+        to_files: bool,
+        /// The files are right: read their tags into the index.
+        #[arg(long, conflicts_with = "to_files")]
+        from_files: bool,
+        /// Face ids, `family:<name>`, or indexed file paths. Everything, by default.
+        targets: Vec<String>,
+        /// Say what would change, and change nothing.
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -1783,8 +1810,215 @@ fn run_tag(cli: &Cli, cmd: &TagCmd) -> Result<()> {
             }
             println!("deleted {tag:?}");
         }
+        TagCmd::Sync {
+            to_files,
+            from_files,
+            targets,
+            dry_run,
+            json,
+        } => {
+            if !to_files && !from_files {
+                bail!(
+                    "say which side is right: --to-files writes the index's tags onto the \
+                     files, --from-files reads the files' tags into the index"
+                );
+            }
+            let report = tag_sync(&mut index, *to_files, targets, *dry_run)?;
+            if *json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                print_tag_sync(&report);
+            }
+        }
     }
     Ok(())
+}
+
+/// A file, the faces in it, and the union of their tags.
+type FileTags = (PathBuf, Vec<i64>, BTreeSet<String>);
+
+/// Faces of the index, by the file they live in.
+///
+/// A tag belongs to a file and fontina's tags belong to faces, and a TrueType collection
+/// is several faces in one file. So the file's tags are the union of its faces', and a
+/// tag read off a file lands on every face in it.
+fn faces_by_file(index: &Index, targets: &[String]) -> Result<Vec<FileTags>> {
+    let filter = if targets.is_empty() {
+        FaceFilter::default()
+    } else {
+        FaceFilter {
+            ids: Some(resolve_all_ids(index, targets)?),
+            ..FaceFilter::default()
+        }
+    };
+    let mut by_file: BTreeMap<PathBuf, (Vec<i64>, BTreeSet<String>)> = BTreeMap::new();
+    for f in index.list(&filter)? {
+        let e = by_file.entry(PathBuf::from(&f.path)).or_default();
+        e.0.push(f.id);
+        e.1.extend(f.tags);
+    }
+    Ok(by_file
+        .into_iter()
+        .map(|(p, (ids, tags))| (p, ids, tags))
+        .collect())
+}
+
+fn tag_sync(
+    index: &mut Index,
+    to_files: bool,
+    targets: &[String],
+    dry_run: bool,
+) -> Result<TagSyncReport> {
+    if !fontina_platform::tags::supported() {
+        bail!(
+            "this system has no file tags: Windows keeps keywords per file format, and a \
+             font file has none. `fontina tag` still works — the tags stay in the index."
+        );
+    }
+    let files = faces_by_file(index, targets)?;
+    // A font in an OS font directory is not ours to write to, whatever the user asked
+    // for. `--to-files` on a library that was scanned with `--system` would otherwise try
+    // to set an attribute on every font the operating system ships.
+    let readonly: Vec<PathBuf> = if to_files {
+        fontina_platform::system_font_dirs()
+            .into_iter()
+            .filter(|d| !d.user_writable)
+            .map(|d| d.path)
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let mut report = TagSyncReport {
+        direction: if to_files { "to-files" } else { "from-files" }.into(),
+        files: files.len(),
+        changed: 0,
+        dry_run,
+        changes: Vec::new(),
+        skipped: Vec::new(),
+    };
+
+    for (path, ids, indexed) in files {
+        if let Some(dir) = readonly.iter().find(|d| path.starts_with(d)) {
+            report.skipped.push(TagSyncSkip {
+                path: path.to_string_lossy().into_owned(),
+                reason: format!("in {}, which fontina does not write to", dir.display()),
+            });
+            continue;
+        }
+        let on_file: BTreeSet<String> = match fontina_platform::tags::read(&path) {
+            Ok(t) => t.into_iter().collect(),
+            Err(e) => {
+                report.skipped.push(TagSyncSkip {
+                    path: path.to_string_lossy().into_owned(),
+                    reason: e.to_string(),
+                });
+                continue;
+            }
+        };
+        let (from, to) = if to_files {
+            (&indexed, &on_file)
+        } else {
+            (&on_file, &indexed)
+        };
+        // Tags the file store cannot hold are not a reason to abandon the sync; they are
+        // a reason to say which ones were left behind.
+        let (writable, refused): (Vec<&String>, Vec<&String>) = from
+            .iter()
+            .partition(|t| fontina_platform::tags::unstorable(t).is_none());
+        if to_files && !refused.is_empty() {
+            report.skipped.push(TagSyncSkip {
+                path: path.to_string_lossy().into_owned(),
+                reason: format!(
+                    "kept in the index only: {}",
+                    refused
+                        .iter()
+                        .map(|t| format!("{t:?}"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            });
+        }
+        let wanted: BTreeSet<String> = writable.into_iter().cloned().collect();
+        let added: Vec<String> = wanted.difference(to).cloned().collect();
+        let removed: Vec<String> = to.difference(&wanted).cloned().collect();
+        if added.is_empty() && removed.is_empty() {
+            continue;
+        }
+        report.changed += 1;
+        if !dry_run {
+            if to_files {
+                let list: Vec<String> = wanted.iter().cloned().collect();
+                if let Err(e) = fontina_platform::tags::write(&path, &list) {
+                    report.changed -= 1;
+                    report.skipped.push(TagSyncSkip {
+                        path: path.to_string_lossy().into_owned(),
+                        reason: e.to_string(),
+                    });
+                    continue;
+                }
+            } else {
+                for t in &added {
+                    index.tag(&ids, t)?;
+                }
+                for t in &removed {
+                    index.untag(&ids, t)?;
+                }
+            }
+        }
+        report.changes.push(TagSyncChange {
+            path: path.to_string_lossy().into_owned(),
+            added,
+            removed,
+        });
+    }
+    Ok(report)
+}
+
+fn print_tag_sync(report: &TagSyncReport) {
+    let side = if report.direction == "to-files" {
+        "the files"
+    } else {
+        "the index"
+    };
+    for c in &report.changes {
+        let mut what = Vec::new();
+        if !c.added.is_empty() {
+            what.push(format!("+{}", c.added.join(" +")));
+        }
+        if !c.removed.is_empty() {
+            what.push(format!("-{}", c.removed.join(" -")));
+        }
+        println!("{}  {}", c.path, what.join("  "));
+    }
+    // Scanning `--system` puts hundreds of files behind one reason, and hundreds of
+    // identical lines is not a report. The JSON still names every one.
+    let mut by_reason: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    for s in &report.skipped {
+        by_reason
+            .entry(s.reason.as_str())
+            .or_default()
+            .push(s.path.as_str());
+    }
+    for (reason, paths) in by_reason {
+        eprintln!("  not carried: {reason}");
+        for p in paths.iter().take(3) {
+            eprintln!("      {p}");
+        }
+        if paths.len() > 3 {
+            eprintln!("      and {} more", paths.len() - 3);
+        }
+    }
+    if report.dry_run {
+        println!(
+            "{} of {} file(s) would change in {}; nothing was written",
+            report.changed, report.files, side
+        );
+    } else {
+        println!(
+            "{} of {} file(s) changed in {}",
+            report.changed, report.files, side
+        );
+    }
 }
 
 fn run_collection(cli: &Cli, cmd: &CollectionCmd) -> Result<()> {
