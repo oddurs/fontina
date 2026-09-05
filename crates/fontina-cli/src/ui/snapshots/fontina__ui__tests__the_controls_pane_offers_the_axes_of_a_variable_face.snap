@@ -1,0 +1,40 @@
+---
+source: crates/fontina-cli/src/ui/mod.rs
+expression: drawn
+---
+┌ 6 faces ───────────────┐┌ 5 families ──────────────────────────────────┐┌ Details ───────────────────────────────────┐
+│Weight                  ││Amiri                                   1     ││Bricolage Grotesque 96pt ExtraBold          │
+│  200 ExtraLight      1 ││Bricolage Grotesque                     1 V   ││style     weight 800 · width 100% · normal  │
+│  300 Light           1 ││Inter                                   2     ││axes      opsz 12–96 (96), wght 200–800     │
+│  400 Regular         6 ││Nabla                                   1 VC  ││(800), wdth 75–100 (100)                    │
+│  500 Medium          1 ││Source Serif 4                          1     ││glyphs    597 · 527 codepoints · Latn Zyyy  │
+│  600 SemiBold        1 ││                                              ││Zinh Grek                                   │
+│  700 Bold            1 ││                                              ││features  18: aalt case ccmp dnom frac lnum │
+│  800 ExtraBold       1 ││                                              ││locl numr onum ordn pnum sinf               │
+│Width                   ││                                              ││license   OFL-1.1                           │
+│  75% Condensed       1 ││                                              ││freedom   free                              │
+│  87.5% SemiCondensed 1 ││                                              ││designer  Mathieu Triay                     │
+│  100% Normal         6 ││                                              ││state     not active                        │
+│Style                   ││                                              ││file                                        │
+│  upright             6 ││                                              ││../../fixtures/BricolageGrotesque[opsz,wdth,│
+│Variable                ││                                              ││wght].ttf                                   │
+│  variable            2 ││                                              ││                                            │
+│Color                   ││                                              ││axes & features — custom                    │
+│  color               1 ││                                              ││> opsz       96  [============] Optical size│
+│Spacing                 ││                                              ││  wght      800  [============] Weight      │
+│  proportional        6 ││                                              ││  wdth      100  [============] Width       │
+│Script                  ││                                              ││  case [ ] Case-sensitive forms             │
+│  Latn                6 ││                                              ││  frac [ ] Fractions                        │
+│  Arab                1 ││                                              ││  lnum [ ] Lining figures                   │
+│  Zyyy                6 ││                                              ││  onum [ ] Oldstyle figures                 │
+│  Cyrl                1 ││                                              ││  pnum [ ] Proportional figures             │
+│  Zinh                6 ││                                              ││  sinf [ ] Scientific inferiors             │
+│  Grek                2 ││                                              ││  subs [ ] Subscript                        │
+│Language                ││                                              ││  sups [ ] Superscript                      │
+│  en                  6 ││                                              ││                                            │
+│  CAT                 3 ││                                              ││                                            │
+│  TRK                 3 ││                                              ││                                            │
+│  AZE                 2 ││                                              ││                                            │
+└────────────────────────┘└──────────────────────────────────────────────┘└────────────────────────────────────────────┘
+ $ fontina families
+ / search  ⇥ facets  ⏎ open  ⌫ back  t tag  c collection  a/A activate  d deactivate  i install  u uninstall  e text  +/

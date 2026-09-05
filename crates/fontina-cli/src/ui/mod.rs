@@ -3118,6 +3118,44 @@ mod tests {
         row.find(needle).map(|b| row[..b].chars().count())
     }
 
+    /// The glyph map, which is what the browser is for.
+    ///
+    /// A mode rather than a pane: it covers the screen, because reading a font's coverage
+    /// needs the width. Nothing in it comes from the rasteriser — it is the `cmap` laid
+    /// out as characters — so the frame is the same everywhere and worth pinning.
+    #[test]
+    fn the_glyph_map_lists_the_blocks_and_lays_out_the_characters() {
+        let mut app = app();
+        select_family(&mut app, "Amiri");
+        app.open_glyphs();
+        let drawn = frame(&mut app, 120, 36);
+        assert!(drawn.contains("Basic Latin"), "{drawn}");
+        assert!(
+            drawn.contains("Arabic"),
+            "the fixture's own script is in there"
+        );
+        assert!(
+            drawn.contains("fontina glyphs"),
+            "the status line says the command that would print this"
+        );
+        insta::assert_snapshot!(drawn);
+    }
+
+    /// The controls pane, on a face that has axes.
+    ///
+    /// Every variable font is a family the browser can move through rather than a list
+    /// of instances, and this is where that happens. Sliders and labels, no rasteriser.
+    #[test]
+    fn the_controls_pane_offers_the_axes_of_a_variable_face() {
+        let mut app = app();
+        select_family(&mut app, "Bricolage");
+        app.focus = Focus::Controls;
+        assert!(!app.controls.is_empty(), "a variable face offers controls");
+        let drawn = stable_frame(&mut app, 120, 36);
+        assert!(drawn.contains("wght"), "the weight axis is named: {drawn}");
+        insta::assert_snapshot!(drawn);
+    }
+
     #[test]
     fn the_browser_opens_on_the_family_list() {
         let mut app = app();

@@ -1,0 +1,40 @@
+---
+source: crates/fontina-cli/src/ui/mod.rs
+expression: drawn
+---
+┌ glyph map — / to search, m or Esc to close ──────────────────────────────────────────────────────────────────────────┐
+│> Basic Latin              95/128 0020     ! " # $ % & ' ( ) * + , - . / 0 1 2 3 4 5 6 7 8 9 : ; < = > ? @ A B C D E  │
+│  Latin-1 Supplement       96/128 0046   F G H I J K L M N O P Q R S T U V W X Y Z [ \ ] ^ _ ` a b c d e f g h i j k  │
+│  Latin Extended-A        128/128 006C   l m n o p q r s t u v w x y z { | } ~                                        │
+│  Latin Extended-B          3/208                                                                                     │
+│  Spacing Modifier Lett…   12/80                                                                                      │
+│  Combining Diacritical…   17/112                                                                                     │
+│  Arabic                  255/256                                                                                     │
+│  Arabic Supplement        48/48                                                                                      │
+│  Arabic Extended-B         2/48                                                                                      │
+│  Arabic Extended-A        38/96                                                                                      │
+│  Latin Extended Additi…   44/256                                                                                     │
+│  General Punctuation      53/112                                                                                     │
+│  Superscripts and Subs…    7/48                                                                                      │
+│  Currency Symbols          1/48                                                                                      │
+│  Mathematical Operators    4/256                                                                                     │
+│  Geometric Shapes          1/96                                                                                      │
+│  Supplemental Punctuat…    1/128                                                                                     │
+│  Arabic Presentation F…  611/688                                                                                     │
+│  Arabic Presentation F…  140/144                                                                                     │
+│  Arabic Mathematical A…  143/256                                                                                     │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ 1699 codepoints in 20 block(s)   (fontina glyphs 1)
+ / search  ⇥ facets  ⏎ open  ⌫ back  t tag  c collection  a/A activate  d deactivate  i install  u uninstall  e text  +/
