@@ -66,6 +66,7 @@ fn cjk_font(to: &Path) {
 
 struct Session {
     root: PathBuf,
+    fonts: PathBuf,
     db: PathBuf,
 }
 
@@ -90,9 +91,10 @@ fn session(name: &str) -> Session {
 
     let s = Session {
         db: root.join("index.db"),
+        fonts,
         root,
     };
-    let out = s.run(&["scan", &fonts.to_string_lossy()]);
+    let out = s.run(&["scan", &s.fonts.to_string_lossy()]);
     assert!(
         out.status.success(),
         "{}",
@@ -150,9 +152,13 @@ fn the_face_table_lines_up_with_a_japanese_family_name() {
         rows.iter().any(|r| r.contains(CJK)),
         "the renamed font is in the table:\n{listed}"
     );
+    // The path is the last column, and it starts with the sandbox's own directory. A
+    // separator would do on GNU/Linux and macOS and not on Windows, where there is no
+    // `/` in a path at all.
+    let prefix = s.fonts.to_string_lossy().into_owned();
     for row in &rows {
         assert_eq!(
-            column_of(row, "/"),
+            column_of(row, &prefix),
             want,
             "the path column moved on this row:\n{listed}"
         );
