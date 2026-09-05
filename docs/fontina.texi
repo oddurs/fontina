@@ -160,6 +160,11 @@ anywhere else — or a PNG.  Shaping is HarfBuzz-grade, so complex scripts are c
 rather than approximated.
 @item fontina ui
 Browse the index: facets, families, faces, details and previews, keyboard first.
+@kbd{s} writes an HTML specimen for what is selected and opens it in your browser ---
+the one place to go for what a terminal cannot show honestly: real antialiasing at text
+sizes, spacing you can trust, hinting.  @env{BROWSER} is honoured before the desktop's
+default, and on a machine with no desktop the file is still written and its path
+printed.  @kbd{?} lists every key.
 @end table
 
 @section Looking at one font
