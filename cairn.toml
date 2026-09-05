@@ -1,0 +1,226 @@
+# cairn.toml — fontina's roadmap and backlog, as files in the repository.
+#
+# PLAN.md holds the architecture and the milestone narrative; this holds the
+# work. One is the argument, the other is the queue. `cairn render` writes
+# ROADMAP.md, which is what a reader should be pointed at.
+#
+#   cairn next            what is ready to work on
+#   cairn board           the kanban view
+#   cairn check           validate every item (CI runs this)
+#   cairn agent           how a coding agent should use it
+
+format = 1
+
+[project]
+name = "fontina"
+dir = "cairn/items"
+id_width = 4
+default_type = "feat"
+default_status = "backlog"
+url = "https://github.com/oddurs/fontina/blob/main"
+
+# ─── Item types ──────────────────────────────────────────────────────────────
+# Named for the Conventional Commit scopes this project already uses, so an
+# item's type is the prefix its pull request will carry.
+
+[[type]]
+name = "feat"
+icon = "+"
+color = "cyan"
+template = """
+## Problem
+
+## Proposal
+
+## Acceptance criteria
+
+- [ ]
+
+## Notes
+"""
+
+[[type]]
+name = "fix"
+icon = "!"
+color = "red"
+template = """
+## What happens
+
+## What should happen
+
+## Reproduction
+
+1.
+
+## Acceptance criteria
+
+- [ ] a test that fails before the fix and passes after
+"""
+
+[[type]]
+name = "perf"
+icon = ">"
+color = "magenta"
+template = """
+## What is slow
+
+## Budget
+
+PLAN.md §7 holds the numbers. State the one this item is measured against.
+
+## Acceptance criteria
+
+- [ ] measured before and after, on the same corpus, in the item
+- [ ] `scripts/bench` still meets every other budget
+"""
+
+[[type]]
+name = "test"
+icon = "="
+color = "green"
+
+[[type]]
+name = "docs"
+icon = "*"
+color = "blue"
+
+[[type]]
+name = "chore"
+icon = "~"
+color = "gray"
+
+# ─── Statuses ────────────────────────────────────────────────────────────────
+
+[[status]]
+name = "backlog"
+category = "open"
+color = "gray"
+
+[[status]]
+name = "ready"
+label = "ready to start"
+category = "open"
+color = "blue"
+
+[[status]]
+name = "doing"
+label = "in progress"
+category = "active"
+color = "yellow"
+
+[[status]]
+name = "review"
+label = "in review"
+category = "active"
+color = "cyan"
+
+[[status]]
+name = "blocked"
+category = "active"
+color = "red"
+
+[[status]]
+name = "done"
+category = "done"
+color = "green"
+
+[[status]]
+name = "dropped"
+category = "dropped"
+color = "gray"
+board = false
+
+# ─── Fields ──────────────────────────────────────────────────────────────────
+
+[[field]]
+name = "priority"
+kind = "enum"
+values = ["p0", "p1", "p2", "p3"]
+default = "p2"
+column = true
+description = "p0 blocks a release"
+
+[[field]]
+name = "effort"
+kind = "enum"
+values = ["s", "m", "l", "xl"]
+description = "Rough size. s is an afternoon, xl needs breaking up"
+
+[[field]]
+name = "crate"
+kind = "enum"
+values = ["core", "platform", "cli", "ui", "site", "workspace"]
+column = true
+description = "Where the change lands. `ui` is crates/fontina-cli/src/ui"
+
+# ─── Milestones ──────────────────────────────────────────────────────────────
+
+[[milestone]]
+name = "tui-craft"
+title = "TUI 1 — Craft"
+description = "What the browser looks like. A font manager whose list is set in the fonts it lists, drawn with real glyphs, in a layout that holds at any size."
+
+[[milestone]]
+name = "tui-speed"
+title = "TUI 2 — Speed"
+description = "Instant on a library that is not the fixtures. Ten thousand faces, no perceptible lag on any keystroke, and a budget in CI that says so."
+
+[[milestone]]
+name = "tui-depth"
+title = "TUI 3 — Depth"
+description = "What you can do without leaving it. Multi-select, batch work, undo, a command palette, and filters you compose while watching the count."
+
+[[milestone]]
+name = "tui-discovery"
+title = "TUI 4 — Discovery"
+description = "Helping someone find the right face rather than the one they asked for: comparison, similarity, coverage against real text."
+
+[[milestone]]
+name = "unfiled"
+title = "Found, not yet scheduled"
+description = "Real findings with no milestone. Triage moves them or drops them; nothing sits here by default."
+
+[[milestone]]
+name = "m5-ship"
+title = "M5 — Ship"
+description = "Who can run it, rather than what else it can do. Package managers on every desktop, the two unmeasured budgets measured. PLAN.md §5."
+
+# ─── Views ───────────────────────────────────────────────────────────────────
+
+[[view]]
+name = "now"
+description = "What is actually being worked on"
+filter = "category=active"
+sort = "priority,id"
+
+[[view]]
+name = "tui"
+description = "The whole terminal browser programme, in sprint order"
+filter = "milestone=tui-craft|tui-speed|tui-depth|tui-discovery,category!=done"
+sort = "milestone,priority"
+
+[[view]]
+name = "triage"
+description = "Items with no milestone or no size yet"
+filter = "milestone=,category!=done"
+columns = ["id", "type", "title", "created"]
+
+# ─── Hooks ───────────────────────────────────────────────────────────────────
+
+[hooks]
+after-create = "cairn render -q"
+after-change = "cairn render -q"
+after-remove = "cairn render -q"
+
+# ─── Rendered roadmap ────────────────────────────────────────────────────────
+
+[render]
+target = "ROADMAP.md"
+title = "fontina roadmap"
+group_by = "milestone"
+include = "category!=dropped"
+checkbox = true
+show_ids = true
+progress = true
+group_by_status = true
+link_items = true
