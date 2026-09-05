@@ -1,11 +1,11 @@
 /target
 # Build directories from side-by-side benchmark runs (`CARGO_TARGET_DIR=target-x`), and
-# any binary left beside them. A 6.5 MB `fontina-old` reached main this way.
+# the binaries left beside them. Two 6.5 MB executables reached main this way. The bare
+# name matters most: `scripts/bench` and `scripts/test-distros` both document
+# `FONTINA=./fontina`, so the documented workflow puts one at the repo root.
 /target-*
-/fontina-old
-/fontina-linux
-/fontina-musl
-/fontina.exe
+/fontina
+/fontina-*
 **/*.rs.bk
 *.pending-snap
 .DS_Store

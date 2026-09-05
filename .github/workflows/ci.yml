@@ -83,6 +83,34 @@ jobs:
       - run: makeinfo --no-split -o /tmp/fontina.info docs/fontina.texi
       - run: makeinfo --html --no-split -o /tmp/fontina.html docs/fontina.texi
 
+  weight:
+    name: no large files added
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # Three build artefacts have reached main by accident — site/node_modules (#14),
+      # crates.real (#25), and two 6.5 MB binaries (#61) — each under a name nobody had
+      # thought to ignore. .gitignore only stops the accident it can name; this stops the
+      # shape. Fixtures are exempt: they are deliberately committed binaries, and capped
+      # by their own rule in CONTRIBUTING.md.
+      - name: refuse a large file that is not a fixture
+        run: |
+          base=$(git merge-base origin/${{ github.base_ref || 'main' }} HEAD)
+          limit=$((1024 * 1024))
+          fail=0
+          while read -r path; do
+            [ -n "$path" ] || continue
+            case "$path" in fixtures/*|fuzz/regressions/*) continue ;; esac
+            size=$(git cat-file -s "$(git rev-parse "HEAD:$path")" 2>/dev/null || echo 0)
+            if [ "$size" -gt "$limit" ]; then
+              echo "::error file=$path::$path is $((size / 1024)) KB. Committed build output is how site/node_modules, crates.real and two 6.5 MB binaries reached main. If it belongs in the repository, add it to the exemptions in .github/workflows/ci.yml and say why in the pull request."
+              fail=1
+            fi
+          done < <(git diff --name-only --diff-filter=AM "$base" HEAD)
+          exit $fail
+
   schema:
     name: schema is current
     runs-on: ubuntu-latest
