@@ -307,6 +307,32 @@ The optional Google Fonts offline index is **not** delivered and is still held o
   platform-adjacent design per OS (GNOME HIG on GNU/Linux, macOS HIG, Fluent), GNU/Linux first.
 - Laid out as pull requests in §11.
 
+### M4 — Ask (everything the index knows, askable)
+The metadata model has been complete since M0. The query surface has not caught up with
+it, so three kinds of question the index holds the answer to cannot be put to it.
+
+1. **Variable ranges.** `faces.weight` and `faces.width` hold the *default instance*
+   value, and filtering is a point test against it. Bricolage has a `wght` axis of
+   200–800 with a default of 800, so `list --weight 400` does not return it — a font
+   that can plainly set 400. Every variable font is under-matched by the filter people
+   reach for first.
+2. **Language.** Language system tags per OpenType script are parsed and stored, and so
+   is BCP 47 for every localised name record, and neither is reachable: `FaceFilter` has
+   no language field. "Which faces declare Vietnamese" is unanswerable from the index
+   that knows.
+3. **Script depth.** `--script` is `f.scripts LIKE '%,Arab,%'` against a denormalised,
+   unindexed string. It cannot express two scripts at once, cannot threshold on how much
+   of a script is covered — though `Coverage.scripts` counts exactly that — and scans.
+
+None of it needs a new parse or a rescan. Every value is already in the stored
+`FaceMetadata`, so each item is index work with a backfill keyed on its migration index,
+the pattern `face_ranges` established. `SCHEMA_VERSION` does not move: the model is not
+changing, only what the index can be asked about it.
+
+M4 does not depend on M3 and M3 does not depend on M4; the numbering is order of
+discovery, not order of work. Item 1 is closer to a bug than a milestone item and should
+be pulled out and shipped whenever someone has an hour.
+
 Explicit non-goals: font editing, format conversion/subsetting (point to `fonttools`),
 cloud sync, accounts, telemetry, an Electron shell.
 
@@ -538,3 +564,67 @@ identically.
 
 Homebrew, winget, Scoop and AUR manifests (§5, M1 item 6) are still outstanding. They are
 independent of everything above and block a 1.0 rather than M3.
+
+---
+
+## 12. M4, concretely
+
+One pull request per item. The first three are one theme — a value the index stores but
+cannot be filtered on gets a column or a table and a filter — so they share a shape:
+migrate, backfill from the stored `FaceMetadata`, widen `FaceFilter`, expose the flag,
+add a facet, test against a fixture that would fail before.
+
+Nothing here parses anything new. That is the point: the cost is a migration and a
+backfill, not a rescan of everyone's library.
+
+### The variable range
+
+1. `fix(core)`: index the ranges a variable font actually spans. Four columns —
+   `weight_min`, `weight_max`, `width_min`, `width_max` — defaulting to the static value
+   for a non-variable face, backfilled from `variable.axes` where a `wght` or `wdth` axis
+   is present. The filter becomes an overlap test (`weight_min <= hi AND weight_max >=
+   lo`) rather than `weight BETWEEN`. The fixture test is Bricolage: `wght` 200–800,
+   default 800, and `list --weight 400` must return it. It does not today, and that
+   assertion is the whole reason this item exists.
+2. `feat(cli)`: say so in the output. `list` prints the default instance and gives no
+   sign that a face reaches further; a variable face should show its range where it has
+   one, and `facets` should count a variable face into every weight bucket it covers
+   rather than only the bucket its default sits in.
+
+### Script, with depth
+
+3. `feat(core)`: `face_scripts(face_id, script, codepoints)`, indexed on both columns,
+   backfilled from `coverage.scripts`. `faces.scripts` stays for now: it is what the
+   browser's facet list reads, and one change at a time.
+4. `feat(cli)`: `--script` becomes repeatable and gains a companion. Two occurrences mean
+   both scripts, which the `LIKE` could never express, and `--script-min <n>` filters on
+   coverage depth, so a font with three Arabic codepoints stops ranking with one that has
+   three thousand. Sort the facet by codepoints rather than by name while there.
+
+### Language
+
+5. `feat(core)`: `face_languages(face_id, tag, source)`, where `source` distinguishes a
+   language system tag declared under an OpenType script from a BCP 47 tag on a name
+   record. They are different claims — one says the shaping engine has rules for it, the
+   other only says the font names itself in it — and collapsing them would produce a
+   filter that lies in one direction.
+6. `feat(cli)`: `--lang <tag>`, a `language` facet, and the language list in `info` and
+   in the browser's details pane. `--lang vi` is the question a person actually has.
+
+### Keeping it honest
+
+7. `test(core)`: a fixture-backed test per filter, each asserting the case that fails
+   today. A filter without one is a claim.
+8. `docs`: regenerate `schemas/cli-output.json` for the new filter fields and the new
+   facets. `schemas/face.json` does not move — `FaceMetadata` is unchanged, which is
+   worth saying out loud in the pull request so no one goes looking for a
+   `SCHEMA_VERSION` bump that should not be there.
+
+### The question behind all of it
+
+Every item above is the same mistake found four times: a value was modelled richly, then
+flattened to one scalar on the way into SQL because that was what the first query needed.
+`face_ranges` is the counter-example and it was added late, for `covering`. Worth asking
+once, before M4 rather than after: what else in `FaceMetadata` is stored as a document and
+queried as a string? `features.gsub`, `capabilities.color` and `os2.codepage_ranges` are
+the three candidates, and none has a filter today.

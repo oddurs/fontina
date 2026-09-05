@@ -59,6 +59,19 @@ JSON. A graphical shell, as one more client of the core, only if the terminal br
 leaves a real gap; it would have to meet the same budgets and follow each platform's
 own design conventions, Linux first.
 
+## M4, ask
+
+Everything the index knows, askable. fontina has read the whole of a font since M0 —
+every variable axis and its range, the language systems each script declares, how many
+codepoints of a script a face actually covers — and stores it all. The filters lag
+behind it in three places: a variable font is matched on its default instance, so a
+face whose weight axis spans 200 to 800 is not found by a search for 400; there is no
+way to ask for a language at all; and a script filter cannot ask for two scripts at
+once or for how much of one a face covers.
+
+None of it needs a new parse or a rescan. The data is already in the index; only the
+questions are missing.
+
 ## Never
 
 Font editing. Format conversion or subsetting. Cloud synchronisation. Accounts.
