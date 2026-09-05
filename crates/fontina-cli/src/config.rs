@@ -36,9 +36,13 @@ use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
 /// Where a value came from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+///
+/// `SettingSource` rather than `Source` because `schemas/cli-output.json` names every
+/// type it defines, and the core already has a `Source`: the directories a library is
+/// scanned from, which `fontina source list` prints.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
-pub enum Source {
+pub enum SettingSource {
     /// Compiled in.
     Default,
     /// The configuration file.
@@ -49,13 +53,13 @@ pub enum Source {
     Flag,
 }
 
-impl Source {
+impl SettingSource {
     pub fn label(self) -> &'static str {
         match self {
-            Source::Default => "default",
-            Source::File => "config",
-            Source::Environment => "environment",
-            Source::Flag => "flag",
+            SettingSource::Default => "default",
+            SettingSource::File => "config",
+            SettingSource::Environment => "environment",
+            SettingSource::Flag => "flag",
         }
     }
 }
@@ -176,11 +180,11 @@ pub fn expand(p: &str) -> PathBuf {
 }
 
 /// One resolved setting, for `fontina config`.
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, schemars::JsonSchema)]
 pub struct Setting {
     pub key: &'static str,
     pub value: String,
-    pub source: Source,
+    pub source: SettingSource,
 }
 
 fn setting(key: &'static str, from_file: Option<String>, default: String) -> Setting {
@@ -188,12 +192,12 @@ fn setting(key: &'static str, from_file: Option<String>, default: String) -> Set
         Some(v) => Setting {
             key,
             value: v,
-            source: Source::File,
+            source: SettingSource::File,
         },
         None => Setting {
             key,
             value: default,
-            source: Source::Default,
+            source: SettingSource::Default,
         },
     }
 }
@@ -209,19 +213,19 @@ impl Config {
                 // clap fills `--db` from FONTINA_DB as well, so which of the two it was
                 // is only knowable by asking the environment directly.
                 source: match std::env::var_os("FONTINA_DB") {
-                    Some(v) if Path::new(&v) == p => Source::Environment,
-                    _ => Source::Flag,
+                    Some(v) if Path::new(&v) == p => SettingSource::Environment,
+                    _ => SettingSource::Flag,
                 },
             },
             (None, Some(p)) => Setting {
                 key: "index.db",
                 value: expand(p).display().to_string(),
-                source: Source::File,
+                source: SettingSource::File,
             },
             (None, None) => Setting {
                 key: "index.db",
                 value: fontina_core::Index::default_path().display().to_string(),
-                source: Source::Default,
+                source: SettingSource::Default,
             },
         };
         vec![
@@ -285,8 +289,8 @@ pub const EXAMPLE: &str = r##"# fontina configuration.
 [index]
 # Where the index lives. `--db` and FONTINA_DB both win over this.
 # db = "~/.local/share/fontina/index.db"
-# On Windows, put paths in single quotes so the backslashes stay backslashes:
-# db = 'C:\Users\me\AppData\Roaming\fontina\index.db'
+# On Windows, put a path in single quotes so the backslashes stay backslashes:
+#   'C:\Users\me\AppData\Roaming\fontina\index.db'
 
 [scan]
 # Directories `fontina scan` walks when you give it none.
@@ -352,7 +356,7 @@ mod tests {
         let parsed: Config = toml::from_str("").expect("an empty file is a valid one");
         let settings = parsed.settings(None);
         assert!(
-            settings.iter().all(|s| s.source == Source::Default),
+            settings.iter().all(|s| s.source == SettingSource::Default),
             "nothing is set, so everything is a default"
         );
         assert!(settings.iter().any(|s| s.key == "preview.size"));
@@ -363,7 +367,7 @@ mod tests {
         let parsed: Config = toml::from_str("[index]\ndb = \"/tmp/from-file.db\"\n").unwrap();
         let from_file = parsed.settings(None);
         let db = from_file.iter().find(|s| s.key == "index.db").unwrap();
-        assert_eq!(db.source, Source::File);
+        assert_eq!(db.source, SettingSource::File);
         assert_eq!(db.value, "/tmp/from-file.db");
 
         let overridden = parsed.settings(Some(Path::new("/tmp/from-flag.db")));

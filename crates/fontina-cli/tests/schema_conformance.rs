@@ -607,6 +607,12 @@ fn cases(work: &Path) -> Vec<Case> {
             "whether a login agent is installed. Read-only: it writes nothing",
         ),
         case(
+            "config",
+            &["config", "--json"],
+            Shape::Def("ConfigReport"),
+            "the settings, with where each value came from. Read-only",
+        ),
+        case(
             "dirs",
             &["dirs", "--json"],
             Shape::ArrayOf("SystemFontDir"),

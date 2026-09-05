@@ -1391,11 +1391,11 @@ fn run() -> Result<()> {
             if *json {
                 println!(
                     "{}",
-                    serde_json::to_string_pretty(&serde_json::json!({
-                        "path": loaded.path,
-                        "found": loaded.found,
-                        "settings": settings,
-                    }))?
+                    serde_json::to_string_pretty(&ConfigReport {
+                        path: loaded.path.clone(),
+                        found: loaded.found,
+                        settings: &settings,
+                    })?
                 );
                 return Ok(());
             }
@@ -2065,6 +2065,7 @@ fn cli_output_schema() -> serde_json::Value {
     add::<LicenseRow>(&mut g);
     add::<RestoreReport>(&mut g);
     add::<AgentInstalled>(&mut g);
+    add::<ConfigReport>(&mut g);
     add::<AgentRemoved>(&mut g);
     add::<AgentStatus>(&mut g);
     add::<Paths>(&mut g);
@@ -2902,6 +2903,16 @@ fn run_deactivate(cli: &Cli, targets: &[String], uninstall: bool, json: bool) ->
         }
     }
     Ok(())
+}
+
+/// What `config --json` prints: the file, whether it is there, and every setting with
+/// where its value came from.
+#[derive(serde::Serialize, schemars::JsonSchema)]
+struct ConfigReport<'a> {
+    path: PathBuf,
+    /// False when there is no file yet, which is not an error.
+    found: bool,
+    settings: &'a [config::Setting],
 }
 
 /// What `agent install --json` prints.
