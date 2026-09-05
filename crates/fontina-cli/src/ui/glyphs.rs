@@ -333,13 +333,20 @@ mod tests {
     #[test]
     fn an_extreme_delta_stops_at_an_end() {
         let mut g = Glyphs::for_face(&face("Amiri-Regular.ttf"));
-        assert!(g.blocks().len() > 2, "the fixture has blocks to move between");
+        assert!(
+            g.blocks().len() > 2,
+            "the fixture has blocks to move between"
+        );
         g.select(1);
         let from = g.selected_index();
         assert!(from > 0, "not sitting on the first block");
 
         g.select(i32::MAX);
-        assert_eq!(g.selected_index(), g.blocks().len() - 1, "forwards, to the last");
+        assert_eq!(
+            g.selected_index(),
+            g.blocks().len() - 1,
+            "forwards, to the last"
+        );
         g.select(i32::MIN);
         assert_eq!(g.selected_index(), 0, "backwards, to the first");
 
@@ -365,7 +372,10 @@ mod tests {
                 .flat_map(|b| b.codepoints.iter().copied())
                 .nth(300)
                 .expect("the fixture covers enough characters to scroll");
-            assert!(g.find(&format!("U+{cp:04X}"), before), "U+{cp:04X} is there");
+            assert!(
+                g.find(&format!("U+{cp:04X}"), before),
+                "U+{cp:04X} is there"
+            );
             g.clamp_scroll(after);
 
             let block = g.selected().expect("a block is selected");
