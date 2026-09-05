@@ -31,11 +31,13 @@ ratatui = { version = "0.30", default-features = false, features = ["crossterm",
 clap_complete = "4"
 clap_mangen = "0.3"
 
-# Tests only, and the same crate fontina-core already links: `restore` has to be
+# Tests only, and both are crates the workspace already builds: `restore` has to be
 # exercised against an index whose writes fail, and nothing in the core's public API
-# can break an index on purpose.
+# can break an index on purpose; `insta` snapshots the frames the browser draws into
+# ratatui's in-memory test backend, the way fontina-core snapshots parsed metadata.
 [dev-dependencies]
 rusqlite.workspace = true
+insta.workspace = true
 
 # `cargo deb` and `cargo generate-rpm` (run in the release workflow after
 # `fontina completions` and `fontina man --out-dir` have filled target/pkg/).

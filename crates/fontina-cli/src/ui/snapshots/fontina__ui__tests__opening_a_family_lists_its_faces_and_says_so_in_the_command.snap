@@ -1,0 +1,40 @@
+---
+source: crates/fontina-cli/src/ui/mod.rs
+expression: "stable_frame(&mut app, 120, 36)"
+---
+┌ 6 faces ───────────────┐┌ Inter · 2 face(s) ───────────────────────────┐┌ Details ───────────────────────────────────┐
+│Weight                  ││Regular woff                                  ││Inter Regular                               │
+│  400 Regular         5 ││Regular woff2                                 ││style     weight 400 · width 100% · normal  │
+│  800 ExtraBold       1 ││                                              ││glyphs    515 · 230 codepoints · Latn Zyyy  │
+│Width                   ││                                              ││Zinh                                        │
+│  100% Normal         6 ││                                              ││features  11: calt ccmp dnom frac locl numr │
+│Style                   ││                                              ││pnum tnum kern mark mkmk                    │
+│  upright             6 ││                                              ││license   OFL-1.1                           │
+│Variable                ││                                              ││freedom   free                              │
+│  variable            2 ││                                              ││state     not active                        │
+│Color                   ││                                              ││file                                        │
+│  color               1 ││                                              ││../../fixtures/inter-latin-400-normal.woff  │
+│Script                  ││                                              ││                                            │
+│  Latn                6 ││                                              ││features                                    │
+│  Zinh                6 ││                                              ││  calt [ ] Contextual alternates            │
+│  Zyyy                6 ││                                              ││  frac [ ] Fractions                        │
+│  Grek                2 ││                                              ││  pnum [ ] Proportional figures             │
+│  Arab                1 ││                                              ││  tnum [ ] Tabular figures                  │
+│  Cyrl                1 ││                                              ││                                            │
+│License                 ││                                              ││                                            │
+│  OFL-1.1             6 ││                                              ││                                            │
+│Freedom                 ││                                              ││                                            │
+│  free                6 ││                                              ││                                            │
+│Activation              ││                                              ││                                            │
+│  none                6 ││                                              ││                                            │
+│Vendor                  ││                                              ││                                            │
+│  RSMS                2 ││                                              ││                                            │
+│  ADBO                1 ││                                              ││                                            │
+│  ALIF                1 ││                                              ││                                            │
+│  ATLR                1 ││                                              ││                                            │
+│  TYPT                1 ││                                              ││                                            │
+│Container               ││                                              ││                                            │
+│  ttf                 3 ││                                              ││                                            │
+└────────────────────────┘└──────────────────────────────────────────────┘└────────────────────────────────────────────┘
+ $ fontina list --family "Inter"
+ / search  ⇥ facets  ⏎ open  ⌫ back  t tag  c collection  a/A activate  d deactivate  i install  u uninstall  e text  +/

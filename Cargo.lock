@@ -617,6 +617,7 @@ dependencies = [
  "clap_mangen",
  "fontina-core",
  "fontina-platform",
+ "insta",
  "mimalloc",
  "ratatui",
  "rusqlite",

@@ -1,0 +1,8 @@
+---
+source: crates/fontina-cli/src/ui/mod.rs
+expression: "rows.join(\"\\n\")"
+---
+ $ fontina families
+ $ fontina families --variable --vendor ATLR
+ search: grot▏
+ tagged 1 face as favourite
