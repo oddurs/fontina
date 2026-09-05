@@ -85,6 +85,26 @@ and stores, which would mean encoding somebody else's naming convention as fact;
 question you can ask of one face — what else here covers nearly the same characters — and
 answer from evidence the index already has.
 
+## M5, ship
+
+Four milestones in, you can install fontina with a package manager on Linux and with
+none on macOS or Windows. The release builds a `.deb` and an `.rpm`; everywhere else
+there is an archive to download and a binary to move onto your `PATH` by hand. Every
+desktop is meant to be first class, and on the evidence of how you install it, that is
+not yet true.
+
+So: a Homebrew tap, a Scoop bucket, a winget manifest, an AUR package — kept current by
+the release itself rather than by somebody remembering, and each one installed for real
+in a clean machine and tested there, the way the `.deb` and the `.rpm` already are.
+
+Two performance budgets are written down and not measured, because both need a real
+terminal to measure: how much memory the browser holds at rest, and how long it takes to
+repaint. A budget nothing measures is a wish with a table row, so either they get a
+harness or they stop being called budgets.
+
+Nothing here makes fontina do anything new with a font. It makes fontina something you
+can install, which after four milestones of features is the question worth asking.
+
 ## Never
 
 Font editing. Format conversion or subsetting. Cloud synchronisation. Accounts.
