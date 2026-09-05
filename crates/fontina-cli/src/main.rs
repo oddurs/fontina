@@ -103,7 +103,8 @@ enum Command {
     /// Make faces visible to other applications, in place. Persistent for the user unless
     /// `--session`. Exit code 2 when a conflict blocks it (see `conflicts`).
     Activate {
-        /// Face ids, `family:<name>`, or indexed file paths.
+        /// Face ids, `family:<name>`, or indexed file paths (`path#index` for one face
+        /// of a collection).
         #[arg(required = true)]
         targets: Vec<String>,
         /// Until logout or reboot instead of persistently.
@@ -401,7 +402,8 @@ enum TagCmd {
     /// Add a tag to faces (created if new).
     Add {
         tag: String,
-        /// Face ids, `family:<name>`, or indexed file paths.
+        /// Face ids, `family:<name>`, or indexed file paths (`path#index` for one face
+        /// of a collection).
         #[arg(required = true)]
         targets: Vec<String>,
     },
@@ -436,7 +438,8 @@ enum TagCmd {
         /// The files are right: read their tags into the index.
         #[arg(long, conflicts_with = "to_files")]
         from_files: bool,
-        /// Face ids, `family:<name>`, or indexed file paths. Everything, by default.
+        /// Face ids, `family:<name>`, or indexed file paths (`path#index` for one face
+        /// of a collection). Everything, by default.
         targets: Vec<String>,
         /// Say what would change, and change nothing.
         #[arg(long)]
@@ -466,7 +469,8 @@ enum CollectionCmd {
     /// Append faces to a collection (created if missing).
     Add {
         name: String,
-        /// Face ids, `family:<name>`, or indexed file paths.
+        /// Face ids, `family:<name>`, or indexed file paths (`path#index` for one face
+        /// of a collection).
         #[arg(required = true)]
         targets: Vec<String>,
     },

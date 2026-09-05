@@ -27,7 +27,9 @@ report accepts `--json`; the output types are published in
 `schemas/cli-output.json`.
 
 A *target* argument is a face id from `list`, a path to a font file, or, for
-commands that act on a set of faces, `family:<name>`.
+commands that act on a set of faces, `family:<name>`. A path may carry the face
+index a listing prints after it, `path#1`, which names one face of a font
+collection; the path on its own means every face in the file.
 
 Exit status is `0` on success, `1` on error, and `2` when a conflict blocked an
 activation and nothing was applied.
