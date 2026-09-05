@@ -431,18 +431,16 @@ wiring core APIs the specimen already exercises into ratatui panes.
 Items 1-7 are delivered (#41, #44, #48, #49, #55, #60, #64), and the finished surface was
 reviewed as a whole in #76.
 
-Held out until it is decided: the optional Google Fonts offline index. It cannot live in
-the core or the CLI, because neither makes network calls, so it wants its own crate, its
-own binary and its own package, with the index shipped as a file rather than fetched.
-Buildable, but a different kind of work from 1–7 and about as large as all of them.
+The optional Google Fonts offline index was held out here and has since been decided
+against; the reasoning is in §11, and the plugin surface is what replaces it.
 
 ---
 
 ## 11. M3, concretely
 
-One pull request per item, in this order. M3 is not one theme the way M2 was: it is three
-separable pieces of ecosystem work, plus two questions that want answering before anyone
-writes code for them.
+One pull request per item, in this order. M3 is not one theme the way M2 was: it is four
+separable pieces of ecosystem work, and the two questions it opened with are now decided
+below.
 
 Where M2 built on plumbing that was already there, M3 mostly builds on the **collection
 export**, which since #14 already carries an identity hash, a BLAKE3 and the tags, and
@@ -478,28 +476,63 @@ hard half of sharing, and it is done.
    two-way merge of two tag sets with no common ancestor cannot tell a deletion from an
    addition, so guessing loses tags silently; the reader says which side is right.
 
+### Seeing type properly, without a second interface
+
+6. `feat(cli)`: a key in the browser that writes a specimen for the selection and opens
+   it. The status line already prints `fontina specimen 42 43`; nothing runs it. This is
+   the whole of the graphical escape hatch, and it is one keystroke — see the shell
+   decision below, which it exists to settle.
+
 ### A plugin surface that is a promise, not an accident
 
-6. `feat(cli)`: read targets from standard input where a command takes them, so a program
+7. `feat(cli)`: read targets from standard input where a command takes them, so a program
    can pipe into fontina as well as out of it (`fontina list --json | jq … | fontina tag
    add serif -`). Everything else the surface needs already exists — every command has
    `--json`, every printed type is in `schemas/cli-output.json`, and CI diffs it.
-7. `docs`: an ADR stating what the surface guarantees. Which parts are stable (ids,
+8. `docs`: an ADR stating what the surface guarantees. Which parts are stable (ids,
    check ids, JSON field names, exit codes), what may be added (fields, never removed),
    and what a plugin may assume. Without that written down, "the CLI is the plugin API"
    is a description of today rather than a promise about tomorrow.
 
-### Two questions, not tasks
+### Two decisions
 
-**Does the TUI leave a real gap?** §5 gates the Tauri shell (ADR 0003) on this, and the
-honest answer is that nobody knows yet, because M2 only just made the browser worth
-living in. What would settle it: use it for a week on a real library, and write down what
-was reached for and not found. A shell built to answer an unasked question is the
-Electron mistake with a different renderer.
+Both were open questions when §11 was written. Both are answered no, for different
+reasons, and both are recorded here so nobody has to re-derive them.
 
-**The Google Fonts offline index** (§10). Still held out, still the same shape: it cannot
-live in the core or the CLI without breaking the no-network rule, so it needs its own
-crate, binary and package, with the index shipped as a file rather than fetched.
+**No graphical shell yet.** The gap the TUI leaves is real but narrow, and it is one
+thing: fidelity. A terminal is worst at exactly what choosing a typeface needs — real
+antialiasing at text sizes, spacing you can trust, hinting. Half-blocks give two pixels
+per cell and even the image protocols are bounded by the cell grid. Everything else a
+shell would add — a wall of families at once, drag and drop, reaching people who do not
+live in a terminal — is an argument for a *different product*, not evidence that this one
+falls short.
+
+And the escape hatch already exists unbuilt: `specimen.rs` renders in a real browser, and
+item 6 is the one keystroke that reaches it. Use that for a month and write down what is
+still missing. If the answer is "I press the key and it is fine", a second interface has
+been avoided; if something specific remains, its shape will be known rather than guessed.
+
+ADR 0006 deferred the desktop because truthful previews were its one real benefit, and
+#21 and #44 then delivered those in the terminal. The premise of that deferral got
+stronger, not weaker — reversing it now would be acting on evidence that has since moved
+the other way.
+
+**No Google Fonts index in this tree**, and items 7 and 8 are why. Discovery that cannot
+lead to acquisition is half a feature: search, find, leave for a browser, download, come
+back and scan — and the half fontina would own is the half that matters least. It is also
+an adjacent product; fontina manages the fonts you have and says what you may do with
+them, while a catalogue is a different tool that shares a data model.
+
+Once targets arrive on standard input and the JSON contract is an ADR, a catalogue is an
+external program that pipes candidates in. The project gets the capability without the
+crate, the dependency, the packaging or the network question — which is the plugin
+surface paying for itself on its first real case.
+
+There is a freedom argument too, and it is not about the fonts: Google Fonts is OFL. It
+is that the *curation* is one company's list, and building one company's view of what
+exists into the tool is what a free program should avoid. Someone should be able to point
+the same mechanism at Debian's fonts, or a foundry's own index, and have it work
+identically.
 
 ### Not M3, but before 1.0
 
