@@ -516,3 +516,36 @@ fn parse_paths_keeps_input_order_and_length() {
         );
     }
 }
+
+/// An index that is not a database fails at once, not after a retry budget.
+///
+/// `Index::open` switches a fresh index to WAL mode, and does it in a retry loop because
+/// two fontina processes opening the same new index race on that first write. The loop
+/// could not tell "another process holds the lock" from "this file will never be a
+/// database", so a `--db` with a typo in it — or an index that has been damaged — cost
+/// eight seconds on every command before anything said what was wrong.
+#[test]
+fn an_index_that_is_not_a_database_fails_at_once() {
+    let dir = std::env::temp_dir().join(format!("fontina-notadb-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("prose.db");
+    std::fs::write(&path, b"this is prose, not a database\n").unwrap();
+
+    let started = std::time::Instant::now();
+    // `Index` is not `Debug`, so the error comes out of a match rather than `expect_err`.
+    let err = match Index::open(&path) {
+        Ok(_) => panic!("a file that is not a database opened as one"),
+        Err(e) => e,
+    };
+    let took = started.elapsed();
+    assert!(
+        took < std::time::Duration::from_secs(2),
+        "it took {took:?} to say `{err}`"
+    );
+    assert!(
+        err.to_string().contains("not a database"),
+        "and it says what is wrong: {err}"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
