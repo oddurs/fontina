@@ -183,6 +183,13 @@ pub fn run(db: &Path) -> Result<()> {
     result
 }
 
+/// What the event loop should do after a key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Flow {
+    Continue,
+    Quit,
+}
+
 impl App {
     fn new(index: Index) -> Result<Self> {
         let mut app = App {
@@ -420,123 +427,134 @@ impl App {
             if key.kind != KeyEventKind::Press {
                 continue;
             }
-            if self.input.is_some() {
-                self.handle_input_key(key.code)?;
-                continue;
-            }
-            if self.help {
-                self.help = false;
-                continue;
-            }
-            // Ctrl-C still quits from anywhere; a full-screen mode takes every other key,
-            // so nothing underneath can move while it covers the panes.
-            if !ctrl_c(&key) {
-                if self.glyphs.is_some() {
-                    self.handle_glyph_key(key.code)?;
-                    continue;
-                }
-                if self.sheet.is_some() {
-                    self.handle_sheet_key(key.code)?;
-                    continue;
-                }
-            }
-            let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-            match key.code {
-                KeyCode::Char('q') => return Ok(()),
-                KeyCode::Char('c') if ctrl => return Ok(()),
-                KeyCode::Esc => {
-                    if self.open_family.is_some() {
-                        self.close_family()?;
-                    } else if !self.query.is_empty() || !self.selected.is_empty() {
-                        self.query.clear();
-                        self.selected.clear();
-                        self.reload()?;
-                    } else {
-                        return Ok(());
-                    }
-                }
-                KeyCode::Char('?') => self.help = true,
-                KeyCode::Char('m') => self.open_glyphs(),
-                KeyCode::Char('w') => self.open_sheet(sheet::Kind::Waterfall)?,
-                KeyCode::Char('C') => self.open_sheet(sheet::Kind::Compare)?,
-                KeyCode::Char('s') => self.open_specimen()?,
-                KeyCode::Tab => {
-                    self.focus = match self.focus {
-                        Focus::Facets => Focus::List,
-                        Focus::List if !self.controls.is_empty() => Focus::Controls,
-                        Focus::List | Focus::Controls => Focus::Facets,
-                    }
-                }
-                KeyCode::Char('/') => self.start_input(InputKind::Search, self.query.clone()),
-                KeyCode::Char('e') => {
-                    let text = self.preview_text.clone().unwrap_or_default();
-                    self.start_input(InputKind::Text, text)
-                }
-                KeyCode::Char('t') => self.start_input(InputKind::Tag, String::new()),
-                KeyCode::Char('c') => self.start_input(InputKind::Collection, String::new()),
-                KeyCode::Char('x') => {
-                    self.selected.clear();
-                    self.query.clear();
-                    self.reload()?;
-                }
-                KeyCode::Char('+') | KeyCode::Char('=') => {
-                    self.preview_size = (self.preview_size + 4.0).min(160.0)
-                }
-                KeyCode::Char('-') => self.preview_size = (self.preview_size - 4.0).max(8.0),
-                KeyCode::Char('a') => self.activate(ActivationState::User)?,
-                KeyCode::Char('A') => self.activate(ActivationState::Session)?,
-                KeyCode::Char('i') => self.activate(ActivationState::Installed)?,
-                KeyCode::Char('d') => self.deactivate(false)?,
-                KeyCode::Char('u') => self.deactivate(true)?,
-                KeyCode::Char('R') => self.rescan()?,
-                KeyCode::Down | KeyCode::Char('j') => self.step(1)?,
-                KeyCode::Up | KeyCode::Char('k') => self.step(-1)?,
-                KeyCode::PageDown | KeyCode::Char('f') if ctrl || key.code == KeyCode::PageDown => {
-                    self.step(15)?
-                }
-                KeyCode::PageUp | KeyCode::Char('b') if ctrl || key.code == KeyCode::PageUp => {
-                    self.step(-15)?
-                }
-                KeyCode::Home | KeyCode::Char('g') => self.jump(0)?,
-                KeyCode::End | KeyCode::Char('G') => self.jump(usize::MAX)?,
-                // In the controls the arrows move an axis, so they cannot also open a
-                // family; Space and Enter still toggle the row under the cursor.
-                KeyCode::Right | KeyCode::Char('l') if self.focus == Focus::Controls => {
-                    self.controls.adjust(1);
-                }
-                KeyCode::Left | KeyCode::Char('h') if self.focus == Focus::Controls => {
-                    self.controls.adjust(-1);
-                }
-                KeyCode::Char('L') if self.focus == Focus::Controls => {
-                    self.controls.adjust(10);
-                }
-                KeyCode::Char('H') if self.focus == Focus::Controls => {
-                    self.controls.adjust(-10);
-                }
-                KeyCode::Char('n') if self.focus == Focus::Controls => {
-                    self.controls.cycle_instance(1);
-                }
-                KeyCode::Char('p') if self.focus == Focus::Controls => {
-                    self.controls.cycle_instance(-1);
-                }
-                KeyCode::Char('0') if self.focus == Focus::Controls => self.controls.reset(),
-                KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Right | KeyCode::Char('l') => {
-                    match self.focus {
-                        Focus::Facets => self.toggle_facet()?,
-                        Focus::List => self.open_family()?,
-                        Focus::Controls => {
-                            self.controls.toggle();
-                        }
-                    }
-                }
-                KeyCode::Backspace | KeyCode::Left | KeyCode::Char('h')
-                    if self.focus == Focus::List =>
-                {
-                    self.close_family()?
-                }
-                _ => {}
+            if self.on_key(key)? == Flow::Quit {
+                return Ok(());
             }
         }
+    }
+
+    /// Apply one key press. Split out of the event loop so the browser can be driven
+    /// without a terminal: every key a person can press reaches the same code a test
+    /// does, which is what `tests::a_long_run_of_arbitrary_keys_keeps_every_invariant`
+    /// relies on.
+    fn on_key(&mut self, key: event::KeyEvent) -> Result<Flow> {
+        if self.input.is_some() {
+            self.handle_input_key(key.code)?;
+            return Ok(Flow::Continue);
+        }
+        if self.help {
+            self.help = false;
+            return Ok(Flow::Continue);
+        }
+        // Ctrl-C still quits from anywhere; a full-screen mode takes every other key,
+        // so nothing underneath can move while it covers the panes.
+        if !ctrl_c(&key) {
+            if self.glyphs.is_some() {
+                self.handle_glyph_key(key.code)?;
+                return Ok(Flow::Continue);
+            }
+            if self.sheet.is_some() {
+                self.handle_sheet_key(key.code)?;
+                return Ok(Flow::Continue);
+            }
+        }
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        match key.code {
+            KeyCode::Char('q') => return Ok(Flow::Quit),
+            KeyCode::Char('c') if ctrl => return Ok(Flow::Quit),
+            KeyCode::Esc => {
+                if self.open_family.is_some() {
+                    self.close_family()?;
+                } else if !self.query.is_empty() || !self.selected.is_empty() {
+                    self.query.clear();
+                    self.selected.clear();
+                    self.reload()?;
+                } else {
+                    return Ok(Flow::Quit);
+                }
+            }
+            KeyCode::Char('?') => self.help = true,
+            KeyCode::Char('m') => self.open_glyphs(),
+            KeyCode::Char('w') => self.open_sheet(sheet::Kind::Waterfall)?,
+            KeyCode::Char('C') => self.open_sheet(sheet::Kind::Compare)?,
+            KeyCode::Char('s') => self.open_specimen()?,
+            KeyCode::Tab => {
+                self.focus = match self.focus {
+                    Focus::Facets => Focus::List,
+                    Focus::List if !self.controls.is_empty() => Focus::Controls,
+                    Focus::List | Focus::Controls => Focus::Facets,
+                }
+            }
+            KeyCode::Char('/') => self.start_input(InputKind::Search, self.query.clone()),
+            KeyCode::Char('e') => {
+                let text = self.preview_text.clone().unwrap_or_default();
+                self.start_input(InputKind::Text, text)
+            }
+            KeyCode::Char('t') => self.start_input(InputKind::Tag, String::new()),
+            KeyCode::Char('c') => self.start_input(InputKind::Collection, String::new()),
+            KeyCode::Char('x') => {
+                self.selected.clear();
+                self.query.clear();
+                self.reload()?;
+            }
+            KeyCode::Char('+') | KeyCode::Char('=') => {
+                self.preview_size = (self.preview_size + 4.0).min(160.0)
+            }
+            KeyCode::Char('-') => self.preview_size = (self.preview_size - 4.0).max(8.0),
+            KeyCode::Char('a') => self.activate(ActivationState::User)?,
+            KeyCode::Char('A') => self.activate(ActivationState::Session)?,
+            KeyCode::Char('i') => self.activate(ActivationState::Installed)?,
+            KeyCode::Char('d') => self.deactivate(false)?,
+            KeyCode::Char('u') => self.deactivate(true)?,
+            KeyCode::Char('R') => self.rescan()?,
+            KeyCode::Down | KeyCode::Char('j') => self.step(1)?,
+            KeyCode::Up | KeyCode::Char('k') => self.step(-1)?,
+            KeyCode::PageDown | KeyCode::Char('f') if ctrl || key.code == KeyCode::PageDown => {
+                self.step(15)?
+            }
+            KeyCode::PageUp | KeyCode::Char('b') if ctrl || key.code == KeyCode::PageUp => {
+                self.step(-15)?
+            }
+            KeyCode::Home | KeyCode::Char('g') => self.jump(0)?,
+            KeyCode::End | KeyCode::Char('G') => self.jump(usize::MAX)?,
+            // In the controls the arrows move an axis, so they cannot also open a
+            // family; Space and Enter still toggle the row under the cursor.
+            KeyCode::Right | KeyCode::Char('l') if self.focus == Focus::Controls => {
+                self.controls.adjust(1);
+            }
+            KeyCode::Left | KeyCode::Char('h') if self.focus == Focus::Controls => {
+                self.controls.adjust(-1);
+            }
+            KeyCode::Char('L') if self.focus == Focus::Controls => {
+                self.controls.adjust(10);
+            }
+            KeyCode::Char('H') if self.focus == Focus::Controls => {
+                self.controls.adjust(-10);
+            }
+            KeyCode::Char('n') if self.focus == Focus::Controls => {
+                self.controls.cycle_instance(1);
+            }
+            KeyCode::Char('p') if self.focus == Focus::Controls => {
+                self.controls.cycle_instance(-1);
+            }
+            KeyCode::Char('0') if self.focus == Focus::Controls => self.controls.reset(),
+            KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Right | KeyCode::Char('l') => {
+                match self.focus {
+                    Focus::Facets => self.toggle_facet()?,
+                    Focus::List => self.open_family()?,
+                    Focus::Controls => {
+                        self.controls.toggle();
+                    }
+                }
+            }
+            KeyCode::Backspace | KeyCode::Left | KeyCode::Char('h')
+                if self.focus == Focus::List =>
+            {
+                self.close_family()?
+            }
+            _ => {}
+        }
+        Ok(Flow::Continue)
     }
 
     /// Open the glyph map on the face on show. A face with no coverage at all — a
@@ -2058,6 +2076,258 @@ mod tests {
             "{}",
             app.command_line()
         );
+    }
+
+||||||| parent of 9ac1dbb8 (test(cli): drive the browser the way a person does, not the way a script does)
+
+    /// A deterministic pseudo-random source. Seeded, so a failure is reproducible from
+    /// the seed the message prints, and dependency-free.
+    struct Rng(u64);
+
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            // xorshift64*, good enough to shuffle key presses and small enough to read.
+            let mut x = self.0;
+            x ^= x >> 12;
+            x ^= x << 25;
+            x ^= x >> 27;
+            self.0 = x;
+            x.wrapping_mul(0x2545_f491_4f6c_dd1d)
+        }
+
+        fn below(&mut self, n: usize) -> usize {
+            (self.next() % n as u64) as usize
+        }
+    }
+
+    /// Every key the browser reacts to, plus a few it does not, because a person's
+    /// keyboard has more keys than the ones we documented.
+    fn key_alphabet() -> Vec<event::KeyEvent> {
+        let ctrl = |c: char| event::KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL);
+        let plain = |c: char| event::KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE);
+        let code = |k: KeyCode| event::KeyEvent::new(k, KeyModifiers::NONE);
+        let mut keys: Vec<event::KeyEvent> = "jkhlgGfbaAiduRxetcmwCnp0+-/?LH \n"
+            .chars()
+            .map(plain)
+            .collect();
+        keys.extend([ctrl('f'), ctrl('b')]);
+        keys.extend(
+            [
+                KeyCode::Down,
+                KeyCode::Up,
+                KeyCode::Left,
+                KeyCode::Right,
+                KeyCode::Enter,
+                KeyCode::Esc,
+                KeyCode::Tab,
+                KeyCode::Backspace,
+                KeyCode::Home,
+                KeyCode::End,
+                KeyCode::PageUp,
+                KeyCode::PageDown,
+                KeyCode::Delete,
+                KeyCode::Insert,
+                KeyCode::F(1),
+            ]
+            .map(code),
+        );
+        // Text that ends up in the search, tag and collection prompts.
+        keys.extend("Amiri فونت 変".chars().map(plain));
+        keys
+    }
+
+    /// Everything that has to be true of the browser between one key and the next,
+    /// whatever the person pressed and in whatever order.
+    fn check_invariants(app: &App, whence: &str) {
+        let len = app.list_len();
+        if let Some(i) = app.list.selected() {
+            assert!(
+                i < len.max(1),
+                "{whence}: selection {i} outside a list of {len}"
+            );
+        }
+        if len > 0 {
+            assert!(
+                app.list.selected().is_some(),
+                "{whence}: a filled list with nothing selected"
+            );
+        }
+        assert_eq!(
+            app.detail.is_some(),
+            app.detail_id.is_some(),
+            "{whence}: the detail pane and the id it belongs to disagree"
+        );
+        if let (Some(s), Some(id)) = (&app.detail_summary, app.detail_id) {
+            assert_eq!(
+                s.id, id,
+                "{whence}: the cached summary belongs to another face"
+            );
+        }
+        if app.focus == Focus::Controls {
+            assert!(
+                !app.controls.is_empty(),
+                "{whence}: focus sits on a controls pane the face does not have"
+            );
+        }
+        assert!(
+            (8.0..=160.0).contains(&app.preview_size),
+            "{whence}: preview size {} outside its bounds",
+            app.preview_size
+        );
+        if let Some(g) = &app.glyphs {
+            assert!(
+                g.is_empty() || g.selected_index() < g.blocks().len(),
+                "{whence}: the glyph map points at a block it does not have"
+            );
+            assert!(
+                g.covered() <= 0x11_0000,
+                "{whence}: the glyph map counts more codepoints than Unicode has"
+            );
+        }
+    }
+
+    /// The test a daily driver needs: press keys, a great many of them, in an order
+    /// nobody would choose, and require that the browser neither panics nor tells a lie
+    /// about its own state. Every scripted test above walks a path someone thought of;
+    /// this walks the ones nobody did.
+    ///
+    /// Deterministic: the seed is fixed, and a failure prints the key sequence that
+    /// produced it, so it can be replayed.
+    /// Hold each key down. Two hundred presses of one key, from a fresh browser, for
+    /// every key there is.
+    ///
+    /// This is the half of the soak that randomness cannot reach: pressing `+` past the
+    /// top of the preview size range takes thirty-three presses in a row, and a uniform
+    /// stream of key presses will not produce that inside a run of any length anyone
+    /// would wait for. It is also what a person does, by resting a finger on a key.
+    /// The world changes while the browser is open.
+    ///
+    /// `fontina watch` is meant to run as a user service, so fonts appear and vanish
+    /// from the index under a browser that is already showing them. The browser reloads
+    /// after every action; this presses keys while the index is edited between them, and
+    /// requires that nothing it is holding — a selection, a detail id, a cached summary —
+    /// outlives what it points at.
+    #[test]
+    fn the_browser_survives_the_index_changing_underneath_it() {
+        let mut app = app();
+        let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures");
+        let paths: Vec<String> = app
+            .index
+            .list(&Default::default())
+            .unwrap()
+            .into_iter()
+            .map(|f| f.path)
+            .collect();
+        assert!(
+            paths.len() >= 6,
+            "the fixtures are all indexed to begin with"
+        );
+
+        let keys = "jkGgmwC\nl h";
+        let mut removed = 0;
+        for (round, path) in paths.iter().enumerate() {
+            // A watcher drops a font that was deleted on disk.
+            if app.index.remove_file(path).unwrap() {
+                removed += 1;
+            }
+            app.reload().unwrap();
+            check_invariants(&app, &format!("after {removed} face(s) vanished"));
+            for c in keys.chars() {
+                let key = event::KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE);
+                app.on_key(key).unwrap();
+                check_invariants(&app, &format!("round {round}, key {c:?}"));
+            }
+            let backend = ratatui::backend::TestBackend::new(100, 30);
+            let mut term = ratatui::Terminal::new(backend).unwrap();
+            term.draw(|f| app.draw(f)).unwrap();
+        }
+        assert_eq!(app.list_len(), 0, "every face was removed");
+
+        // And they all come back.
+        fontina_core::scan::scan(&mut app.index, &[fixtures], &Default::default()).unwrap();
+        app.reload().unwrap();
+        check_invariants(&app, "after everything was scanned again");
+        assert!(app.list_len() > 0, "the listing came back");
+    }
+
+    #[test]
+    fn holding_any_single_key_down_keeps_every_invariant() {
+        for key in key_alphabet() {
+            let mut app = app();
+            for press in 1..=200 {
+                let whence = format!("{:?} held for {press} presses", key.code);
+                match app.on_key(key) {
+                    Ok(Flow::Quit) => break,
+                    Ok(Flow::Continue) => {}
+                    Err(e) => panic!("{whence}: {e}"),
+                }
+                check_invariants(&app, &whence);
+            }
+            // And the screen still draws afterwards, at a size with no room to spare.
+            let backend = ratatui::backend::TestBackend::new(40, 12);
+            let mut term = ratatui::Terminal::new(backend).unwrap();
+            term.draw(|f| app.draw(f))
+                .unwrap_or_else(|e| panic!("drawing after {:?} was held: {e}", key.code));
+        }
+    }
+
+    #[test]
+    fn a_long_run_of_arbitrary_keys_keeps_every_invariant() {
+        let alphabet = key_alphabet();
+        // Sizes a person really has, including ones too small to lay anything out in.
+        let sizes = [
+            (80u16, 24u16),
+            (120, 40),
+            (200, 60),
+            (40, 12),
+            (20, 6),
+            (8, 3),
+            (1, 1),
+        ];
+        for seed in [0x5eed_0001, 0x00f0_111a, 0xdead_beef] {
+            let mut rng = Rng(seed);
+            let mut app = app();
+            let mut pressed: Vec<String> = Vec::new();
+            let mut step = 0usize;
+            while step < 600 {
+                // People hold keys down. A uniform stream of single presses never walks
+                // to the end of a long list or the top of the preview size range, so a
+                // bound that is wrong is never reached: an earlier version of this test
+                // did not notice the size clamp raised from 160 to 1000. One press in
+                // eight becomes a run.
+                let key = alphabet[rng.below(alphabet.len())];
+                let run = if rng.below(8) == 0 {
+                    2 + rng.below(48)
+                } else {
+                    1
+                };
+                for _ in 0..run {
+                    step += 1;
+                    pressed.push(format!("{:?}", key.code));
+                    let whence =
+                        format!("seed {seed:#x}, step {step}, after [{}]", pressed.join(" "));
+                    match app.on_key(key) {
+                        Ok(Flow::Quit) => {
+                            app = self::tests::app();
+                            pressed.clear();
+                            continue;
+                        }
+                        Ok(Flow::Continue) => {}
+                        Err(e) => panic!("{whence}: {e}"),
+                    }
+                    check_invariants(&app, &whence);
+                    // Draw now and then, at whatever size: the layout is where the
+                    // arithmetic lives, and a pane too small to fit is where it breaks.
+                    if step.is_multiple_of(7) {
+                        let (w, h) = sizes[rng.below(sizes.len())];
+                        let backend = ratatui::backend::TestBackend::new(w, h);
+                        let mut term = ratatui::Terminal::new(backend).unwrap();
+                        term.draw(|f| app.draw(f))
+                            .unwrap_or_else(|e| panic!("{whence}: drawing {w}x{h}: {e}"));
+                    }
+                }
+            }
+        }
     }
 
     #[test]
