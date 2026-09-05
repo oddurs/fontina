@@ -1897,6 +1897,7 @@ fn schemas_cover_the_new_types() {
         "ImportReport",
         "BundleReport",
         "TagSyncReport",
+        "Related",
         "Source",
         "ActivationRecord",
         "Conflict",

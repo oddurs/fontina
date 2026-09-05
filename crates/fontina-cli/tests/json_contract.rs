@@ -78,6 +78,7 @@ fn every_json_command_puts_json_on_stdout_and_nothing_else() {
         vec!["glyphs", "--json", "1"],
         vec!["covers", "--json", "abc"],
         vec!["check", "--json", "1"],
+        vec!["variants", "1", "--min", "0.0", "--json"],
         vec!["scan", "--json", fx.as_str()],
     ] {
         let o = fontina(&db, &args);

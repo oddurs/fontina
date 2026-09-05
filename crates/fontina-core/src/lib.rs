@@ -147,6 +147,7 @@ pub fn cli_output_schema() -> serde_json::Value {
     add::<ImportReport>(&mut g);
     add::<BundleReport>(&mut g);
     add::<TagSyncReport>(&mut g);
+    add::<Related>(&mut g);
     add::<Source>(&mut g);
     add::<ActivationRecord>(&mut g);
     add::<Conflict>(&mut g);
