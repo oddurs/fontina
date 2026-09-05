@@ -567,8 +567,16 @@ the help overlay. What animates is the program's actual output in three states, 
 impression of one. This loop *does* repeat, because it is a slideshow rather than a
 session and no frame is more true than the others.
 
-The step count and the string length have to agree or the last character never appears —
-they did not, once, and the check is worth running when the copy changes.
+Two things this got wrong on the way, both worth knowing before touching it:
+
+The step count and the string length have to agree or the last character never appears.
+They did not, once. Measure the string; do not count it.
+
+Lifetime is `visibility` and the blink is `opacity`, and they must stay on separate
+properties. Doing both with opacity meant two animations writing one property, where the
+later wins only while it is filling — and `reverse` on a keyframe with an implicit `from`
+takes that from-value from whatever the other animation happened to be writing. The first
+cursor never left, so all three were on screen at once. Two properties cannot race.
 
 Everything stops under `prefers-reduced-motion: reduce`: the session shows as already
 typed, the browser shows its first frame and stays there. That is a setting a person

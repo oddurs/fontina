@@ -944,11 +944,31 @@ pre.astro-code, pre.astro-code span {
 .demo .r2 { animation: reveal 0.01s 4.8s forwards; }
 @keyframes reveal { to { opacity: 1; } }
 
-/* One cursor per phase: each blinks while its line is being typed and leaves
-   when the next begins. */
-.demo .k1 { animation: cursor-blink 1.1s steps(1, end) infinite, reveal 0.01s 2.4s reverse forwards; }
-.demo .k2 { opacity: 0; animation: reveal 0.01s 2.9s forwards, cursor-blink 1.1s steps(1, end) 2.9s infinite; }
-.demo .k3 { opacity: 0; animation: reveal 0.01s 5s forwards, cursor-blink 1.1s steps(1, end) 5s infinite; }
+/* One cursor per phase: each blinks while its own line is live and leaves when
+   the next begins.
+
+   Lifetime is `visibility` and the blink is `opacity`, deliberately. Doing both
+   with opacity meant two animations writing one property, where the later of
+   them wins only while it is filling — and `reverse` on a keyframe with an
+   implicit `from` takes that from-value from whatever the *other* animation was
+   writing at the time. The first cursor never left, so all three were on screen
+   at once. Two properties cannot race. */
+.demo .cursor { visibility: hidden; }
+.demo .k1 {
+  visibility: visible;
+  animation: cursor-blink 1.1s steps(1, end) infinite, cursor-off 0.01s 2.4s forwards;
+}
+.demo .k2 {
+  animation:
+    cursor-on 0.01s 2.9s forwards,
+    cursor-blink 1.1s steps(1, end) 2.9s infinite,
+    cursor-off 0.01s 4.8s forwards;
+}
+.demo .k3 {
+  animation: cursor-on 0.01s 5s forwards, cursor-blink 1.1s steps(1, end) 5s infinite;
+}
+@keyframes cursor-on { to { visibility: visible; } }
+@keyframes cursor-off { to { visibility: hidden; } }
 
 /* ------------------------------------------------------------ TUI frames */
 /* Three real snapshots, stacked in one grid cell and cross-faded. This one
@@ -977,8 +997,9 @@ pre.astro-code, pre.astro-code span {
    typed and the browser shows its first frame and stays there. */
 @media (prefers-reduced-motion: reduce) {
   .demo .type { width: auto; animation: none; }
-  .demo .r1, .demo .r2, .demo .k3 { opacity: 1; animation: none; }
+  .demo .r1, .demo .r2 { opacity: 1; animation: none; }
   .demo .k1, .demo .k2 { display: none; }
+  .demo .k3 { visibility: visible; animation: none; }
   .frames .frame { animation: none; }
   .frames .f1 { opacity: 1; }
   .frames .f2, .frames .f3 { display: none; }
