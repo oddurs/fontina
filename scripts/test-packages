@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+# Build the .deb and .rpm the release workflow publishes, then install them in a clean
+# container of each distribution and run the acceptance test against the installed
+# program.
+#
+# scripts/test-distros proves the *binary* manages fonts on six distributions. It mounts
+# that binary in, which is exactly the thing a released package does not do: everything
+# between `cargo build` and `apt-get install` — the asset lists in
+# `[package.metadata.deb]` and `[package.metadata.generate-rpm]`, the dependency
+# resolution, the man page and completion paths, the licence — was never executed by any
+# test. We shipped a Linux artifact that did not start at all; the packaging is the same
+# class of thing and had less coverage than the binary did.
+#
+#   scripts/test-packages                    # every distribution below
+#   scripts/test-packages debian fedora      # only these
+#   KEEP=1 scripts/test-packages             # keep the packages in target/pkg-test
+#   scripts/test-packages --build-only       # just build them, into target/pkg-test
+#   FONTINA_PKG_DIR=dist scripts/test-packages   # test packages you already have
+#
+# --build-only and FONTINA_PKG_DIR are how CI uses this: one job builds the packages and
+# the matrix fans them out, the same shape as FONTINA_BIN in scripts/test-distros.
+#
+# Arch and Alpine are absent on purpose. The release workflow builds no PKGBUILD and no
+# APKBUILD, so there is no packaging promise to test there; scripts/test-distros already
+# covers those systems as far as we make claims about them.
+#
+# Needs a container runtime, same as scripts/test-distros:
+#   brew install --cask orbstack
+# Podman or Docker work too; anything that provides a `docker` command.
+set -euo pipefail
+
+repo=$(cd "$(dirname "$0")/.." && pwd)
+out=${FONTINA_PKG_DIR:-$repo/target/pkg-test}
+runtime=${DOCKER:-docker}
+
+# The build image. Bookworm's glibc is the oldest we claim to support, so a package
+# built here installs on every distribution in the table below. The release workflow
+# cross-builds a static musl binary and runs the same two packaging commands over the
+# same two manifests; building against glibc here is the deliberate difference, because
+# a static binary declares no dependencies at all and "the package declares dependencies
+# it can satisfy" is one of the things this test exists to check.
+BUILD_IMAGE=rust:1.88-slim-bookworm
+
+# name|image|package kind
+PACKAGES="
+debian|debian:12|deb
+ubuntu|ubuntu:24.04|deb
+fedora|fedora:41|rpm
+"
+
+# --- the half that runs inside the build container ----------------------------------
+# Re-entered as `scripts/test-packages --build-in-container`, so the build steps live in
+# this file next to the rest rather than in a quoted string, and stay in step with
+# .github/workflows/release.yml, which they mirror command for command.
+if [ "${1:-}" = "--build-in-container" ]; then
+    export CARGO_INSTALL_ROOT=/pkgtools
+    export PATH=/pkgtools/bin:$PATH
+
+    # cargo-deb resolves `depends = "$auto"` by shelling out to dpkg-shlibdeps. Without
+    # dpkg-dev it silently produces an empty Depends field, which would make "the
+    # package declares dependencies it can satisfy" pass by declaring none. The release
+    # workflow runs on a GitHub runner where dpkg-dev is already there.
+    command -v dpkg-shlibdeps >/dev/null || {
+        apt-get update -qq >/dev/null
+        apt-get install -y -qq --no-install-recommends dpkg-dev >/dev/null
+    }
+
+    command -v cargo-deb >/dev/null || cargo install --locked cargo-deb
+    command -v cargo-generate-rpm >/dev/null || cargo install --locked cargo-generate-rpm
+
+    cargo build --release --locked -p fontina-cli
+
+    # Completions and man pages come from the binary itself, so they always match it —
+    # and both manifests point at target/pkg, so they have to exist before packaging.
+    mkdir -p target/pkg/completions target/pkg/man
+    gen=target/release/fontina
+    "$gen" completions bash >target/pkg/completions/fontina.bash
+    "$gen" completions zsh >target/pkg/completions/_fontina
+    "$gen" completions fish >target/pkg/completions/fontina.fish
+    "$gen" completions powershell >target/pkg/completions/_fontina.ps1
+    "$gen" man --out-dir target/pkg/man
+
+    rm -f /out/*.deb /out/*.rpm
+    cargo deb --no-build --no-strip -p fontina-cli -o /out/
+    cargo generate-rpm -p crates/fontina-cli -o /out/
+    ls -la /out
+    exit 0
+fi
+
+command -v "$runtime" >/dev/null || {
+    echo "no container runtime: install OrbStack (brew install --cask orbstack), Podman or Docker" >&2
+    exit 1
+}
+"$runtime" info >/dev/null 2>&1 || {
+    echo "the container runtime is installed but not running: start OrbStack and try again" >&2
+    exit 1
+}
+
+build_only=0
+if [ "${1:-}" = "--build-only" ]; then
+    build_only=1
+    shift
+fi
+
+want=("$@")
+selected() {
+    [ ${#want[@]} -eq 0 ] && return 0
+    for w in "${want[@]}"; do [ "$w" = "$1" ] && return 0; done
+    return 1
+}
+
+build() {
+    if [ -n "${FONTINA_PKG_DIR:-}" ]; then
+        echo "==> using the packages already in $out"
+        return 0
+    fi
+    echo "==> building the .deb and .rpm in $BUILD_IMAGE"
+    mkdir -p "$out"
+    # /repo/target is a named volume rather than the host's target directory: both
+    # manifests name paths under target/, so the build has to write there, and a Linux
+    # build sharing a macOS target directory only fights over fingerprints. The volumes
+    # cache the registry and the two packaging tools the same way scripts/test-distros
+    # caches its registry, so a second run skips the ten-minute `cargo install`.
+    "$runtime" run --rm \
+        -v "$repo:/repo:ro" \
+        -v "fontina-pkg-target:/repo/target" \
+        -v "fontina-pkg-tools:/pkgtools" \
+        -v "fontina-pkg-registry:/usr/local/cargo/registry" \
+        -v "$out:/out" \
+        -w /repo "$BUILD_IMAGE" /repo/scripts/test-packages --build-in-container
+}
+
+find_package() { # find_package <deb|rpm>
+    local f
+    f=$(find "$out" -maxdepth 1 -name "*.$1" | sort | head -1)
+    [ -n "$f" ] || {
+        echo "no .$1 in $out" >&2
+        return 1
+    }
+    printf '%s\n' "$f"
+}
+
+run_one() { # run_one <name> <image> <kind>
+    local name=$1 image=$2 kind=$3 pkg
+    pkg=$(find_package "$kind") || return 1
+    echo
+    echo "==> $name ($image, $(basename "$pkg"))"
+    # The repository is read-only and the package directory is read-only: the container
+    # gets the package and the fixtures, and nothing it does can reach back out.
+    "$runtime" run --rm \
+        -v "$repo:/repo:ro" -v "$out:/pkg:ro" \
+        -w /repo -e REPO=/repo -e FIXTURES=/repo/fixtures \
+        "$image" /repo/scripts/package-acceptance "/pkg/$(basename "$pkg")"
+}
+
+any=0
+while IFS='|' read -r name image kind; do
+    [ -z "$name" ] && continue
+    selected "$name" && any=1
+done <<<"$PACKAGES"
+[ "$any" = 1 ] || {
+    echo "nothing selected; known: debian ubuntu fedora" >&2
+    exit 1
+}
+
+build
+if [ "$build_only" = 1 ]; then
+    echo
+    echo "built into $out"
+    exit 0
+fi
+
+failed=""
+while IFS='|' read -r name image kind; do
+    [ -z "$name" ] && continue
+    selected "$name" || continue
+    if run_one "$name" "$image" "$kind"; then
+        echo "==> $name: passed"
+    else
+        echo "==> $name: FAILED"
+        failed="$failed $name"
+    fi
+done <<<"$PACKAGES"
+
+if [ -z "${KEEP:-}" ] && [ -z "${FONTINA_PKG_DIR:-}" ]; then
+    rm -rf "$out"
+fi
+
+echo
+if [ -n "$failed" ]; then
+    echo "failed:$failed"
+    exit 1
+fi
+echo "every package installed, passed acceptance and removed cleanly"

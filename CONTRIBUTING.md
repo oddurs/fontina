@@ -70,7 +70,7 @@ checksums, provenance attestations and the SBOM. Nothing is published by hand.
 
 ## Testing
 
-Three layers, cheapest first.
+Four layers, cheapest first.
 
 1. **Unit and integration tests**, `cargo test`. Hermetic, no system font directory
    touched. Snapshot tests cover every fixture, and every health check id has a case
@@ -84,6 +84,17 @@ Three layers, cheapest first.
    `fc-list` and `fc-match` have to see the font, because a font manager that only
    convinces itself has done nothing. Everything it touches is inside one temporary
    XDG home, which it removes on the way out.
+4. **Packaging**, `scripts/test-packages`. A release is not a binary, it is a `.deb` and
+   an `.rpm` built from `[package.metadata.deb]` and `[package.metadata.generate-rpm]`
+   in `crates/fontina-cli/Cargo.toml`, and everything those manifests promise — the
+   binary on `PATH`, the man pages where `man` looks, the completions where bash, zsh
+   and fish look, the licence where the distribution keeps one, dependencies the archive
+   can satisfy — is only a promise until somebody installs one. This script builds the
+   packages the way the release workflow does, installs them with `apt-get install` and
+   `dnf install` in a clean Debian, Ubuntu and Fedora, runs `scripts/acceptance` against
+   the `fontina` the package put on `PATH` (not a binary mounted in: the package is what
+   is under test), then removes the package and asserts nothing of ours is left.
+   `scripts/package-acceptance` is the half of it that runs inside the container.
 
 GNU/Linux is the reference platform and is not one system, so `scripts/test-distros`
 runs the acceptance script inside Debian, Ubuntu, Fedora, Arch, Alpine (musl) and a
@@ -95,11 +106,13 @@ brew install --cask orbstack
 
 and Podman or Docker work as well. `.github/workflows/linux.yml` runs the same script
 on every pull request that touches the crates, weekly on a schedule, and on `main`.
+`scripts/test-packages` needs the same runtime, and the same workflow runs it too.
 
 Adding a capability means adding to whichever layer can prove it: a new metadata field
 gets a fixture snapshot, a new health check gets a case in `tests/checks.rs`, a new
-activation behaviour gets a platform test, and anything a user would type gets a line
-in `scripts/acceptance`.
+activation behaviour gets a platform test, anything a user would type gets a line in
+`scripts/acceptance`, and a new file a package installs gets an assertion in
+`scripts/package-acceptance`.
 
 ## Fixtures
 

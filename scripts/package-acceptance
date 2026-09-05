@@ -1,0 +1,350 @@
+#!/bin/sh
+# Acceptance test for a built .deb or .rpm: does the *package* work?
+#
+# scripts/acceptance answers "does this binary manage fonts". This answers the question
+# one step earlier: does the thing we actually publish install, put its files where its
+# manifest promises, and take them all away again. Everything here is asserted through
+# the distribution's own tools — dpkg, apt, rpm, dnf, man, the shells' completion
+# directories — because those are what a user meets, and because a promise in
+# `[package.metadata.deb]` that nobody installs is not a promise.
+#
+# Runs *inside* a container of the matching distribution (see scripts/test-packages),
+# as root, and installs into that container's system directories. Do not run it on a
+# machine you care about: it installs and removes a package system-wide.
+#
+#   scripts/package-acceptance /pkg/fontina_0.1.1-1_amd64.deb
+#
+# POSIX sh, because the same script has to run under Debian's dash and Fedora's bash.
+
+set -eu
+
+pkg=${1:-}
+[ -n "$pkg" ] || {
+    echo "usage: package-acceptance <path to .deb or .rpm>" >&2
+    exit 2
+}
+[ -f "$pkg" ] || {
+    echo "no such package: $pkg" >&2
+    exit 2
+}
+
+case "$pkg" in
+*.deb) kind=deb ;;
+*.rpm) kind=rpm ;;
+*)
+    echo "not a package this script knows: $pkg" >&2
+    exit 2
+    ;;
+esac
+
+repo=${REPO:-/repo}
+fixtures=${FIXTURES:-$repo/fixtures}
+fail=0
+pass=0
+
+say() { printf '%s\n' "$*"; }
+ok() { pass=$((pass + 1)); printf '  ok    %s\n' "$*"; }
+no() { fail=$((fail + 1)); printf '  FAIL  %s\n' "$*"; }
+skip() { printf '  skip  %s\n' "$*"; }
+have() { command -v "$1" >/dev/null 2>&1; }
+
+exists() { # exists <description> <path>
+    if [ -e "$2" ]; then ok "$1"; else no "$1 ($2 is missing)"; fi
+}
+absent() { # absent <description> <path>
+    if [ -e "$2" ]; then no "$1 ($2 is still there)"; else ok "$1"; fi
+}
+contains() { # contains <description> <file> <pattern>
+    if [ -f "$2" ] && grep -q "$3" "$2"; then ok "$1"; else no "$1"; fi
+}
+
+# The zsh completion directory is the one place the two manifests disagree, because the
+# two distributions disagree: Debian ships vendor-completions, Fedora site-functions.
+# Both are on the respective zsh's default fpath, and asserting the wrong one would pass
+# a package no shell can see.
+# The two places the manifests differ are the two places the distributions differ.
+# Debian puts vendor completions in vendor-completions and a package's licence in
+# /usr/share/doc/<pkg>/copyright (Policy 12.5); Fedora uses site-functions and
+# /usr/share/licenses/<pkg>. Asserting the wrong one of each would pass a package no
+# shell can see and no licence audit can find.
+case "$kind" in
+deb)
+    zsh_dir=/usr/share/zsh/vendor-completions
+    license_file=/usr/share/doc/fontina/copyright
+    ;;
+rpm)
+    zsh_dir=/usr/share/zsh/site-functions
+    license_file=/usr/share/licenses/fontina/COPYING
+    ;;
+esac
+
+say "fontina package acceptance"
+say "  package:    $pkg"
+say "  kind:       $kind"
+say "  system:     $(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME" || uname -s)"
+say "  fixtures:   $fixtures"
+say ""
+
+# --- what the container needs before it can judge a package -------------------------
+# None of this is under test; it is the jury. The official Debian, Ubuntu and Fedora
+# images all ship configured to throw documentation away (dpkg path-exclude, dnf
+# tsflags=nodocs), which would silently drop the man pages the package installs and make
+# `man fontina` fail for a reason that has nothing to do with fontina. Undo that first.
+say "preparing the container"
+case "$kind" in
+deb)
+    rm -f /etc/dpkg/dpkg.cfg.d/excludes /etc/dpkg/dpkg.cfg.d/docker
+    # Ubuntu's image goes further and diverts /usr/bin/man to a stub that prints
+    # "this system has been minimized" and exits 0. Installing man-db under that
+    # diversion leaves the stub in place, and every man assertion below would pass
+    # or fail on the banner rather than on the page.
+    dpkg-divert --quiet --local --remove /usr/bin/man 2>/dev/null || true
+    rm -f /usr/bin/man
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -qq >/dev/null
+    # bsdextrautils is `col`, which man-db pipes every page through.
+    apt-get install -y -qq --no-install-recommends \
+        fontconfig man-db groff-base bsdextrautils zsh bash-completion >/dev/null
+    ;;
+rpm)
+    sed -i '/^tsflags=nodocs/d' /etc/dnf/dnf.conf 2>/dev/null || true
+    # Fedora's image ships util-linux-core, which has no `col` either.
+    dnf install -y -q --setopt=tsflags= \
+        fontconfig man-db groff-base util-linux zsh bash-completion >/dev/null
+    ;;
+esac
+say "  ready"
+say ""
+
+# --- installing it, the way the distribution would ----------------------------------
+# `apt-get install ./file.deb` and `dnf install ./file.rpm` resolve dependencies, so a
+# dependency the manifest declares but the archive cannot satisfy is a failure here
+# rather than something a plain `dpkg -i --force-depends` would paper over.
+say "installs"
+install_log=$(mktemp)
+case "$kind" in
+deb) apt-get install -y -qq "$pkg" >"$install_log" 2>&1 && rc=0 || rc=$? ;;
+rpm) dnf install -y -q --setopt=tsflags= "$pkg" >"$install_log" 2>&1 && rc=0 || rc=$? ;;
+esac
+if [ "$rc" -eq 0 ]; then
+    ok "the package installs with its own package manager, dependencies and all"
+else
+    no "the package does not install"
+    cat "$install_log"
+    say ""
+    say "0 passed, $fail failed"
+    exit 1
+fi
+
+# The dependencies it declares, as the package manager records them. An empty
+# dependency list would make the install above succeed for the wrong reason, which is
+# exactly what happened while this test was being written: cargo-deb resolves `$auto`
+# through dpkg-shlibdeps, and in a build container without dpkg-dev it quietly wrote
+# `Depends:` with nothing after it. A dynamically linked binary depends on libc; if it
+# ever stops saying so, the package installs on a system that cannot run it.
+case "$kind" in
+deb)
+    if dpkg -s fontina 2>/dev/null | grep -q '^Status: install ok installed'; then
+        ok "dpkg reports it installed"
+    else
+        no "dpkg does not report it installed"
+    fi
+    depends=$(dpkg -s fontina 2>/dev/null | sed -n 's/^Depends: //p')
+    if printf '%s' "$depends" | grep -q 'libc'; then
+        ok "it declares its libc dependency, and apt satisfied it: $depends"
+    else
+        no "it declares no libc dependency (Depends: $depends)"
+    fi
+    # Debian Policy 5.6.2 makes Maintainer mandatory. Reported rather than asserted:
+    # who to name is the maintainer's call, not this test's.
+    if dpkg -s fontina 2>/dev/null | grep -q '^Maintainer:'; then
+        ok "the deb names a maintainer"
+    else
+        skip "the deb has no Maintainer field (Debian Policy 5.6.2 requires one); set [package.metadata.deb] maintainer"
+    fi
+    ;;
+rpm)
+    if rpm -q fontina >/dev/null 2>&1; then
+        ok "rpm reports it installed"
+    else
+        no "rpm does not report it installed"
+    fi
+    if rpm -q --requires fontina 2>/dev/null | grep -q '^libc\.so'; then
+        ok "it declares its libc requirement, and dnf satisfied it"
+    else
+        no "it declares no libc requirement"
+    fi
+    ;;
+esac
+
+# --- what the packaging manifests promise -------------------------------------------
+say "keeps its promises"
+
+# 1. The binary is on PATH. We shipped a Linux artifact once that would not start at
+#    all, so "it is on PATH" and "it runs" are two assertions, not one.
+resolved=$(command -v fontina 2>/dev/null || true)
+if [ "$resolved" = /usr/bin/fontina ]; then
+    ok "command -v fontina resolves to /usr/bin/fontina"
+elif [ -n "$resolved" ]; then
+    no "fontina is on PATH at $resolved, not /usr/bin/fontina"
+else
+    no "command -v fontina finds nothing: the binary is not on PATH"
+fi
+if fontina --version >/dev/null 2>&1; then
+    ok "the installed binary runs: $(fontina --version 2>&1)"
+else
+    no "the installed binary does not run"
+fi
+
+# 2. The man pages are where man looks, and render. `man -w` is man's own answer to
+#    "which file would you open", so it proves the search path, and rendering proves the
+#    page is a roff document rather than a file that happens to be named .1.
+man_path=$(LC_ALL=C man -w fontina 2>/dev/null | head -1 || true)
+if [ -n "$man_path" ]; then
+    ok "man finds fontina(1) at $man_path"
+else
+    no "man -w fontina finds nothing: the page is not on the man search path"
+fi
+if LC_ALL=C MANPAGER=cat MANWIDTH=80 man fontina 2>/dev/null | grep -qi fontina; then
+    ok "man fontina renders a page"
+else
+    no "man fontina does not render a page"
+fi
+# The subcommand pages come from the same `fontina man --out-dir`; if the glob in the
+# manifest ever stops matching them, only the top-level page would survive.
+if LC_ALL=C man -w fontina-scan >/dev/null 2>&1; then
+    ok "the subcommand pages are installed too (fontina-scan(1))"
+else
+    no "the subcommand pages are missing: the man/*.1 glob matched only some of them"
+fi
+
+# 3. Shell completions, at the path each manifest names, with the content that shell
+#    needs. A file in the right place with the wrong syntax completes nothing.
+bash_dir=/usr/share/bash-completion/completions
+exists "the bash completion is installed" "$bash_dir/fontina"
+contains "the bash completion is a bash completion" "$bash_dir/fontina" 'complete .*fontina'
+exists "the zsh completion is installed" "$zsh_dir/_fontina"
+contains "the zsh completion is a zsh completion" "$zsh_dir/_fontina" '#compdef fontina'
+fish_dir=/usr/share/fish/vendor_completions.d
+exists "the fish completion is installed" "$fish_dir/fontina.fish"
+contains "the fish completion is a fish completion" "$fish_dir/fontina.fish" 'complete -c fontina'
+
+# And the directories are the ones the shells actually read, asked of the shells rather
+# than of us. This is the assertion that catches a manifest that names a plausible path
+# on the wrong distribution.
+if have zsh; then
+    if zsh -c 'print -l $fpath' 2>/dev/null | grep -qx "$zsh_dir"; then
+        ok "zsh's own fpath contains $zsh_dir"
+    else
+        no "$zsh_dir is not on zsh's fpath: zsh will never load the completion"
+    fi
+else
+    skip "zsh is not installed, cannot check fpath"
+fi
+if [ -r /usr/share/bash-completion/bash_completion ]; then
+    ok "bash-completion is present and reads $bash_dir"
+else
+    skip "bash-completion is not installed, cannot check its directory"
+fi
+
+# 4. The licence, where the distribution expects to find a package's licence. Debian
+#    policy is /usr/share/doc/<pkg>/copyright; RPM marks its licence files %license and
+#    `rpm -qL` is the query for them.
+exists "the licence is where this distribution keeps one" "$license_file"
+# Not just "mentions the GPL": the GPL requires the text to travel with the binary, so
+# the assertion is that the whole licence is there, not a four-line stub naming it.
+contains "the licence file is the GPL text itself" "$license_file" 'GNU GENERAL PUBLIC LICENSE'
+contains "the licence file is version 3" "$license_file" 'Version 3, 29 June 2007'
+case "$kind" in
+deb)
+    if dpkg -s fontina 2>/dev/null | grep -q '^Homepage:'; then
+        ok "the deb control file carries the upstream homepage"
+    else
+        no "the deb control file has no Homepage"
+    fi
+    ;;
+rpm)
+    if rpm -q --qf '%{LICENSE}\n' fontina 2>/dev/null | grep -q 'GPL'; then
+        ok "the rpm metadata declares the GPL"
+    else
+        no "the rpm metadata does not declare the GPL"
+    fi
+    # cargo-generate-rpm 0.21 has no way to set the %license file flag, so `rpm -qL`
+    # is empty even though the text is installed in Fedora's canonical directory. Said
+    # out loud rather than asserted, so the day the tool grows the flag we notice.
+    if [ -z "$(rpm -qL fontina 2>/dev/null)" ]; then
+        skip "rpm -qL is empty: cargo-generate-rpm cannot mark a file %license yet"
+    else
+        ok "rpm -qL lists the licence file"
+    fi
+    ;;
+esac
+
+# 5. The README the manifests both ship, so a broken relative path in either asset list
+#    is caught rather than shrugged at.
+exists "the README is installed" /usr/share/doc/fontina/README.md
+
+# --- the point: the installed program passes the acceptance test --------------------
+# Not a binary we mounted in. The one apt or dnf just put on PATH, found through PATH,
+# so what is under test is the package.
+say ""
+say "the installed fontina passes scripts/acceptance"
+say ""
+if FONTINA=fontina FIXTURES="$fixtures" "$repo/scripts/acceptance"; then
+    ok "scripts/acceptance passes against the installed package"
+else
+    no "scripts/acceptance fails against the installed package"
+fi
+
+# --- and takes it all away again ----------------------------------------------------
+# A font manager that leaves fonts behind when you uninstall it is worse than no font
+# manager, so removal is asserted as hard as installation.
+say ""
+say "removes"
+remove_log=$(mktemp)
+case "$kind" in
+deb) dpkg -r fontina >"$remove_log" 2>&1 && rc=0 || rc=$? ;;
+rpm) dnf remove -y -q fontina >"$remove_log" 2>&1 && rc=0 || rc=$? ;;
+esac
+if [ "$rc" -eq 0 ]; then
+    ok "the package removes"
+else
+    no "the package does not remove"
+    cat "$remove_log"
+fi
+
+# Asked of a fresh shell: this one has cached the location of a binary it just ran,
+# and a stale hash table would report the package still present.
+if sh -c 'command -v fontina' >/dev/null 2>&1; then
+    no "fontina is still on PATH after removal"
+else
+    ok "fontina is no longer on PATH"
+fi
+absent "the binary is gone" /usr/bin/fontina
+absent "the bash completion is gone" "$bash_dir/fontina"
+absent "the zsh completion is gone" "$zsh_dir/_fontina"
+absent "the fish completion is gone" "$fish_dir/fontina.fish"
+absent "the README is gone" /usr/share/doc/fontina/README.md
+absent "the licence is gone" "$license_file"
+if [ -n "$(LC_ALL=C man -w fontina 2>/dev/null || true)" ]; then
+    no "man still finds a fontina page after removal"
+else
+    ok "man no longer finds a fontina page"
+fi
+
+# Nothing of ours in any font directory. The acceptance run above activated and
+# installed a font; if either left something outside its sandbox, or if the package
+# itself dropped a file into a font directory, this is where it shows.
+left=$(find /usr/share/fonts /usr/local/share/fonts "${HOME:-/root}/.local/share/fonts" \
+    /usr/share/fontconfig /etc/fonts \
+    -iname '*fontina*' -o -iname '*amiri*' 2>/dev/null || true)
+if [ -n "$left" ]; then
+    no "something of ours is left in the font directories:"
+    printf '%s\n' "$left" | sed 's/^/          /'
+else
+    ok "the font directories have nothing of ours in them"
+fi
+
+say ""
+say "$pass passed, $fail failed"
+[ "$fail" -eq 0 ]
