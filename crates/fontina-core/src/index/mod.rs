@@ -101,8 +101,12 @@ pub struct FaceFilter {
     pub variable: Option<bool>,
     pub color: Option<bool>,
     pub italic: Option<bool>,
-    /// ISO 15924 script code the face must cover, e.g. `Arab`.
-    pub script: Option<String>,
+    /// ISO 15924 script codes the face must cover, e.g. `Arab`. Every one of them: two
+    /// scripts mean a face that has both, not either.
+    pub scripts: Vec<String>,
+    /// How many codepoints of each script in `scripts` the face must cover. `None` is
+    /// one, which is "covers it at all".
+    pub script_min: Option<u32>,
     /// SPDX identifier prefix match, e.g. `OFL`.
     pub license: Option<String>,
     /// Whether the license grants the four freedoms.
@@ -298,6 +302,7 @@ impl Index {
                 width_span.1,
             ])?;
             insert_ranges(tx, face_id, &face.coverage.ranges)?;
+            insert_scripts(tx, face_id, &face.coverage.scripts)?;
             library::carry_over_apply(tx, face_id, face.index, &carried)?;
         }
         Ok(())
@@ -468,9 +473,18 @@ impl Index {
             w.clauses.push("f.italic = ?".into());
             w.args.push(Box::new(v));
         }
-        if let Some(s) = &filter.script {
-            w.clauses.push("f.scripts LIKE ?".into());
-            w.args.push(Box::new(format!("%,{},%", s)));
+        // Every script asked for, each its own clause, so two of them mean both — which
+        // the `LIKE` over the joined string could never express. `script_min` is the
+        // depth: a font with three Arabic codepoints should stop ranking beside one with
+        // three thousand.
+        for s in &filter.scripts {
+            w.clauses.push(
+                "f.id IN (SELECT fs.face_id FROM face_scripts fs
+                          WHERE fs.script = ? COLLATE NOCASE AND fs.codepoints >= ?)"
+                    .into(),
+            );
+            w.args.push(Box::new(s.clone()));
+            w.args.push(Box::new(filter.script_min.unwrap_or(1) as i64));
         }
         if let Some(l) = &filter.license {
             w.clauses.push("f.license_spdx LIKE ?".into());
@@ -723,6 +737,38 @@ impl Index {
         let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
+}
+
+/// Insert the script coverage of a face, one row per script with its depth.
+impl Index {
+    /// The scripts a face covers and how many codepoints of each, deepest first.
+    ///
+    /// The same numbers `Coverage.scripts` has always held, now answerable per script
+    /// without reading the whole metadata document back.
+    pub fn script_coverage(&self, face_id: i64) -> Result<Vec<(String, u32)>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT script, codepoints FROM face_scripts WHERE face_id = ?1
+             ORDER BY codepoints DESC, script",
+        )?;
+        let rows = stmt.query_map(params![face_id], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as u32))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+}
+
+pub(crate) fn insert_scripts(
+    tx: &Transaction,
+    face_id: i64,
+    scripts: &[crate::model::ScriptCoverage],
+) -> Result<()> {
+    let mut stmt = tx.prepare_cached(
+        "INSERT OR REPLACE INTO face_scripts (face_id, script, codepoints) VALUES (?1, ?2, ?3)",
+    )?;
+    for s in scripts {
+        stmt.execute(params![face_id, s.script, s.codepoints])?;
+    }
+    Ok(())
 }
 
 pub(crate) fn insert_ranges(tx: &Transaction, face_id: i64, ranges: &[[u32; 2]]) -> Result<()> {
