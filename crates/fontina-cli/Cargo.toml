@@ -31,13 +31,22 @@ ratatui = { version = "0.30", default-features = false, features = ["crossterm",
 clap_complete = "4"
 clap_mangen = "0.3"
 
-# Tests only, and both are crates the workspace already builds: `restore` has to be
+# Tests only. `rusqlite` is a crate the workspace already builds: `restore` has to be
 # exercised against an index whose writes fail, and nothing in the core's public API
 # can break an index on purpose; `insta` snapshots the frames the browser draws into
 # ratatui's in-memory test backend, the way fontina-core snapshots parsed metadata.
+#
+# `jsonschema` is what makes "`--json` output validates against `schemas/cli-output.json`"
+# a test rather than a sentence (tests/schema_conformance.rs). It is the maintained Rust
+# implementation of draft 2020-12, which is the draft `schemars` emits, and it is MIT, so
+# `deny.toml` already allows it. `default-features = false` turns off the HTTP and file
+# retrievers: a validator that could fetch a remote `$ref` would be a network call, and
+# the schemas are local files with no external references. Dev-only, so nothing here
+# reaches the shipped binary — `cargo tree -e normal -p fontina-cli` has no jsonschema.
 [dev-dependencies]
 rusqlite.workspace = true
 insta.workspace = true
+jsonschema = { version = "0.53", default-features = false }
 
 # `cargo deb` and `cargo generate-rpm` (run in the release workflow after
 # `fontina completions` and `fontina man --out-dir` have filled target/pkg/).
