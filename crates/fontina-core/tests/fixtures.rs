@@ -154,7 +154,7 @@ fn index_scan_list_filter_and_dupes() {
     assert_eq!(all.len(), 6);
     let arabic = index
         .list(&FaceFilter {
-            script: Some("Arab".into()),
+            scripts: vec!["Arab".into()],
             ..Default::default()
         })
         .unwrap();
@@ -376,9 +376,12 @@ fn covering_finds_faces_for_text_and_migrates_old_indexes() {
     }
     {
         let conn = rusqlite::Connection::open(&db).unwrap();
-        // Undo migrations 2, 3 and 4 so the file looks like a v1 index.
+        // Undo every migration after the first so the file looks like a v1 index. This
+        // list grows with each one; a migration that forgets it fails here loudly, which
+        // is the point.
         conn.execute_batch(
             "DROP TABLE face_ranges;
+             DROP TABLE face_scripts;
              ALTER TABLE activations DROP COLUMN installed_path;
              ALTER TABLE sources DROP COLUMN kind;
              DROP INDEX faces_vendor; DROP INDEX face_tags_tag; DROP INDEX collection_faces_face;
