@@ -216,6 +216,27 @@ impl Where {
 /// failing is worse for a user than a pause.
 const BUSY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 
+/// Put the file in WAL mode, waiting for another connection that is doing the same.
+///
+/// Changing the journal mode needs a moment with no other connection in the file, and
+/// SQLite answers `SQLITE_BUSY` for it immediately rather than consulting the busy
+/// timeout, so two fontinas opening the same fresh index collide here before they reach
+/// a single query. The one that loses only has to wait: whoever won is setting the very
+/// mode it wanted. If it never takes — an index on a filesystem that cannot do WAL —
+/// the rollback journal still works, so this is not a reason to refuse to open.
+fn ensure_wal(conn: &Connection) {
+    for _ in 0..50 {
+        let _ = conn.pragma_update(None, "journal_mode", "WAL");
+        let mode: String = conn
+            .pragma_query_value(None, "journal_mode", |r| r.get(0))
+            .unwrap_or_default();
+        if mode.eq_ignore_ascii_case("wal") {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
 impl Index {
     /// Default location: the platform data directory for `fontina`.
     pub fn default_path() -> PathBuf {
@@ -238,14 +259,17 @@ impl Index {
     }
 
     fn init(mut conn: Connection) -> Result<Self> {
-        conn.pragma_update(None, "journal_mode", "WAL")?;
+        // First, before anything that takes a lock. Several fontina processes share one
+        // index by design: `watch` runs as a user service while you tag something in `ui`
+        // and activate something else from the shell. Without a busy timeout the second
+        // writer fails instantly with "database is locked" instead of waiting the moment
+        // or two the first one needs — and switching to WAL is itself a write, so setting
+        // the timeout after it left two processes opening the same fresh index racing on
+        // the very first pragma.
+        conn.busy_timeout(BUSY_TIMEOUT)?;
+        ensure_wal(&conn);
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
-        // Several fontina processes share one index by design: `watch` runs as a user
-        // service while you tag something in `ui` and activate something else from the
-        // shell. Without a busy timeout the second writer fails instantly with "database
-        // is locked" instead of waiting the moment or two the first one needs.
-        conn.busy_timeout(BUSY_TIMEOUT)?;
         schema::migrate(&mut conn)?;
         Ok(Index { conn })
     }

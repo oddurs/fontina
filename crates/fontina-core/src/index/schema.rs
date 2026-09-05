@@ -197,10 +197,25 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
             MIGRATIONS.len()
         )));
     }
-    for (i, sql) in MIGRATIONS.iter().enumerate().skip(current as usize) {
-        // Immediate, so two processes opening a fresh index at once queue rather than
-        // one of them failing on the upgrade from a read lock.
+    if current as usize == MIGRATIONS.len() {
+        return Ok(());
+    }
+    // One migration per pass, and the version is read again *inside* the write
+    // transaction each time.
+    //
+    // Reading it once up front and then looping is a race between processes: two
+    // fontinas opening the same fresh index both see version 0, both decide to apply the
+    // first migration, and the second one fails with "table files already exists" after
+    // the first has committed. An immediate transaction serialises the writes but not the
+    // decision to write, which is the part that has to be inside it. Two processes
+    // starting together is not exotic here: `watch` runs as a user service and a person
+    // opens the browser.
+    loop {
         let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let i: usize = tx.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))? as usize;
+        let Some(sql) = MIGRATIONS.get(i) else {
+            return Ok(());
+        };
         tx.execute_batch(sql)?;
         if i == 1 {
             backfill_ranges(&tx)?;
@@ -220,7 +235,6 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
         tx.pragma_update(None, "user_version", (i + 1) as i64)?;
         tx.commit()?;
     }
-    Ok(())
 }
 
 /// Populate `face_ranges` from the stored metadata JSON of an index created before v2.
@@ -342,5 +356,49 @@ mod tests {
         let mut conn = Connection::open_in_memory().unwrap();
         migrate(&mut conn).unwrap();
         migrate(&mut conn).unwrap();
+    }
+
+    /// Several connections opening the same fresh index at once all succeed.
+    ///
+    /// `watch` runs as a user service and a person opens the browser: two fontinas
+    /// starting together on an index that does not exist yet is ordinary. Two things made
+    /// them race. Which migration to apply was decided outside the write transaction, so
+    /// both picked the first one and the loser failed with `table files already exists`.
+    /// And the journal mode was switched before the busy timeout was set — and SQLite
+    /// answers `SQLITE_BUSY` for that pragma at once rather than waiting, so they
+    /// collided before reaching a query at all.
+    ///
+    /// This goes through `Index::open`, which is what a person actually runs.
+    #[test]
+    fn several_connections_can_create_the_same_index_at_once() {
+        let dir = std::env::temp_dir().join(format!("fontina-migrate-race-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // Repeated, because a race that happens sometimes is a race.
+        for round in 0..8 {
+            let path = dir.join(format!("index-{round}.db"));
+            let barrier = std::sync::Arc::new(std::sync::Barrier::new(4));
+            let mut threads = Vec::new();
+            for _ in 0..4 {
+                let path = path.clone();
+                let barrier = std::sync::Arc::clone(&barrier);
+                threads.push(std::thread::spawn(move || {
+                    barrier.wait();
+                    super::super::Index::open(&path).map(|_| ())
+                }));
+            }
+            for t in threads {
+                t.join()
+                    .unwrap()
+                    .unwrap_or_else(|e| panic!("round {round}: {e}"));
+            }
+            let conn = Connection::open(&path).unwrap();
+            let version: i64 = conn
+                .query_row("PRAGMA user_version", [], |r| r.get(0))
+                .unwrap();
+            assert_eq!(version as usize, MIGRATIONS.len(), "round {round}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
