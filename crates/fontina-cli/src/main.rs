@@ -894,7 +894,7 @@ fn run() -> Result<()> {
             if targets.is_empty() {
                 bail!("pass face ids or font file paths");
             }
-            for t in targets {
+            for t in &expand_targets(targets)? {
                 for face in resolve_faces(&cli, t)? {
                     let url = url_prefix.as_ref().map(|p| {
                         let name = std::path::Path::new(&face.file.path)
@@ -967,7 +967,7 @@ fn run() -> Result<()> {
                 other => bail!("unknown level {other:?}; use info, warn or error"),
             };
             let mut reports = Vec::new();
-            for t in targets {
+            for t in &expand_targets(targets)? {
                 for face in resolve_faces(&cli, t)? {
                     let mut r = fontina_core::check_face(&face);
                     r.findings.retain(|f| f.severity >= min_sev);
@@ -1101,7 +1101,7 @@ fn run() -> Result<()> {
                 out
             } else {
                 let mut out = Vec::new();
-                for t in targets {
+                for t in &expand_targets(targets)? {
                     out.extend(resolve_faces(&cli, t)?);
                 }
                 out
@@ -1176,7 +1176,7 @@ fn run() -> Result<()> {
                 bail!("pass face ids or font file paths");
             }
             let mut faces = Vec::new();
-            for t in targets {
+            for t in &expand_targets(targets)? {
                 faces.extend(resolve_faces(&cli, t)?);
             }
             let html = fontina_core::specimen::render(
@@ -1648,11 +1648,102 @@ fn resolve_ids(index: &Index, target: &str) -> Result<Vec<i64>> {
 
 fn resolve_all_ids(index: &Index, targets: &[String]) -> Result<Vec<i64>> {
     let mut ids = Vec::new();
-    for t in targets {
+    for t in &expand_targets(targets)? {
         ids.extend(resolve_ids(index, t)?);
     }
     ids.dedup();
     Ok(ids)
+}
+
+/// Replace a `-` among the targets with whatever is on standard input.
+///
+/// Every fontina command prints `--json` and every printed type is in
+/// `schemas/cli-output.json`; this is the other half, so a program can pipe *into*
+/// fontina as well as out of it:
+///
+/// ```text
+/// fontina list --json --free | jq '[.[] | select(.variable)]' | fontina tag add variable -
+/// fontina list --json | fontina tag add everything -
+/// printf '1\n2\n' | fontina activate -
+/// ```
+///
+/// Two shapes, told apart by the first non-blank character, because both are things a
+/// person will reasonably try:
+///
+/// - **JSON**, starting `[` or `{`: an array, a single object, or one object per line as
+///   `jq -c` writes them. An object is read for its `id`, or its `path` if it has no id,
+///   which is exactly what `fontina list --json` produces. Bare numbers and strings are
+///   taken as written.
+/// - **otherwise, one target per line** — an id, `family:<name>`, or a path — with blank
+///   lines and `#` comments ignored, so a hand-written list works too.
+///
+/// A second `-` contributes nothing: standard input is read once.
+fn expand_targets(targets: &[String]) -> Result<Vec<String>> {
+    if !targets.iter().any(|t| t == "-") {
+        return Ok(targets.to_vec());
+    }
+    let text = std::io::read_to_string(std::io::stdin()).context("reading targets from stdin")?;
+    let mut piped = Some(parse_targets(&text)?);
+    let mut out = Vec::new();
+    for t in targets {
+        if t == "-" {
+            out.extend(piped.take().unwrap_or_default());
+        } else {
+            out.push(t.clone());
+        }
+    }
+    if out.is_empty() {
+        bail!("nothing on standard input");
+    }
+    Ok(out)
+}
+
+fn parse_targets(text: &str) -> Result<Vec<String>> {
+    match text.trim_start().chars().next() {
+        Some('[') | Some('{') => targets_from_json(text),
+        _ => Ok(text
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .map(str::to_string)
+            .collect()),
+    }
+}
+
+fn targets_from_json(text: &str) -> Result<Vec<String>> {
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(text) {
+        return match value {
+            serde_json::Value::Array(items) => items.iter().map(target_of).collect(),
+            other => Ok(vec![target_of(&other)?]),
+        };
+    }
+    // Not one document, so it is `jq -c`: one per line.
+    text.lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| {
+            let v: serde_json::Value =
+                serde_json::from_str(l).context("parsing a line of JSON from stdin")?;
+            target_of(&v)
+        })
+        .collect()
+}
+
+/// The target a piped JSON value stands for.
+fn target_of(value: &serde_json::Value) -> Result<String> {
+    match value {
+        serde_json::Value::Number(n) => Ok(n.to_string()),
+        serde_json::Value::String(s) => Ok(s.clone()),
+        serde_json::Value::Object(o) => {
+            if let Some(id) = o.get("id").and_then(serde_json::Value::as_i64) {
+                Ok(id.to_string())
+            } else if let Some(path) = o.get("path").and_then(serde_json::Value::as_str) {
+                Ok(path.to_string())
+            } else {
+                bail!("a JSON object on stdin has neither an `id` nor a `path`")
+            }
+        }
+        other => bail!("{other} on stdin is not a face id, a family or a path"),
+    }
 }
 
 fn run_tag(cli: &Cli, cmd: &TagCmd) -> Result<()> {
