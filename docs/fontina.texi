@@ -196,7 +196,31 @@ completions.
 @item fontina schema [face|collection|cli-output]
 A JSON Schema for the metadata model, a collection export, or every type
 @option{--json} prints.
+@item fontina collection export NAME [FILE]
+Write a collection as JSON: the faces in order, each with its family, style, hashes,
+path and tags.  It is a list of what you chose, useful to anyone who already has the
+same fonts.
+@item fontina collection export NAME --bundle DIR
+Write the collection @emph{and} the fonts.  @var{DIR} gets a @file{collection.json} and
+a @file{fonts/} directory holding a copy of every file the collection names, and every
+path in the JSON is relative to @var{DIR}.  So the bundle opens the same on any machine,
+and it carries no trace of the one it was made on --- an absolute path names a home
+directory, and a directory you hand to somebody should not name yours.
+
+Nothing is copied twice: several faces out of one file share its copy, and two fonts
+that happen to be called @file{Regular.ttf} get distinct names in @file{fonts/}.
+fontina refuses to write into a directory that already holds a bundle rather than mix
+two collections' fonts together.
+@item fontina collection import FILE|DIR
+Read one back, matching faces against this index by identity hash, then PostScript name,
+then path.  Naming a bundle directory is enough; its relative paths are joined onto it.
+Faces this index does not have are reported as missing rather than invented.
 @end table
+
+@noindent
+A bundle is the shareable form, and it is deliberately plain: a directory of fonts and
+one JSON file with a published schema.  You do not need @command{fontina} to open it, or
+our permission to write one.
 
 @node Freedom
 @chapter Which of your fonts are free software

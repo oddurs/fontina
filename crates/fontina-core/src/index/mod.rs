@@ -30,8 +30,8 @@ pub use facets::{
     FacetCount, Facets, Family, weight_bucket, weight_name, width_bucket, width_name,
 };
 pub use library::{
-    ActivationRecord, ActivationState, CollectionExport, CollectionFace, CollectionInfo, Conflict,
-    ImportReport, Source, SourceKind, TagInfo,
+    ActivationRecord, ActivationState, BUNDLE_FILE, BUNDLE_FONTS, BundleReport, CollectionExport,
+    CollectionFace, CollectionInfo, Conflict, ImportReport, Source, SourceKind, TagInfo,
 };
 
 use crate::FileInfo;

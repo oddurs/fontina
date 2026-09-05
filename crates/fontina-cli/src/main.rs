@@ -428,11 +428,19 @@ enum CollectionCmd {
         /// Output file; `-` for stdout.
         #[arg(default_value = "-")]
         output: PathBuf,
+        /// Write a bundle in this directory instead: the JSON beside a copy of every
+        /// font, with relative paths, so the collection can be handed to somebody else.
+        #[arg(long, value_name = "DIR", conflicts_with = "output")]
+        bundle: Option<PathBuf>,
+        /// Print what the bundle write did, rather than a line of prose. Without
+        /// `--bundle` the export is JSON already.
+        #[arg(long, requires = "bundle")]
+        json: bool,
     },
-    /// Read a collection JSON file into this index, matching faces by identity hash,
-    /// PostScript name, then path.
+    /// Read a collection into this index, matching faces by identity hash, PostScript
+    /// name, then path.
     Import {
-        /// Input file; `-` for stdin.
+        /// Input file, a bundle directory, or `-` for stdin.
         #[arg(default_value = "-")]
         input: PathBuf,
         /// Import under this name instead of the one in the file.
@@ -1737,13 +1745,33 @@ fn run_collection(cli: &Cli, cmd: &CollectionCmd) -> Result<()> {
                 print_table(&faces);
             }
         }
-        CollectionCmd::Export { name, output } => {
+        CollectionCmd::Export {
+            name,
+            output,
+            bundle,
+            json,
+        } => {
             let export = index.export_collection(name)?;
-            let json = serde_json::to_string_pretty(&export)?;
+            if let Some(dir) = bundle {
+                let report = export.write_bundle(dir)?;
+                if *json {
+                    println!("{}", serde_json::to_string_pretty(&report)?);
+                } else {
+                    eprintln!(
+                        "wrote {} ({} faces, {} files, {} KB)",
+                        report.dir,
+                        report.faces,
+                        report.files,
+                        report.bytes / 1024
+                    );
+                }
+                return Ok(());
+            }
+            let text = serde_json::to_string_pretty(&export)?;
             if output.as_os_str() == "-" {
-                println!("{json}");
+                println!("{text}");
             } else {
-                std::fs::write(output, json.as_bytes())
+                std::fs::write(output, text.as_bytes())
                     .with_context(|| format!("writing {}", output.display()))?;
                 eprintln!("wrote {} ({} faces)", output.display(), export.faces.len());
             }
@@ -1754,14 +1782,50 @@ fn run_collection(cli: &Cli, cmd: &CollectionCmd) -> Result<()> {
             no_tags,
             json,
         } => {
-            let text = if input.as_os_str() == "-" {
+            // A bundle is a directory, and naming the directory is what somebody who was
+            // handed one will try first.
+            let file = if input.is_dir() {
+                input.join(fontina_core::BUNDLE_FILE)
+            } else {
+                input.clone()
+            };
+            let text = if file.as_os_str() == "-" {
                 std::io::read_to_string(std::io::stdin())?
             } else {
-                std::fs::read_to_string(input)
-                    .with_context(|| format!("reading {}", input.display()))?
+                std::fs::read_to_string(&file)
+                    .with_context(|| format!("reading {}", file.display()))?
             };
-            let export: fontina_core::CollectionExport =
+            let mut export: fontina_core::CollectionExport =
                 serde_json::from_str(&text).context("parsing collection JSON")?;
+            // A bundle's paths mean nothing until they are joined onto the directory the
+            // file was read from — which is not knowable at all when it came from stdin.
+            if export.relative_paths {
+                let base = file
+                    .parent()
+                    .filter(|_| file.as_os_str() != "-")
+                    .map(|p| {
+                        // `collection.json` has an empty parent, which resolves to
+                        // nothing and would leave every path still relative.
+                        if p.as_os_str().is_empty() {
+                            PathBuf::from(".")
+                        } else {
+                            p.to_path_buf()
+                        }
+                    })
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "this collection's paths are relative to the bundle holding it, \
+                             so it has to be imported by path rather than through stdin"
+                        )
+                    })?;
+                let escaped = export.resolve_paths(&base);
+                if escaped > 0 {
+                    eprintln!(
+                        "warning: {escaped} path(s) in this bundle point outside it and were \
+                         left alone"
+                    );
+                }
+            }
             let report = index.import_collection(&export, name.as_deref(), !*no_tags)?;
             if *json {
                 println!("{}", serde_json::to_string_pretty(&report)?);
@@ -1775,6 +1839,13 @@ fn run_collection(cli: &Cli, cmd: &CollectionCmd) -> Result<()> {
                 );
                 for m in &report.missing {
                     eprintln!("  missing: {} {}  {}", m.family, m.subfamily, m.path);
+                }
+                if input.is_dir() && !report.missing.is_empty() {
+                    eprintln!(
+                        "a bundle carries the fonts but does not index them: \
+                         run `fontina scan {}` first",
+                        input.display()
+                    );
                 }
             }
         }

@@ -207,6 +207,159 @@ fn a_path_that_climbs_out_of_the_bundle_is_not_resolved() {
     );
 }
 
+/// The whole point of a bundle: hand somebody a directory and they have the collection
+/// *and* the fonts, with nothing in the file that only meant something on your disk.
+#[test]
+fn a_bundle_carries_the_fonts_with_it() {
+    let dir = scratch("bundle");
+    let export = collection_over_every_fixture("Handoff");
+    let report = export.write_bundle(&dir).unwrap();
+    assert_eq!(report.faces, 6);
+    assert_eq!(report.files, 6, "one file per fixture");
+    assert!(report.bytes > 0);
+
+    // `self` is the caller's; writing a bundle does not rewrite it underneath them.
+    assert!(!export.relative_paths);
+    assert!(
+        export
+            .faces
+            .iter()
+            .all(|f| Path::new(&f.path).is_absolute())
+    );
+
+    let text = std::fs::read_to_string(dir.join(fontina_core::BUNDLE_FILE)).unwrap();
+    assert!(
+        !text.contains(
+            fixtures()
+                .canonicalize()
+                .unwrap()
+                .to_string_lossy()
+                .as_ref()
+        ),
+        "the file no longer names the machine it was written on"
+    );
+    let mut read: CollectionExport = serde_json::from_str(&text).unwrap();
+    assert!(read.relative_paths);
+    assert!(
+        read.faces
+            .iter()
+            .all(|f| f.path.starts_with("fonts/") && !f.path.contains('\\')),
+        "{:?}",
+        read.faces.iter().map(|f| &f.path).collect::<Vec<_>>()
+    );
+
+    // Opened from where it sits, every path is a font that is really there.
+    assert_eq!(read.resolve_paths(&dir), 0);
+    for f in &read.faces {
+        assert!(Path::new(&f.path).is_file(), "{}", f.path);
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Fonts live in per-family directories, so a bundle flattening them will meet two files
+/// called the same thing — and holding one of them twice under the other's name would be
+/// a collection that silently lies about what is in it.
+#[test]
+fn two_fonts_with_one_name_both_survive_the_flattening() {
+    let dir = scratch("bundle-clash");
+    let (a, b) = (dir.join("a"), dir.join("b"));
+    std::fs::create_dir_all(&a).unwrap();
+    std::fs::create_dir_all(&b).unwrap();
+    std::fs::copy(fixtures().join("Amiri-Regular.ttf"), a.join("Regular.ttf")).unwrap();
+    std::fs::copy(
+        fixtures().join("SourceSerif4-Regular.otf"),
+        b.join("Regular.ttf"),
+    )
+    .unwrap();
+
+    let mut export = collection_over_every_fixture("Clash");
+    export.faces.truncate(2);
+    export.faces[0].path = a.join("Regular.ttf").to_string_lossy().into_owned();
+    export.faces[1].path = b.join("Regular.ttf").to_string_lossy().into_owned();
+
+    let out = dir.join("out");
+    let report = export.write_bundle(&out).unwrap();
+    assert_eq!(report.files, 2);
+    let mut read: CollectionExport = serde_json::from_str(
+        &std::fs::read_to_string(out.join(fontina_core::BUNDLE_FILE)).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(read.faces[0].path, "fonts/Regular.ttf");
+    assert_eq!(read.faces[1].path, "fonts/Regular-2.ttf");
+    read.resolve_paths(&out);
+    assert_ne!(
+        std::fs::read(&read.faces[0].path).unwrap(),
+        std::fs::read(&read.faces[1].path).unwrap(),
+        "the second is the second font, not a second copy of the first"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A TrueType collection, or two instances of one variable font, are several faces over
+/// one file. Copying it per face would inflate the bundle and leave duplicates behind.
+#[test]
+fn faces_that_share_a_file_share_its_copy() {
+    let dir = scratch("bundle-shared");
+    let mut export = collection_over_every_fixture("Shared file");
+    export.faces.truncate(2);
+    let one = fixtures()
+        .canonicalize()
+        .unwrap()
+        .join("Amiri-Regular.ttf")
+        .to_string_lossy()
+        .into_owned();
+    export.faces[0].path = one.clone();
+    export.faces[1].path = one;
+    export.faces[1].index = 1;
+
+    let report = export.write_bundle(&dir).unwrap();
+    assert_eq!(report.faces, 2);
+    assert_eq!(report.files, 1, "copied once");
+    let read: CollectionExport = serde_json::from_str(
+        &std::fs::read_to_string(dir.join(fontina_core::BUNDLE_FILE)).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(read.faces[0].path, read.faces[1].path);
+    assert_eq!(
+        std::fs::read_dir(dir.join(fontina_core::BUNDLE_FONTS))
+            .unwrap()
+            .count(),
+        1
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Writing a second collection into a directory that already holds one would leave a
+/// `collection.json` naming half the fonts beside it. Making a new directory is free.
+#[test]
+fn a_bundle_will_not_be_written_over_one_that_is_already_there() {
+    let dir = scratch("bundle-twice");
+    let first = collection_over_every_fixture("First");
+    first.write_bundle(&dir).unwrap();
+    let before = std::fs::read_to_string(dir.join(fontina_core::BUNDLE_FILE)).unwrap();
+
+    let mut second = collection_over_every_fixture("Second");
+    second.faces.truncate(1);
+    let err = second.write_bundle(&dir).unwrap_err();
+    assert!(format!("{err}").contains("already holds a bundle"), "{err}");
+    assert_eq!(
+        std::fs::read_to_string(dir.join(fontina_core::BUNDLE_FILE)).unwrap(),
+        before,
+        "and the one that was there is untouched"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A directory nothing else in this run is using.
+fn scratch(what: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("fontina-{what}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    // macOS puts the temp directory behind a symlink, and `relative_to` strips a
+    // canonical base.
+    std::fs::canonicalize(&dir).unwrap()
+}
+
 #[test]
 fn collections_keep_order_and_export_import() {
     let mut index = indexed();
@@ -795,6 +948,7 @@ fn schemas_cover_the_new_types() {
         "CollectionInfo",
         "CollectionExport",
         "ImportReport",
+        "BundleReport",
         "Source",
         "ActivationRecord",
         "Conflict",
