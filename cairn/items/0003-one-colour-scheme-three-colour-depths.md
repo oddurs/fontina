@@ -2,8 +2,9 @@
 id: 3
 title: One colour scheme, three colour depths
 type: feat
-status: backlog
+status: done
 milestone: tui-craft
+assignee: Oddur Sigurdsson
 created: 2026-09-05
 updated: 2026-09-05
 priority: p1

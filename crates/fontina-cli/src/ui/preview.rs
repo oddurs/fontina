@@ -17,6 +17,7 @@
 //! Half-block previews for the details pane, rendered through `fontina_core::render` and
 //! cached by face, text, size and pane width.
 
+use super::theme::{self, Theme};
 use fontina_core::FaceMetadata;
 use fontina_core::render::{Bitmap, RenderOptions, render_face};
 use ratatui::style::{Color, Style};
@@ -36,6 +37,7 @@ type Key = (i64, RenderOptions, u32);
 #[derive(Default)]
 pub struct Cache {
     entries: Vec<(Key, Vec<Line<'static>>)>,
+    theme: Theme,
 }
 
 /// Enough for a full waterfall and a wide comparison at once, and small enough that the
@@ -75,6 +77,7 @@ impl Cache {
                 let mut lines = to_lines(
                     &bitmap,
                     px_rows.saturating_sub(2 * u32::from(bitmap.missing > 0)),
+                    &self.theme,
                 );
                 // A font draws its `.notdef` box for every character it does not cover,
                 // so a preview of text this face cannot show is a row of empty
@@ -114,7 +117,7 @@ impl Cache {
 
 /// Coverage to `▀` cells. Ink is drawn with the terminal's default foreground; the
 /// half-block trick needs an explicit pair of colours only where there is ink.
-fn to_lines(bm: &Bitmap, px_rows: u32) -> Vec<Line<'static>> {
+fn to_lines(bm: &Bitmap, px_rows: u32, theme: &Theme) -> Vec<Line<'static>> {
     let w = bm.width as usize;
     let full = bm.height as usize;
     let want = (px_rows as usize).min(full);
@@ -140,10 +143,7 @@ fn to_lines(bm: &Bitmap, px_rows: u32) -> Vec<Line<'static>> {
     let mut out = Vec::with_capacity(want.div_ceil(2));
     // Ink colour: a neutral light grey blended over black reads on dark and light
     // themes alike once the block glyph carries both halves.
-    let ink = |a: u8| {
-        let v = 30 + (a as u16 * 200 / 255) as u8;
-        Color::Rgb(v, v, v)
-    };
+    let ink = |a: u8| theme.ink(a);
     for row in 0..want.div_ceil(2) {
         let y0 = start + row * 2;
         let y1 = y0 + 1;
@@ -160,10 +160,13 @@ fn to_lines(bm: &Bitmap, px_rows: u32) -> Vec<Line<'static>> {
                 spans.push(Span::raw(" ".repeat(blank)));
                 blank = 0;
             }
-            spans.push(Span::styled(
-                "▀",
-                Style::default().fg(ink(top)).bg(ink(bottom)),
-            ));
+            // Two pixels in one cell. Normally the block glyph carries them as two
+            // colours; with no colour to carry them the glyph itself says which half
+            // is inked, and the preview survives rather than disappearing.
+            spans.push(match (ink(top), ink(bottom)) {
+                (Some(fg), Some(bg)) => Span::styled("▀", Style::default().fg(fg).bg(bg)),
+                _ => Span::raw(theme::density(top, bottom).to_string()),
+            });
         }
         out.push(Line::from(spans));
     }
@@ -176,6 +179,61 @@ mod tests {
     use std::path::PathBuf;
 
     // ----- bitmaps as pictures -----
+
+    /// The point of the fallback: a preview with no colour is still a preview.
+    ///
+    /// A half-block rendering normally puts two pixels in one cell as two colours, so
+    /// under `NO_COLOR` it would come back as a rectangle of identical `▀` — type
+    /// reduced to a solid block. The block glyphs carry the same two pixels as shape
+    /// instead, and this asserts the shape is really there rather than one repeated
+    /// character.
+    #[test]
+    fn a_preview_survives_a_terminal_with_no_colour() {
+        let bm = art(&["..##..", "..##..", "######", "..##.."]);
+        let plain = to_lines(&bm, 8, &Theme::new(theme::Depth::None));
+
+        let drawn: String = plain
+            .iter()
+            .flat_map(|l| l.spans.iter())
+            .map(|s| s.content.as_ref())
+            .collect();
+
+        assert!(
+            !drawn.trim().is_empty(),
+            "no colour must not mean no preview"
+        );
+        for span in plain.iter().flat_map(|l| l.spans.iter()) {
+            assert!(span.style.fg.is_none(), "a colourless preview set a colour");
+            assert!(
+                span.style.bg.is_none(),
+                "a colourless preview set a background"
+            );
+        }
+        let shapes: std::collections::BTreeSet<char> =
+            drawn.chars().filter(|c| !c.is_whitespace()).collect();
+        assert!(
+            shapes.len() > 1,
+            "the glyphs have to distinguish the halves, got {shapes:?}"
+        );
+    }
+
+    /// And the colour paths still colour, at each depth that has colour to give.
+    #[test]
+    fn a_preview_is_coloured_wherever_colour_exists() {
+        let bm = art(&["####", "####"]);
+        for depth in [
+            theme::Depth::True,
+            theme::Depth::Ansi256,
+            theme::Depth::Ansi16,
+        ] {
+            let lines = to_lines(&bm, 4, &Theme::new(depth));
+            let coloured = lines
+                .iter()
+                .flat_map(|l| l.spans.iter())
+                .any(|s| s.style.fg.is_some());
+            assert!(coloured, "{depth:?} drew no colour");
+        }
+    }
 
     /// A bitmap from ASCII art, the way `fontina-core`'s encoder tests write one: `.` is
     /// bare and `#` is full ink, so the shape under test can be read by eye.
@@ -240,7 +298,7 @@ mod tests {
     /// caller draws these into a `Paragraph` that would silently scroll if it were.
     #[track_caller]
     fn check(bm: &Bitmap, px_rows: u32, what: &str) -> Vec<Line<'static>> {
-        let out = to_lines(bm, px_rows);
+        let out = to_lines(bm, px_rows, &Theme::new(theme::Depth::True));
         assert!(
             out.len() <= (px_rows as usize).div_ceil(2),
             "{what}: {} rows for a budget of {px_rows} pixel rows",
@@ -298,9 +356,9 @@ mod tests {
 
     #[test]
     fn a_pane_with_no_rows_is_given_no_lines() {
-        assert!(to_lines(&shaped(80, 40, true), 0).is_empty());
+        assert!(to_lines(&shaped(80, 40, true), 0, &Theme::new(theme::Depth::True)).is_empty());
         // And a bitmap with no rows produces none however much room there is.
-        assert!(to_lines(&shaped(80, 0, true), 40).is_empty());
+        assert!(to_lines(&shaped(80, 0, true), 40, &Theme::new(theme::Depth::True)).is_empty());
     }
 
     #[test]
