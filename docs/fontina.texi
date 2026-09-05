@@ -185,6 +185,44 @@ Faces that are the same font in several files, matched across containers by a ha
 the name and outline tables.
 @end table
 
+@section Tags your desktop can see
+
+fontina keeps its tags in its index, which is fast, searchable, and survives a font
+moving.  It is also invisible to everything else on the machine.  The desktop has its own
+place for a file's tags, and a tag written there is one your file manager shows, your
+search indexer finds, and a backup carries --- and it stays yours if you stop using
+@command{fontina}, which is rather the point.
+
+@table @code
+@item fontina tag sync --to-files [TARGET@dots{}]
+Write the index's tags onto the files.
+@item fontina tag sync --from-files [TARGET@dots{}]
+Read the files' tags into the index.
+@end table
+
+@noindent
+The direction is required and the side you name wins: the other is made to match it,
+tags removed as well as added.  Two tag sets with no common ancestor cannot tell a
+deletion from an addition, so a two-way merge would lose tags silently and never say so.
+@option{--dry-run} prints what would change and changes nothing; use it first.
+
+Tags go where the desktop already looks: the
+@code{com.apple.metadata:_kMDItemUserTags} extended attribute on macOS, which is what
+Finder reads and writes, and @code{user.xdg.tags} on GNU/Linux, which is what Dolphin and
+the freedesktop search indexers read.  A tag you gave a colour to in Finder keeps its
+colour.  Windows has no per-file tag store for an arbitrary file --- its keywords are per
+format, and a font file has none --- so @code{tag sync} says so and does nothing;
+@code{fontina tag} itself still works, with the tags in the index.
+
+A tag lives on a file and fontina's tags live on faces, so a font collection holding
+several faces gets the union of their tags, and a tag read off a file lands on every face
+in it.  A tag containing a comma or a newline cannot be stored in either place --- one
+separates tags, the other introduces the colour --- so it stays in the index and
+@code{tag sync} names it rather than mangling it on the way out.
+
+@strong{Fonts in an operating-system font directory are never written to}, whatever you
+ask for.  They are reported and left alone.
+
 @section Getting fonts back out
 
 @table @code

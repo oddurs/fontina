@@ -961,6 +961,96 @@
       ],
       "type": "object"
     },
+    "TagSyncChange": {
+      "properties": {
+        "added": {
+          "description": "Tags the destination gained.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "path": {
+          "type": "string"
+        },
+        "removed": {
+          "description": "Tags the destination lost. Sync mirrors rather than merges: two tag sets with no\ncommon ancestor cannot tell a deletion from an addition, so the direction says\nwhich side is right and the other is made to match it.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "path",
+        "added",
+        "removed"
+      ],
+      "type": "object"
+    },
+    "TagSyncReport": {
+      "description": "What `fontina tag sync` did, or would do.\n\nThe counts are per *file*, not per face: a tag lives on a file, and a TrueType\ncollection holds several faces in one.",
+      "properties": {
+        "changed": {
+          "description": "Files whose tags differed. With `dry_run`, files that would have been changed.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "changes": {
+          "description": "One entry per file that differed.",
+          "items": {
+            "$ref": "#/$defs/TagSyncChange"
+          },
+          "type": "array"
+        },
+        "direction": {
+          "description": "`to-files` or `from-files`.",
+          "type": "string"
+        },
+        "dry_run": {
+          "description": "Nothing was written.",
+          "type": "boolean"
+        },
+        "files": {
+          "description": "Files considered.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "skipped": {
+          "description": "Whatever could not be carried across, and why. Never fatal: one font in a system\ndirectory, or on a filesystem without extended attributes, should not stop the\nother three hundred.",
+          "items": {
+            "$ref": "#/$defs/TagSyncSkip"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "direction",
+        "files",
+        "changed",
+        "dry_run",
+        "changes",
+        "skipped"
+      ],
+      "type": "object"
+    },
+    "TagSyncSkip": {
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "reason"
+      ],
+      "type": "object"
+    },
     "WatchEvent": {
       "description": "One batch of changes applied to the index.",
       "properties": {

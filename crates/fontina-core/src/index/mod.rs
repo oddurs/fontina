@@ -32,6 +32,7 @@ pub use facets::{
 pub use library::{
     ActivationRecord, ActivationState, BUNDLE_FILE, BUNDLE_FONTS, BundleReport, CollectionExport,
     CollectionFace, CollectionInfo, Conflict, ImportReport, Source, SourceKind, TagInfo,
+    TagSyncChange, TagSyncReport, TagSyncSkip,
 };
 
 use crate::FileInfo;

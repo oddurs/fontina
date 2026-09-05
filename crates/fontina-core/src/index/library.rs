@@ -337,6 +337,45 @@ pub struct ImportReport {
     pub tags_applied: usize,
 }
 
+/// What `fontina tag sync` did, or would do.
+///
+/// The counts are per *file*, not per face: a tag lives on a file, and a TrueType
+/// collection holds several faces in one.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct TagSyncReport {
+    /// `to-files` or `from-files`.
+    pub direction: String,
+    /// Files considered.
+    pub files: usize,
+    /// Files whose tags differed. With `dry_run`, files that would have been changed.
+    pub changed: usize,
+    /// Nothing was written.
+    pub dry_run: bool,
+    /// One entry per file that differed.
+    pub changes: Vec<TagSyncChange>,
+    /// Whatever could not be carried across, and why. Never fatal: one font in a system
+    /// directory, or on a filesystem without extended attributes, should not stop the
+    /// other three hundred.
+    pub skipped: Vec<TagSyncSkip>,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct TagSyncChange {
+    pub path: String,
+    /// Tags the destination gained.
+    pub added: Vec<String>,
+    /// Tags the destination lost. Sync mirrors rather than merges: two tag sets with no
+    /// common ancestor cannot tell a deletion from an addition, so the direction says
+    /// which side is right and the other is made to match it.
+    pub removed: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct TagSyncSkip {
+    pub path: String,
+    pub reason: String,
+}
+
 /// A face that would clash with the one being activated.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct Conflict {
