@@ -28,6 +28,7 @@ mod sheet;
 
 use anyhow::Result;
 use fontina_core::index::FacetCount;
+use fontina_core::model::EmbeddingLevel;
 use fontina_core::render::RenderOptions;
 use fontina_core::{ActivationState, FaceFilter, FaceMetadata, FaceSummary, Facets, Family, Index};
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
@@ -49,6 +50,7 @@ enum Facet {
     Color,
     Script,
     License,
+    Freedom,
     Vendor,
     Tag,
     Collection,
@@ -67,6 +69,7 @@ impl Facet {
             Facet::Color => "Color",
             Facet::Script => "Script",
             Facet::License => "License",
+            Facet::Freedom => "Freedom",
             Facet::Vendor => "Vendor",
             Facet::Tag => "Tag",
             Facet::Collection => "Collection",
@@ -84,6 +87,7 @@ impl Facet {
             Facet::Color => "--color",
             Facet::Script => "--script",
             Facet::License => "--license",
+            Facet::Freedom => "--freedom",
             Facet::Vendor => "--vendor",
             Facet::Tag => "--tag",
             Facet::Collection => "--collection",
@@ -233,6 +237,7 @@ impl App {
                 Facet::Color => f.color = Some(true),
                 Facet::Script => f.script = Some(v.clone()),
                 Facet::License => f.license = Some(v.clone()),
+                Facet::Freedom => f.freedom = v.parse().ok(),
                 Facet::Vendor => f.vendor = Some(v.clone()),
                 Facet::Tag => f.tag = Some(v.clone()),
                 Facet::Collection => f.collection = Some(v.clone()),
@@ -1304,12 +1309,6 @@ impl App {
             Span::raw(" "),
             Span::raw(face.names.subfamily.clone()),
         ]));
-        let kv = |k: &str, v: String| {
-            Line::from(vec![
-                Span::styled(format!("{k:<10}"), Style::default().fg(Color::DarkGray)),
-                Span::raw(v),
-            ])
-        };
         lines.push(kv(
             "style",
             format!(
@@ -1361,17 +1360,7 @@ impl App {
                 ),
             ));
         }
-        lines.push(kv(
-            "license",
-            format!(
-                "{}{}",
-                face.license.spdx.as_deref().unwrap_or("none embedded"),
-                face.os2
-                    .as_ref()
-                    .map(|o| format!(" · {:?}", o.embedding.level))
-                    .unwrap_or_default()
-            ),
-        ));
+        lines.extend(license_lines(face));
         if let Some(d) = face
             .names
             .designer
@@ -1405,7 +1394,14 @@ impl App {
             ),
         ));
         lines.push(Line::from(""));
-        let text_rows = lines.len() as u16;
+        // Rows the block will actually occupy once wrapped, not how many lines were
+        // pushed. The paragraph wraps, so a long value — a file path, a licence reason —
+        // takes several rows, and counting them as one pushed the bottom of the pane off
+        // the screen.
+        let text_rows: u16 = lines
+            .iter()
+            .map(|l| (l.width() as u16).div_ceil(inner.width.max(1)).max(1))
+            .sum();
         // Controls take the rows they need, capped so the preview never disappears.
         // The pane asks for a title plus a row per control, but never takes so much that
         // the preview vanishes, and never less than a title plus one row: a pane Tab can
@@ -1648,6 +1644,8 @@ fn build_rows(facets: &Facets, selected: &BTreeMap<Facet, String>) -> Vec<FacetR
     }
     section(Facet::Script, &facets.script, 8);
     section(Facet::License, &facets.license, 6);
+    // Four states at most, so nothing is ever hidden behind a cap.
+    section(Facet::Freedom, &facets.freedom, 4);
     section(Facet::Tag, &facets.tag, 10);
     section(Facet::Collection, &facets.collection, 10);
     section(Facet::Activation, &facets.activation, 4);
@@ -1680,6 +1678,70 @@ fn facet_value_label(facet: Facet, value: &str) -> String {
             .unwrap_or_else(|| value.to_string()),
         _ => value.to_string(),
     }
+}
+
+/// A labelled line in the details pane.
+fn kv(k: &str, v: String) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(format!("{k:<10}"), Style::default().fg(Color::DarkGray)),
+        Span::raw(v),
+    ])
+}
+
+/// What the details pane says about a face's licence.
+///
+/// The verdict and its reason, not an SPDX string on its own: whether a font may be
+/// studied, changed and passed on is the fact that decides whether it can be used at
+/// all, and an identifier only answers that for a reader who already knows the list.
+fn license_lines(face: &FaceMetadata) -> Vec<Line<'static>> {
+    let verdict = fontina_core::freedom::assess(face.license.spdx.as_deref());
+    let mut lines = vec![
+        kv(
+            "license",
+            face.license
+                .spdx
+                .clone()
+                .unwrap_or_else(|| "none embedded".into()),
+        ),
+        Line::from(vec![
+            Span::styled(
+                format!("{:<10}", "freedom"),
+                Style::default().fg(Color::DarkGray),
+            ),
+            Span::styled(
+                verdict.freedom.to_string(),
+                Style::default()
+                    .fg(match verdict.freedom {
+                        fontina_core::Freedom::Free => Color::Green,
+                        fontina_core::Freedom::Nonfree => Color::Red,
+                        _ => Color::Yellow,
+                    })
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]),
+    ];
+    if verdict.freedom != fontina_core::Freedom::Free {
+        // "free" needs no explaining, and the pane shares its height with the controls
+        // and the preview. Every other verdict is a reason to go and read something.
+        lines.push(Line::from(Span::styled(
+            format!("{:<10}{}", "", verdict.reason),
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+    if !face.license.reserved_font_names.is_empty() {
+        lines.push(kv("reserved", face.license.reserved_font_names.join(", ")));
+    }
+    if let Some(os2) = &face.os2
+        && !matches!(os2.embedding.level, EmbeddingLevel::Installable)
+    {
+        // Reported, never acted on: these bits are the file's assertion about itself,
+        // not a term of the licence. `freedom.rs` says why at length.
+        lines.push(kv(
+            "embedding",
+            format!("{:?} (reported, not enforced)", os2.embedding.level),
+        ));
+    }
+    lines
 }
 
 /// The one key that quits from anywhere, including out of a full-screen mode.
@@ -1944,6 +2006,139 @@ mod tests {
         assert!(
             map.scroll_row() * 40 < covered,
             "a widened pane still starts inside the block"
+        );
+    }
+
+    /// Flatten a pane's lines to plain text, the way a reader sees them.
+    fn text_of(lines: &[Line<'_>]) -> String {
+        lines
+            .iter()
+            .map(|l| {
+                l.spans
+                    .iter()
+                    .map(|s| s.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn the_pane_gives_the_verdict_and_the_reason_for_it() {
+        let mut app = app();
+        select_family(&mut app, "Amiri");
+        let mut face = app.detail.clone().unwrap();
+        let shown = text_of(&license_lines(&face));
+        assert!(shown.contains("OFL-1.1"), "{shown}");
+        // Not `contains("free")`: the label "freedom" contains it, so that would hold
+        // even if the verdict were missing or said the opposite.
+        assert!(
+            shown.lines().any(|l| l.trim_end() == "freedom   free"),
+            "the verdict is on its own line: {shown}"
+        );
+        assert!(
+            !shown.contains("grants the freedom"),
+            "\"free\" explains itself; the pane is shared with the preview: {shown}"
+        );
+
+        // A nonfree licence says so, and says why.
+        face.license.spdx = Some("LicenseRef-Proprietary".into());
+        let shown = text_of(&license_lines(&face));
+        assert!(shown.contains("nonfree"), "{shown}");
+        assert!(shown.contains("withholds"), "{shown}");
+
+        // A font with nothing embedded is not silently called free.
+        face.license.spdx = None;
+        let shown = text_of(&license_lines(&face));
+        assert!(shown.contains("none embedded"), "{shown}");
+        assert!(shown.contains("unstated"), "{shown}");
+        assert!(shown.contains("no permission"), "{shown}");
+    }
+
+    /// The pane sizes itself from wrapped rows, so a long value cannot push what comes
+    /// after it off the bottom. Measured with the same arithmetic the layout uses.
+    #[test]
+    fn a_long_value_does_not_cost_the_lines_below_it() {
+        let long = kv("file", "/a/very/long/path/".repeat(6));
+        let short = kv("style", "Regular".into());
+        let rows = |line: &Line<'_>, cols: u16| (line.width() as u16).div_ceil(cols).max(1);
+
+        assert!(rows(&long, 30) > 1, "a long value wraps");
+        assert_eq!(rows(&short, 30), 1);
+        let counted: u16 = [&long, &short].iter().map(|l| rows(l, 30)).sum();
+        assert!(
+            counted > 2,
+            "sizing by line count would have lost {} row(s)",
+            counted - 2
+        );
+        assert_eq!(
+            rows(&Line::from(""), 30),
+            1,
+            "an empty line still takes a row"
+        );
+    }
+
+    #[test]
+    fn restricted_embedding_is_shown_as_reported_not_enforced() {
+        let mut app = app();
+        select_family(&mut app, "Amiri");
+        let mut face = app.detail.clone().unwrap();
+        // Installable is the ordinary case and says nothing.
+        assert!(!text_of(&license_lines(&face)).contains("embedding"));
+
+        let os2 = face.os2.as_mut().unwrap();
+        os2.fs_type = 0x0002;
+        os2.embedding = fontina_core::model::EmbeddingRights::from_fs_type(0x0002);
+        let shown = text_of(&license_lines(&face));
+        assert!(shown.contains("RestrictedLicense"), "{shown}");
+        assert!(
+            shown.contains("not enforced"),
+            "the pane must not imply fontina obeys these bits: {shown}"
+        );
+    }
+
+    #[test]
+    fn the_freedom_facet_filters_the_listing() {
+        let mut app = app();
+        // Every fixture is OFL, so the whole library is free and the facet says so.
+        let free = app
+            .facets
+            .freedom
+            .iter()
+            .find(|c| c.value == "free")
+            .expect("a freedom facet");
+        assert_eq!(
+            free.count, app.facets.faces,
+            "every fixture is OFL, so the whole library is free"
+        );
+        assert_eq!(
+            app.facets.freedom.len(),
+            1,
+            "and nothing else is represented"
+        );
+
+        app.selected.insert(Facet::Freedom, "free".into());
+        app.reload().unwrap();
+        let with = app.list_len();
+        assert!(with > 0, "the free fonts are still listed");
+        assert_eq!(app.filter().freedom, Some(fontina_core::Freedom::Free));
+
+        // And a state nothing is in empties the listing rather than being ignored.
+        app.selected.insert(Facet::Freedom, "nonfree".into());
+        app.reload().unwrap();
+        assert_eq!(app.list_len(), 0, "no fixture is nonfree");
+        assert_eq!(app.filter().freedom, Some(fontina_core::Freedom::Nonfree));
+    }
+
+    #[test]
+    fn the_freedom_facet_reaches_the_command_line() {
+        let mut app = app();
+        app.selected.insert(Facet::Freedom, "free".into());
+        app.reload().unwrap();
+        assert!(
+            app.command_line().contains("--freedom free"),
+            "{}",
+            app.command_line()
         );
     }
 
