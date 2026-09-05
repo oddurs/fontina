@@ -61,7 +61,7 @@ esac
 
 say "fontina acceptance"
 say "  binary:     $fontina"
-say "  version:    $("$fontina" --version 2>&1 || echo '(failed to run)')"
+say "  version:    $("$fontina" -V 2>&1 || echo '(failed to run)')"
 say "  fixtures:   $fixtures"
 say "  system:     $os"
 say "  fontconfig: $have_fc"
