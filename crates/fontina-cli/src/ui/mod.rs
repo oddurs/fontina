@@ -279,6 +279,15 @@ impl App {
         for (facet, v) in &self.selected {
             match facet {
                 Facet::Variable | Facet::Color => s.push_str(&format!(" {}", facet.flag())),
+                // Two flags, neither taking a value. Without an arm here the generic one
+                // below emits `--mono proportional`, which clap reads as `--mono` plus a
+                // full-text search for "proportional": the opposite of what is on screen,
+                // and it returns nothing rather than erring.
+                Facet::Spacing => s.push_str(if v == "monospace" {
+                    " --mono"
+                } else {
+                    " --proportional"
+                }),
                 Facet::Style => s.push_str(&format!(" --italic={}", v == "italic")),
                 Facet::Weight => {
                     let b: u16 = v.parse().unwrap_or(400);
@@ -1969,6 +1978,86 @@ mod tests {
         app.list.select(None);
         app.open_specimen().unwrap();
         assert_eq!(app.status, "no face on show");
+    }
+
+    use crate::{Cli, Command};
+    use clap::Parser as _;
+
+    /// The status line is a promise: it names the command that would give you what is
+    /// on screen. A facet whose flag takes no value must not be emitted with one.
+    ///
+    /// `Facet::Spacing` was, and clap did not complain — `list` has a positional query,
+    /// so `--mono proportional` parsed as `--mono` plus a full-text search for
+    /// "proportional". The copyable command meant the opposite of the screen and
+    /// returned nothing.
+    #[test]
+    fn every_facet_emits_a_command_that_means_what_the_screen_says() {
+        let mut app = app();
+        // Every facet the browser can select, with a value it could really hold.
+        for (facet, value) in [
+            (Facet::Weight, "400"),
+            (Facet::Width, "100"),
+            (Facet::Style, "upright"),
+            (Facet::Variable, "variable"),
+            (Facet::Color, "color"),
+            (Facet::Spacing, "monospace"),
+            (Facet::Spacing, "proportional"),
+            (Facet::Script, "Latn"),
+            (Facet::Language, "en"),
+            (Facet::License, "OFL-1.1"),
+            (Facet::Freedom, "free"),
+            (Facet::Vendor, "RSMS"),
+            (Facet::Tag, "favourite"),
+            (Facet::Collection, "Editorial"),
+            (Facet::Activation, "none"),
+            (Facet::Container, "ttf"),
+        ] {
+            app.selected.clear();
+            app.selected.insert(facet, value.to_string());
+            let line = app.command_line();
+            let args: Vec<&str> = line.split_whitespace().skip(1).collect();
+            // Parsing is the assertion: clap rejects an unknown flag or a value where
+            // none belongs. A stray positional would not be rejected, so check for one.
+            let parsed =
+                Cli::try_parse_from(std::iter::once("fontina").chain(args.iter().copied()));
+            let parsed =
+                parsed.unwrap_or_else(|e| panic!("{facet:?}={value:?} emitted {line:?}: {e}"));
+            // Both subcommands the browser names take a positional query, and a flag
+            // emitted with a value it does not take lands there instead of erroring.
+            // Matching only one of them is how this assertion goes quietly dead — the
+            // browser opens on the family list, so `Command::List` alone never matched.
+            let query = match &parsed.command {
+                Command::List(args) | Command::Families(args) => args.query.clone(),
+                _ => panic!("{line:?} names a subcommand this test cannot check for a query"),
+            };
+            assert!(
+                query.is_none(),
+                "{facet:?}={value:?} emitted {line:?}, which clap read as a search for {query:?}"
+            );
+        }
+    }
+
+    /// The two spacing buckets emit the two flags, not one flag and a word.
+    #[test]
+    fn the_spacing_facet_picks_the_flag_that_matches_the_bucket() {
+        let mut app = app();
+        app.selected.insert(Facet::Spacing, "monospace".into());
+        assert!(
+            app.command_line().contains("--mono"),
+            "{}",
+            app.command_line()
+        );
+        assert!(
+            !app.command_line().contains("--proportional"),
+            "{}",
+            app.command_line()
+        );
+        app.selected.insert(Facet::Spacing, "proportional".into());
+        assert!(
+            app.command_line().contains("--proportional"),
+            "{}",
+            app.command_line()
+        );
     }
 
     #[test]
