@@ -1587,7 +1587,13 @@ fn resolve_faces(cli: &Cli, target: &str) -> Result<Vec<fontina_core::FaceMetada
                 None => bail!("no face with id {id}"),
             };
         }
-        bail!("{target}: no such file, and not a face id");
+        bail!(
+            "{}: no such file, and not a face id",
+            // A target this long is a shell that did not split the arguments, and the
+            // message is read in a terminal: printing six kilobytes of ids on one line
+            // buries the sentence that says what went wrong.
+            fontina_core::unicode::fit(target, 120)
+        );
     }
     let canonical = std::fs::canonicalize(&path)?;
     if let Ok(index) = open_index(cli) {
@@ -2008,7 +2014,13 @@ fn resolve_ids(index: &Index, target: &str) -> Result<Vec<i64>> {
         }
         return Ok(vec![id]);
     }
-    bail!("{target}: no such file, and not a face id")
+    bail!(
+        "{}: no such file, and not a face id",
+        // A target this long is a shell that did not split the arguments, and the
+        // message is read in a terminal: printing six kilobytes of ids on one line
+        // buries the sentence that says what went wrong.
+        fontina_core::unicode::fit(target, 120)
+    )
 }
 
 fn resolve_all_ids(index: &Index, targets: &[String]) -> Result<Vec<i64>> {
