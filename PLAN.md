@@ -274,14 +274,28 @@ Re-scoped on 2026-09-03 from a desktop app to CLI + TUI (ADR 0006).
    (ADR 0007). Still to do before 1.0: Homebrew formula, winget and Scoop manifests,
    AUR `PKGBUILD`.
 
-### M2 — Typography
-- In the TUI: axis sliders with named-instance snapping, feature toggles, glyph map by
-  block with codepoint search, compare and waterfall views, and a license viewer that
-  gives the freedom verdict and its reason, not only the SPDX identifier.
-- Laid out as pull requests in §10.
-- `check` grows toward fontbakery parity where it is cheap; stable ids never change.
-- Optional login agent packaging (systemd user unit, LaunchAgent, Run key), off by default.
-- Optional Google Fonts offline index, separately packaged, opt-in.
+### M2 — Typography — delivered 2026-09-05
+Laid out as pull requests in §10 and shipped in that order.
+1. **Share the judgements** (#41). The opinions a specimen makes — feature labels, the
+   waterfall ladder, axis steps, sample text — move out of `specimen.rs` into
+   `typography`, so the browser and the HTML specimen cannot drift.
+2. **Set the font** (#44). Axis sliders with named-instance snapping and feature toggles
+   in the details pane, feeding `render::RenderOptions`.
+3. **See the coverage** (#48). A glyph map by Unicode block with a codepoint search, and
+   `unicode::cell_for`, which stopped `glyphs` printing U+202E raw into the terminal.
+4. **Compare** (#49). Waterfall and comparison as one scrolling sheet, laid out once per
+   width rather than per frame.
+5. **Say whether it is free** (#55). The freedom verdict and its reason in the details
+   pane, and a `freedom` facet, so `--free` is reachable from the browser.
+6. **Check more** (#60). `name/empty`, `name/whitespace`, `metrics/line-gap`,
+   `metrics/x-height`, `cmap/private-use`, and a test that keeps the published list of
+   check ids honest.
+7. **Come back after a reboot** (#64). An optional per-user login agent that runs
+   `restore`: a systemd user unit, a LaunchAgent, a Startup script.
+
+Reviewed as a whole afterwards (#76), which found what seven separate reviews could not.
+The optional Google Fonts offline index is **not** delivered and is still held out; see
+§10.
 
 ### M3 — Ecosystem and shells
 - Team sharing via plain folders (Dropbox/Syncthing/git): collection JSON with relative
@@ -291,6 +305,7 @@ Re-scoped on 2026-09-03 from a desktop app to CLI + TUI (ADR 0006).
 - A graphical shell (Tauri 2, ADR 0003) as one more client of the core, only if the TUI
   leaves a real gap. It must meet the same budgets and design rules: system webview,
   platform-adjacent design per OS (GNOME HIG on GNU/Linux, macOS HIG, Fluent), GNU/Linux first.
+- Laid out as pull requests in §11.
 
 Explicit non-goals: font editing, format conversion/subsetting (point to `fonttools`),
 cloud sync, accounts, telemetry, an Electron shell.
@@ -413,7 +428,80 @@ wiring core APIs the specimen already exercises into ratatui panes.
 7. `chore(platform)`: optional login agent packaging, a systemd user unit, a LaunchAgent
    and a Run key entry, off by default, wrapping the `restore` M1 shipped.
 
+Items 1-7 are delivered (#41, #44, #48, #49, #55, #60, #64), and the finished surface was
+reviewed as a whole in #76.
+
 Held out until it is decided: the optional Google Fonts offline index. It cannot live in
 the core or the CLI, because neither makes network calls, so it wants its own crate, its
 own binary and its own package, with the index shipped as a file rather than fetched.
 Buildable, but a different kind of work from 1–7 and about as large as all of them.
+
+---
+
+## 11. M3, concretely
+
+One pull request per item, in this order. M3 is not one theme the way M2 was: it is three
+separable pieces of ecosystem work, plus two questions that want answering before anyone
+writes code for them.
+
+Where M2 built on plumbing that was already there, M3 mostly builds on the **collection
+export**, which since #14 already carries an identity hash, a BLAKE3 and the tags, and
+already matches on import by identity hash, then PostScript name, then path. That is the
+hard half of sharing, and it is done.
+
+### Sharing a folder
+
+1. `feat(core)`: relative paths in a collection export. `CollectionFace::path` is absolute
+   today, so an export names a directory that means nothing on anyone else's machine —
+   the identity hash saves the import, and the path is dead weight that leaks a home
+   directory. Add a base the paths are relative to, keep absolute exports working, and
+   bump `schemas/collection.json`.
+2. `feat(cli)`: `collection export --bundle <dir>`. Writes `collection.json` beside copies
+   of the fonts, with every path relative to the bundle, so the folder can go in
+   Dropbox, Syncthing or git and be imported anywhere. `collection import <dir>` resolves
+   against the bundle and keeps the existing matching, so a teammate who already has the
+   font keeps their own copy instead of gaining a duplicate.
+3. `test(core)`: a round trip across two indexes — export from one, import into another
+   whose fonts live elsewhere, and assert the collection arrives with its order and its
+   tags, and that a face already present is matched rather than duplicated. This is the
+   test that says "team sharing works"; without it the feature is a claim.
+
+### Tags where the file manager can see them
+
+4. `feat(platform)`: read and write the operating system's own file tags. macOS keeps
+   Finder tags in the `com.apple.metadata:_kMDItemUserTags` extended attribute as a binary
+   plist; GNU/Linux desktops use `user.xdg.tags`, comma-separated. Windows has no
+   equivalent for an arbitrary file — the Property System's keywords are per-format and
+   not available for fonts — so it returns `Unsupported`, and the CLI says so rather than
+   pretending.
+5. `feat(cli)`: `fontina tag sync --to-files | --from-files`. Explicitly directional. A
+   two-way merge of two tag sets with no common ancestor cannot tell a deletion from an
+   addition, so guessing loses tags silently; the reader says which side is right.
+
+### A plugin surface that is a promise, not an accident
+
+6. `feat(cli)`: read targets from standard input where a command takes them, so a program
+   can pipe into fontina as well as out of it (`fontina list --json | jq … | fontina tag
+   add serif -`). Everything else the surface needs already exists — every command has
+   `--json`, every printed type is in `schemas/cli-output.json`, and CI diffs it.
+7. `docs`: an ADR stating what the surface guarantees. Which parts are stable (ids,
+   check ids, JSON field names, exit codes), what may be added (fields, never removed),
+   and what a plugin may assume. Without that written down, "the CLI is the plugin API"
+   is a description of today rather than a promise about tomorrow.
+
+### Two questions, not tasks
+
+**Does the TUI leave a real gap?** §5 gates the Tauri shell (ADR 0003) on this, and the
+honest answer is that nobody knows yet, because M2 only just made the browser worth
+living in. What would settle it: use it for a week on a real library, and write down what
+was reached for and not found. A shell built to answer an unasked question is the
+Electron mistake with a different renderer.
+
+**The Google Fonts offline index** (§10). Still held out, still the same shape: it cannot
+live in the core or the CLI without breaking the no-network rule, so it needs its own
+crate, binary and package, with the index shipped as a file rather than fetched.
+
+### Not M3, but before 1.0
+
+Homebrew, winget, Scoop and AUR manifests (§5, M1 item 6) are still outstanding. They are
+independent of everything above and block a 1.0 rather than M3.
