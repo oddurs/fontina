@@ -1398,10 +1398,7 @@ impl App {
         // pushed. The paragraph wraps, so a long value — a file path, a licence reason —
         // takes several rows, and counting them as one pushed the bottom of the pane off
         // the screen.
-        let text_rows: u16 = lines
-            .iter()
-            .map(|l| (l.width() as u16).div_ceil(inner.width.max(1)).max(1))
-            .sum();
+        let text_rows: u16 = lines.iter().map(|l| wrapped_rows(l, inner.width)).sum();
         // Controls take the rows they need, capped so the preview never disappears.
         // The pane asks for a title plus a row per control, but never takes so much that
         // the preview vanishes, and never less than a title plus one row: a pane Tab can
@@ -1785,6 +1782,35 @@ fn shell_quote(s: &str) -> String {
     }
 }
 
+/// Rows a line takes once the paragraph has wrapped it.
+///
+/// Greedy, at whitespace, breaking a word only when it cannot fit on a line of its own,
+/// which is how ratatui wraps. `width / columns` rounded up is a row short whenever a
+/// break lands at a space: on an eighty column terminal that lost the `.ttf` off the end
+/// of the file name.
+fn wrapped_rows(line: &Line<'_>, cols: u16) -> u16 {
+    let cols = cols.max(1) as usize;
+    let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+    let mut rows = 1usize;
+    let mut used = 0usize;
+    for word in text.split_whitespace() {
+        let w = word.chars().count();
+        let need = if used == 0 { w } else { w + 1 };
+        if used + need <= cols {
+            used += need;
+        } else if w <= cols {
+            rows += 1;
+            used = w;
+        } else {
+            // Longer than a line: it is broken across as many as it takes.
+            let taken = w.div_ceil(cols);
+            rows += taken;
+            used = w - (taken - 1) * cols;
+        }
+    }
+    rows.try_into().unwrap_or(u16::MAX)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2061,7 +2087,7 @@ mod tests {
     fn a_long_value_does_not_cost_the_lines_below_it() {
         let long = kv("file", "/a/very/long/path/".repeat(6));
         let short = kv("style", "Regular".into());
-        let rows = |line: &Line<'_>, cols: u16| (line.width() as u16).div_ceil(cols).max(1);
+        let rows = wrapped_rows;
 
         assert!(rows(&long, 30) > 1, "a long value wraps");
         assert_eq!(rows(&short, 30), 1);
@@ -2460,21 +2486,23 @@ mod tests {
     /// baseline rather than the top, would fix it; when it is fixed this is the test
     /// that should change.
     #[test]
-    fn a_details_pane_squeezed_by_controls_shows_a_blank_preview() {
+    fn a_details_pane_squeezed_by_controls_still_draws_the_preview() {
+        // The rendering is clipped to the ink rather than to its top row. The top of a
+        // rendering is the font's empty ascent — Source Serif at 28 px is 41 pixels tall
+        // with nothing above row 9 — so clipping from row zero showed a pane of blank on
+        // any terminal short enough that its feature controls crowded the preview.
         let mut app = app();
         select_family(&mut app, "Source Serif");
         assert!(
             app.controls.len() > 10,
             "the face was picked because its features crowd the pane"
         );
-        assert!(
-            !frame(&mut app, 120, 36).contains('▀'),
-            "the preview has started drawing on a short pane, which is the fix"
-        );
-        assert!(
-            frame(&mut app, 120, 44).contains('▀'),
-            "the same face on a taller terminal does draw"
-        );
+        for height in [36, 44] {
+            assert!(
+                frame(&mut app, 120, height).contains('▀'),
+                "no preview drawn on a {height}-row terminal"
+            );
+        }
     }
 
     #[test]
@@ -2493,11 +2521,10 @@ mod tests {
             drawn.contains("$ fontina families"),
             "the status line still says what the screen is"
         );
-        // The snapshot below shows a second defect this change reports rather than
-        // fixes: the details pane sizes its text block by dividing the width of each
-        // line by the width of the pane, which is a row short whenever wrapping breaks
-        // a line at a word instead, and the tail of the file name — `.ttf` — is cut off
-        // the bottom of the block.
+        assert!(
+            drawn.contains(".ttf") || drawn.contains(".otf"),
+            "the file name keeps its extension: the text block is sized by wrapped rows"
+        );
         insta::assert_snapshot!(drawn);
     }
 }

@@ -93,16 +93,37 @@ impl Cache {
 /// Coverage to `▀` cells. Ink is drawn with the terminal's default foreground; the
 /// half-block trick needs an explicit pair of colours only where there is ink.
 fn to_lines(bm: &Bitmap, px_rows: u32) -> Vec<Line<'static>> {
-    let (w, h) = (bm.width as usize, (bm.height.min(px_rows)) as usize);
-    let mut out = Vec::with_capacity(h.div_ceil(2));
+    let w = bm.width as usize;
+    let full = bm.height as usize;
+    let want = (px_rows as usize).min(full);
+    // Clip to the ink, not to the top of the rendering. The top rows are the font's
+    // empty ascent: Source Serif at 28 px is 41 pixels tall with nothing above row 9, so
+    // a details pane squeezed by feature controls showed eight rows of blank and looked
+    // like a broken preview. Centre what is inked in the rows there are.
+    let inked = |y: usize| bm.coverage[y * w..(y + 1) * w].iter().any(|&a| a != 0);
+    let first = (0..full).find(|&y| inked(y));
+    let start = match first {
+        Some(first) => {
+            let last = (first..full).rev().find(|&y| inked(y)).unwrap_or(first);
+            let ink_h = last - first + 1;
+            if ink_h <= want {
+                first.saturating_sub((want - ink_h) / 2).min(full - want)
+            } else {
+                first
+            }
+        }
+        None => 0,
+    };
+    let h = start + want;
+    let mut out = Vec::with_capacity(want.div_ceil(2));
     // Ink colour: a neutral light grey blended over black reads on dark and light
     // themes alike once the block glyph carries both halves.
     let ink = |a: u8| {
         let v = 30 + (a as u16 * 200 / 255) as u8;
         Color::Rgb(v, v, v)
     };
-    for row in 0..h.div_ceil(2) {
-        let y0 = row * 2;
+    for row in 0..want.div_ceil(2) {
+        let y0 = start + row * 2;
         let y1 = y0 + 1;
         let mut spans: Vec<Span<'static>> = Vec::with_capacity(w);
         let mut blank = 0usize;
