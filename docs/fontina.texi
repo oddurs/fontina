@@ -114,9 +114,18 @@ Faces whose character map covers every character of @var{TEXT}.
 @end table
 
 @noindent
+@option{--script} takes an ISO 15924 code and may be given more than once, and every one
+given must be covered: @code{--script Cyrl --script Grek} finds a face that has both, not
+either.  @option{--script-min @var{n}} asks for depth --- a font with three Arabic
+codepoints is not an Arabic font --- and the @code{script} facet is ordered by how much of
+each script is there rather than by how many fonts mention it, so the scripts a library is
+actually for come first and @code{Zyyy} and @code{Zinh}, which almost every font carries,
+do not crowd the top.
+
+@noindent
 @code{list}, @code{families}, @code{facets} and @code{covers} share one set of filters:
 @option{--family}, @option{--variable}, @option{--color}, @option{--italic},
-@option{--script}, @option{--license}, @option{--free}, @option{--nonfree},
+@option{--script}, @option{--script-min}, @option{--license}, @option{--free}, @option{--nonfree},
 @option{--freedom}, @option{--weight}, @option{--width}, @option{--vendor},
 @option{--tag}, @option{--collection}, @option{--active}, @option{--activation},
 @option{--container} and @option{--under}.
