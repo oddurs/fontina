@@ -1,0 +1,29 @@
+---
+source: crates/fontina-cli/src/ui/mod.rs
+assertion_line: 3428
+expression: drawn
+---
+┌ 5 families ────────────────┐┌ Details ───────────────────────────────────────┐
+│Amiri                 1     ││Amiri Regular                                   │
+│Bricolage Grotesque   1 V   ││style     weight 400 · width 100% · normal      │
+│Inter                 2     ││glyphs    6710 · 1699 codepoints · Arab Latn    │
+│Nabla                 1 VC  ││Zyyy Zinh                                       │
+│Source Serif 4        1     ││features  25: ccmp dnom fina init liga locl mark│
+│                            ││medi numr pnum rlig rtlm                        │
+│                            ││license   OFL-1.1                               │
+│                            ││freedom   free                                  │
+│                            ││designer  Khaled Hosny                          │
+│                            ││state     not active                            │
+│                            ││file      ../../fixtures/Amiri-Regular.ttf      │
+│                            ││                                                │
+│                            ││features                                        │
+│                            ││  liga [ ] Standard ligatures                   │
+│                            ││  pnum [ ] Proportional figures                 │
+│                            ││  ss01 [ ] Stylistic set 1                      │
+│                            ││                                                │
+│                            ││                                                │
+│                            ││                                                │
+│                            ││                                                │
+└────────────────────────────┘└────────────────────────────────────────────────┘
+ $ fontina families
+ / search  ⇥ pane  ⏎ open  ⌫ back  t tag  c collection  a/A activate  ? help

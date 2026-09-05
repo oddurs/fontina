@@ -88,13 +88,26 @@ in the middle, details and a preview on the right. It uses the terminal's own
 sixteen colours so it looks native in any theme, and truecolor only for the
 preview. The mouse works, but the keyboard is the design.
 
+How many of those panes you get depends on how wide the terminal is, because a
+pane that cannot hold what it carries is not worth the columns it costs:
+
+| Width | Panes |
+|---|---|
+| 112 and up | All three, side by side |
+| 76 to 111 | Families and the face. Tab opens the facets over the list |
+| under 76 | One at a time, whichever has the focus. Tab moves between them |
+
+Nothing becomes unreachable at a narrower width — Tab still visits every pane,
+and the key line at the bottom drops hints to fit, keeping `? help` last so the
+rest are always one keystroke away.
+
 Every action in the browser is one the command line can do, and the status line
 shows the equivalent command. The keys:
 
 | Key | Action |
 |---|---|
 | `/` | search; type, then Enter |
-| Tab | move between the facet column and the list |
+| Tab | move between the panes |
 | Enter, Space, Right, `l` | open a family, or a face's details |
 | Backspace, Left, `h` | back |
 | `j` `k`, arrows, PageUp, PageDown, `g`, `G` | move |
