@@ -185,6 +185,66 @@ a:focus-visible {
   color: var(--ink-faint);
 }
 
+/* -------------------------------------------------------------- Masthead */
+/* The one piece of navigation that is above the content on every page.
+   Without it the whole site index lives in a column that, once the page
+   stacks, sits *below* everything — so on a phone the way to the manual was
+   at the bottom of the manual. Four destinations and the wordmark, a rule
+   under them, no shadow and nothing sticky: a masthead in the sense a
+   newspaper has one, not a chrome bar.
+
+   It wraps rather than collapsing into a menu. Five items do not need a
+   disclosure, and a disclosure needs either script or a hack that fights the
+   user agent stylesheet. Wrapping is the honest answer at this size. */
+.masthead {
+  border-bottom: 1px solid var(--line);
+  margin-bottom: var(--space-6);
+}
+.masthead .inner {
+  max-width: var(--frame);
+  margin: 0 auto;
+  padding: var(--space-4) 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-3) var(--space-5);
+}
+.masthead .wordmark {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semi);
+  letter-spacing: -0.015em;
+  margin-right: auto;
+}
+.masthead .wordmark a:link, .masthead .wordmark a:visited { color: var(--ink); }
+.masthead nav { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); }
+.masthead nav a {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+.masthead nav a:link, .masthead nav a:visited { color: var(--ink-soft); }
+.masthead nav a:hover { color: var(--accent); text-decoration: none; }
+.masthead nav a[aria-current="page"] { color: var(--ink); }
+@media (max-width: 30rem) {
+  /* The wordmark takes its own line and the destinations sit under it, rather
+     than four links squeezing onto one. */
+  .masthead .wordmark { flex: 0 0 100%; margin-right: 0; }
+  .masthead .inner { padding: var(--space-3) 0; gap: var(--space-2) var(--space-4); }
+}
+
+/* ----------------------------------------------------------------- Strip */
+/* The properties a reader wants before they read anything: what this refuses
+   to do. Set as badges under the hero, so the free-software claim is made in
+   the first screen and then argued properly further down. */
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-5);
+  padding: 0;
+  list-style: none;
+}
+.strip li { margin: 0; }
+
 /* ----------------------------------------------------------------- Frame */
 /* Clipped until it is tabbed to, which is the only time it is wanted. Clipped
    rather than pushed off-canvas: a negative offset can extend the scrollable area
@@ -231,13 +291,6 @@ a:focus-visible {
   overflow-y: auto;
   padding-bottom: var(--space-4);
 }
-.navcol .home {
-  margin: 0 0 var(--space-5);
-  font-size: var(--text-md);
-  font-weight: var(--weight-semi);
-  letter-spacing: -0.015em;
-}
-.navcol .home a:link, .navcol .home a:visited { color: var(--ink); }
 
 @media (max-width: 60rem) {
   .frame {
@@ -261,8 +314,7 @@ a:focus-visible {
     grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
     gap: var(--space-5);
   }
-  .navcol .home { grid-column: 1 / -1; margin-bottom: 0; }
-  .navitem { margin-bottom: 0; }
+    .navitem { margin-bottom: 0; }
 }
 
 /* A phone holds less; give the page back the margins it was spending. */
@@ -381,6 +433,8 @@ a:focus-visible {
   white-space: nowrap;
 }
 .badge--accent { border-color: var(--accent-line); background: var(--accent-subtle); color: var(--accent-hover); }
+.badge a:link, .badge a:visited { color: inherit; }
+.badge a:hover { color: inherit; text-decoration: underline; }
 
 /* An aside that must not be missed, without a coloured shout. */
 .note {
@@ -624,6 +678,31 @@ pre.astro-code, pre.astro-code span {
   color: inherit !important;
   background-color: var(--bg-inset) !important;
 }
+
+/* --------------------------------------------------------------- Sitemap */
+/* The complete site index, at the foot, where a complete list belongs. It used
+   to be the right-hand column on every page, which meant a reader met
+   twenty-four links before the first sentence and, once the page stacked,
+   met them after the last one instead.
+
+   The masthead carries the five destinations most people want; the sidebar
+   carries what is contextual, which today is the manual's own chapters; this
+   carries everything. Three tiers instead of one list doing all three jobs. */
+.sitemap {
+  border-top: 1px solid var(--line);
+  margin-top: var(--space-8);
+  padding-top: var(--space-6);
+}
+.sitemap .inner {
+  max-width: var(--frame);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--space-5);
+}
+.sitemap .navitem { margin-bottom: 0; }
+/* The notice follows it, so it should not draw a second rule of its own. */
+.sitemap + .notice { border-top: 0; margin-top: var(--space-6); padding-top: 0; }
 
 /* ---------------------------------------------------------------- Notice */
 /* The GNU copyright box, unboxed: a rule, then the small print. */

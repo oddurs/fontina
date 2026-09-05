@@ -112,8 +112,22 @@ with hairlines, and a shadow would be the one soft edge on an otherwise sharp pa
 
 The frame is a flex row of `.main` and `.navcol`, centred. Prose inside `.main` is
 capped at `--measure` so a line stays readable even when a table beside it is wide.
-The nav column is sticky, so it stays in reach down a long manual chapter, and scrolls
-inside itself if it is taller than the window.
+Navigation is three tiers, not one list doing three jobs.
+
+1. **The masthead**, above the content on every page: the wordmark and the five
+   destinations most people want. It is the fix for a real defect — with the index living
+   only in a right-hand column, a reader met twenty-four links before the first sentence
+   and, once the page stacked on a phone, met them *after* the last one, so the way to the
+   manual sat at the bottom of the manual.
+2. **The nav column**, only where there is something contextual to put in it. Today that
+   is the manual's own chapter list; every other page is the full frame. It is sticky, so
+   it stays in reach down a long chapter, and scrolls inside itself if it is taller than
+   the window.
+3. **The sitemap**, at the foot: every group, every link, in as many columns as fit.
+
+The masthead wraps rather than collapsing into a menu. Five items do not need a
+disclosure, and a disclosure without script means fighting the user agent stylesheet;
+under `30rem` the wordmark takes its own line and the destinations sit beneath it.
 
 Three things happen as the page narrows. Under `60rem` the columns stack, the nav takes
 a top hairline and stops being sticky, and — because six groups in a single list is
@@ -266,6 +280,45 @@ to `--help`.
 
 The manual index, which was an `<ol>` of ten links. The number keeps the reading order the
 manual is written in; the description is what lets someone skip to the chapter they need.
+
+### Masthead
+
+```html
+<header class="masthead">
+  <div class="inner">
+    <p class="wordmark"><a href="/">fontina</a></p>
+    <nav aria-label="Main"><a href="…" aria-current="page">Manual</a>…</nav>
+  </div>
+</header>
+```
+
+A masthead in the sense a newspaper has one, not a chrome bar: a rule underneath, no
+shadow, nothing sticky, nothing that follows you down the page. The current destination
+takes `aria-current="page"` and darkens; everything else sits in `--ink-soft` so the bar
+does not compete with the first heading under it.
+
+### Property strip
+
+```html
+<ul class="strip">
+  <li><span class="badge">No network</span></li>
+  <li><span class="badge badge--accent"><a href="/license/">GPL-3.0-or-later</a></span></li>
+</ul>
+```
+
+What the program refuses to do, in the first screen, as badges. The claim gets made where
+a reader is deciding whether to care and argued properly further down in **Properties**;
+a licence named in a badge and never explained is a sticker.
+
+### Sitemap
+
+```html
+<nav class="sitemap" aria-label="Site"><div class="inner">…nav items…</div></nav>
+```
+
+The complete index, at the foot, in as many columns as fit. This is where the twenty-four
+links went when the masthead took the five that matter and the nav column became
+contextual.
 
 ### Frame
 

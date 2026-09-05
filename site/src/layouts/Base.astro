@@ -81,12 +81,29 @@ const groups: [string, [string, string, boolean?][]][] = [
 <body>
 <a class="skip" href="#content">Skip to content</a>
 
+<header class="masthead">
+  <div class="inner">
+    <p class="wordmark">{isHome ? <span>fontina</span> : <a href={u('/')}>fontina</a>}</p>
+    <nav aria-label="Main">
+      {([
+        ['Manual', u('/docs/')],
+        ['Download', u('/download/')],
+        ['News', u('/news/')],
+        ['Free software', u('/license/')],
+        ['Source', repo],
+      ] as [string, string][]).map(([label, href]) => (
+        <a href={href} aria-current={href === Astro.url.pathname ? 'page' : undefined}>{label}</a>
+      ))}
+    </nav>
+  </div>
+</header>
+
 <div class="frame">
   <main class="main" id="content">
     <slot />
   </main>
-  <nav class="navcol" aria-label="Site">
-    <p class="home">{isHome ? <span>fontina</span> : <a href={u('/')}>fontina</a>}</p>
+  {extraNav && (
+  <nav class="navcol" aria-label="On this manual">
     {extraNav && (
       <div class="navitem">
         <div class="navhead">{extraNav.head}</div>
@@ -97,6 +114,11 @@ const groups: [string, [string, string, boolean?][]][] = [
         </div>
       </div>
     )}
+  </nav>
+  )}
+</div>
+<nav class="sitemap" aria-label="Site">
+  <div class="inner">
     {groups.map(([head, links]) => (
       <div class="navitem">
         <div class="navhead">{head}</div>
@@ -111,8 +133,8 @@ const groups: [string, [string, string, boolean?][]][] = [
         </div>
       </div>
     ))}
-  </nav>
-</div>
+  </div>
+</nav>
 <div class="notice">
   <address set:html={`For questions about using fontina, please consult these pages and the <a href="${u('/docs/')}">manual</a>. If that fails, the <a href="${repo}/issues">bug tracker</a> is the place to ask. Comments on these pages are welcome as pull requests; every page links its source.`} />
   <p>
