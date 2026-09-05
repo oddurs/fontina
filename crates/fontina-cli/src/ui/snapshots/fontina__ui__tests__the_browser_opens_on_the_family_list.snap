@@ -23,11 +23,11 @@ expression: drawn
 │  color               1 ││                                              ││  ss03 [ ] Stylistic set 3                  │
 │Script                  ││                                              ││  ss04 [ ] Stylistic set 4                  │
 │  Latn                6 ││                                              ││  ss05 [ ] Stylistic set 5                  │
-│  Zinh                6 ││                                              ││  ss06 [ ] Stylistic set 6                  │
+│  Arab                1 ││                                              ││  ss06 [ ] Stylistic set 6                  │
 │  Zyyy                6 ││                                              ││  ss07 [ ] Stylistic set 7                  │
-│  Grek                2 ││                                              ││  ss08 [ ] Stylistic set 8                  │
-│  Arab                1 ││                                              ││                                            │
-│  Cyrl                1 ││                                              ││                                            │
+│  Cyrl                1 ││                                              ││  ss08 [ ] Stylistic set 8                  │
+│  Zinh                6 ││                                              ││                                            │
+│  Grek                2 ││                                              ││                                            │
 │License                 ││                                              ││                                            │
 │  OFL-1.1             6 ││                                              ││                                            │
 │Freedom                 ││                                              ││                                            │

@@ -192,14 +192,12 @@ impl Index {
             mut width,
             mut style,
             mut container,
-            mut script,
             mut license,
             mut freedom,
             mut vendor,
             mut activation,
             mut source,
         ) = (
-            BTreeMap::new(),
             BTreeMap::new(),
             BTreeMap::new(),
             BTreeMap::new(),
@@ -268,9 +266,7 @@ impl Index {
                 out.color += 1;
             }
             *container.entry(cont).or_default() += 1;
-            for s in scripts.split(',').filter(|s| !s.is_empty()) {
-                *script.entry(s.to_string()).or_default() += 1;
-            }
+            let _ = scripts;
             *freedom
                 .entry(crate::freedom::classify(lic.as_deref()).to_string())
                 .or_default() += 1;
@@ -304,7 +300,6 @@ impl Index {
         out.width = width;
         out.style = counts(style);
         out.container = counts_by_count(container);
-        out.script = counts_by_count(script);
         out.license = counts_by_count(license);
         out.freedom = counts_by_count(freedom);
         out.vendor = counts_by_count(vendor);
@@ -315,6 +310,24 @@ impl Index {
             "SELECT f.id FROM faces f JOIN files fi ON fi.id = f.file_id LEFT JOIN activations a ON a.face_id = f.id{}",
             w.sql()
         );
+        // Ordered by how much of each script is there, not by how many faces mention it.
+        // Zyyy and Zinh — common punctuation and inherited marks — are in almost every
+        // font and are never what it is for; a handful of Latin codepoints in a Japanese
+        // face is not a Latin font. Depth says which is which, and `face_scripts` has
+        // counted it since M4 §12 item 3. The count stays "faces", which is what the
+        // facet means and what clicking it returns.
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT fs.script, COUNT(*), SUM(fs.codepoints) FROM face_scripts fs
+             WHERE fs.face_id IN ({inner})
+             GROUP BY fs.script ORDER BY SUM(fs.codepoints) DESC, fs.script"
+        ))?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(w.params()), |r| {
+            Ok(FacetCount {
+                value: r.get(0)?,
+                count: r.get(1)?,
+            })
+        })?;
+        out.script = rows.collect::<rusqlite::Result<Vec<_>>>()?;
         let mut stmt = self.conn.prepare(&format!(
             "SELECT t.name, COUNT(*) FROM face_tags ft JOIN tags t ON t.id = ft.tag_id WHERE ft.face_id IN ({inner}) GROUP BY t.id ORDER BY t.name COLLATE NOCASE"
         ))?;

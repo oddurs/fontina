@@ -547,9 +547,15 @@ struct FilterArgs {
     /// Only italic/oblique faces.
     #[arg(long, num_args = 0..=1, default_missing_value = "true")]
     italic: Option<bool>,
-    /// Faces covering this script (ISO 15924, e.g. Arab, Cyrl, Hani).
+    /// Faces covering this script (ISO 15924, e.g. Arab, Cyrl, Hani). Repeatable, and
+    /// every one of them must be covered: `--script Cyrl --script Grek` is a face that
+    /// has both, not either.
     #[arg(long)]
-    script: Option<String>,
+    script: Vec<String>,
+    /// How many codepoints of each `--script` the face must have. A font with three
+    /// Arabic codepoints is not an Arabic font.
+    #[arg(long, value_name = "N", requires = "script")]
+    script_min: Option<u32>,
     /// SPDX license prefix, e.g. OFL, Apache, LicenseRef-Proprietary.
     #[arg(long)]
     license: Option<String>,
@@ -606,8 +612,8 @@ impl FilterArgs {
             variable: self.variable,
             color: self.color,
             italic: self.italic,
-            scripts: self.script.clone().into_iter().collect(),
-            script_min: None,
+            scripts: self.script.clone(),
+            script_min: self.script_min,
             license: self.license.clone(),
             freedom: self.freedom(),
             weight: self.weight,

@@ -23,11 +23,11 @@ expression: "stable_frame(&mut app, 120, 36)"
 │  color               1 ││                                              ││                                            │
 │Script                  ││                                              ││                                            │
 │  Latn                6 ││                                              ││                                            │
-│  Zinh                6 ││                                              ││                                            │
-│  Zyyy                6 ││                                              ││                                            │
-│  Grek                2 ││                                              ││                                            │
 │  Arab                1 ││                                              ││                                            │
+│  Zyyy                6 ││                                              ││                                            │
 │  Cyrl                1 ││                                              ││                                            │
+│  Zinh                6 ││                                              ││                                            │
+│  Grek                2 ││                                              ││                                            │
 │License                 ││                                              ││                                            │
 │  OFL-1.1             6 ││                                              ││                                            │
 │Freedom                 ││                                              ││                                            │
