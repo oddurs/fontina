@@ -43,6 +43,9 @@ insta.workspace = true
 # `fontina completions` and `fontina man --out-dir` have filled target/pkg/).
 [package.metadata.deb]
 name = "fontina"
+# Debian Policy 5.6.2: mandatory, and dpkg-deb warns on every read without it. The
+# address is the one SECURITY.md already publishes for reports.
+maintainer = "Oddur Sigurdsson <oddurs@gmail.com>"
 section = "utils"
 priority = "optional"
 extended-description = "A lightweight, terminal-first font manager. Indexes fonts into a searchable SQLite database, previews them with real shaping in the terminal, activates and installs them per user, and organises them with tags and collections. No network, no telemetry."
