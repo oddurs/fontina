@@ -549,3 +549,64 @@ fn an_index_that_is_not_a_database_fails_at_once() {
     );
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// A vendor id padded with NUL is stored as text a person can type.
+///
+/// `OS/2.achVendID` is four bytes and shipped fonts pad it with NUL as often as with a
+/// space. `Tag`'s `Display` writes an unprintable byte as an escape, so `FBI\0` was
+/// stored as the eight characters `FBI{0x00}`: it showed that way in `list` and in the
+/// vendor facet, and `--vendor FBI` matched nothing while `--vendor 'FBI{0x00}'` matched
+/// 128 faces of one real library.
+///
+/// The second half is the index somebody already has. A row written before the fix keeps
+/// the escape until it is rescanned, so migration 8 takes the padding off the column and
+/// `backfill_vendor_ids` off the metadata JSON that `info` prints.
+#[test]
+fn a_vendor_id_padded_with_nul_is_readable_and_searchable() {
+    let dir = std::env::temp_dir().join(format!("fontina-vendor-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let db = dir.join("index.db");
+    {
+        let mut idx = Index::open(&db).unwrap();
+        fontina_core::scan::scan(
+            &mut idx,
+            &[fixture("Amiri-Regular.ttf")],
+            &ScanOptions::default(),
+        )
+        .unwrap();
+    }
+
+    // What an index written before the fix looks like: the escape in both places.
+    {
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        conn.execute_batch(
+            "UPDATE faces SET vendor = 'FBI{0x00}';
+             UPDATE faces SET metadata = replace(metadata, '\"vendor_id\":\"ALIF\"', '\"vendor_id\":\"FBI{0x00}\"');
+             PRAGMA user_version = 7;",
+        )
+        .unwrap();
+    }
+
+    let idx = Index::open(&db).unwrap();
+    let listed = idx
+        .list(&FaceFilter {
+            vendor: Some("FBI".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(
+        listed.len(),
+        1,
+        "an old index still answers `--vendor FBI` with nothing"
+    );
+    assert_eq!(listed[0].vendor.as_deref(), Some("FBI"));
+
+    let face = idx.get_face(listed[0].id).unwrap().expect("the face");
+    assert_eq!(
+        face.os2.as_ref().map(|o| o.vendor_id.as_str()),
+        Some("FBI"),
+        "the metadata `info` prints still carries the escape"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}

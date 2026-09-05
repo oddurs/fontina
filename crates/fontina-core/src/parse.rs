@@ -239,6 +239,20 @@ fn capabilities(font: &FontRef) -> Capabilities {
     }
 }
 
+/// `OS/2.achVendID` as text, with the padding taken off.
+///
+/// The field is four bytes and a vendor id is often shorter, so the rest is padding —
+/// spaces by the specification, but NUL in plenty of shipped fonts. `Tag`'s own
+/// `Display` writes a byte it cannot print as an escape, so `FBI\0` arrived as the
+/// eight characters `FBI{0x00}`: it showed that way in `list` and in the vendor facet,
+/// and `--vendor FBI` matched nothing at all while `--vendor 'FBI{0x00}'` matched 128
+/// faces. Font Bureau and FontShop both ship fonts padded this way.
+fn vendor_id(tag: read_fonts::types::Tag) -> String {
+    String::from_utf8_lossy(tag.into_bytes().as_slice())
+        .trim_matches(|c: char| c == '\0' || c.is_whitespace())
+        .to_string()
+}
+
 fn long_date_time_to_rfc3339(secs_since_1904: i64) -> Option<String> {
     if secs_since_1904 <= 0 {
         return None;
@@ -357,7 +371,7 @@ fn parse_one(font: &FontRef, index: u32, file: &FileInfo) -> Result<FaceMetadata
         width_class: o.us_width_class(),
         fs_type: o.fs_type(),
         embedding: EmbeddingRights::from_fs_type(o.fs_type()),
-        vendor_id: o.ach_vend_id().to_string().trim().to_string(),
+        vendor_id: vendor_id(o.ach_vend_id()),
         fs_selection: o.fs_selection().bits(),
         use_typo_metrics: o.fs_selection().bits() & 0x80 != 0,
         unicode_ranges: [
