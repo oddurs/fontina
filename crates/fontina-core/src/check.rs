@@ -314,18 +314,22 @@ fn coverage(c: &mut Ctx) {
         c.error("glyf/empty", "font has no glyphs");
     }
     if cov.codepoints == 0 {
+        // Only the questions about *which* codepoints are mapped become meaningless
+        // here. Whether the face has outlines at all is a separate matter, and a font
+        // that is broken in one way is exactly the one you want the rest of the report
+        // about, so this no longer returns.
         c.error("cmap/empty", "cmap maps no codepoints");
-        return;
-    }
-    let has = |cp: u32| cov.ranges.iter().any(|[lo, hi]| *lo <= cp && cp <= *hi);
-    if !has(0x20) {
-        c.warn("cmap/space", "U+0020 SPACE is not mapped");
-    }
-    if !has(0xA0) && has(0x20) {
-        c.info("cmap/nbsp", "U+00A0 NO-BREAK SPACE is not mapped");
-    }
-    if !(0x41..=0x5A).all(has) && cov.scripts.first().is_some_and(|s| s.script == "Latn") {
-        c.warn("cmap/basic-latin", "Latin font does not map all of A–Z");
+    } else {
+        let has = |cp: u32| cov.ranges.iter().any(|[lo, hi]| *lo <= cp && cp <= *hi);
+        if !has(0x20) {
+            c.warn("cmap/space", "U+0020 SPACE is not mapped");
+        }
+        if !has(0xA0) && has(0x20) {
+            c.info("cmap/nbsp", "U+00A0 NO-BREAK SPACE is not mapped");
+        }
+        if !(0x41..=0x5A).all(has) && cov.scripts.first().is_some_and(|s| s.script == "Latn") {
+            c.warn("cmap/basic-latin", "Latin font does not map all of A–Z");
+        }
     }
     if c.f.capabilities.outlines == OutlineFormat::None && !c.f.capabilities.bitmap_strikes {
         c.error(

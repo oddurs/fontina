@@ -464,10 +464,6 @@ fn cases() -> Vec<Case> {
             "no maxp table, so the face reports zero glyphs",
             || Sfnt::load(AMIRI).drop_table(b"maxp").parse(AMIRI),
         ),
-        // `coverage()` returns as soon as it raises `cmap/empty`, so a face with no cmap
-        // is never checked for outlines or hinting either. That is why the `outlines/none`
-        // and `hinting/none` cases below drop `glyf` and `prep` but leave `cmap` intact.
-        // Reported, not fixed: changing it belongs in a change to check.rs, not its tests.
         case(
             AMIRI,
             "cmap/empty",
@@ -718,6 +714,26 @@ fn every_case_triggers_its_check() {
             report.findings
         );
     }
+}
+
+/// A face with no cmap is still checked for everything a cmap has nothing to do with.
+///
+/// `coverage()` used to return the moment it raised `cmap/empty`, so a font with no
+/// character map was never asked whether it had outlines at all: the single most broken
+/// kind of file got the shortest report.
+#[test]
+fn an_empty_cmap_does_not_hide_the_rest_of_the_report() {
+    let broken = Sfnt::load(AMIRI)
+        .drop_table(b"cmap")
+        .drop_table(b"glyf")
+        .parse(AMIRI);
+    let report = check_face(&broken);
+    let ids: Vec<&str> = report.findings.iter().map(|f| f.id).collect();
+    assert!(ids.contains(&"cmap/empty"), "{ids:?}");
+    assert!(
+        ids.contains(&"outlines/none"),
+        "outlines/none must still fire when the cmap is gone: {ids:?}"
+    );
 }
 
 /// Every check id fontina can emit, sorted. Ids are part of the published interface:
