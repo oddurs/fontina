@@ -406,4 +406,561 @@ mod tests {
         assert_eq!(c.scroll_row(), 0, "and starts from the top");
         assert_eq!(c.lines(), 0);
     }
+
+    // ----- scrolling -----
+    //
+    // A sheet is a column of terminal lines taller than the pane, in a terminal whose
+    // height the reader changes at will. The pane can be one line tall, or shorter than
+    // a single row of the sheet, or taller than the whole of it.
+
+    /// The deltas `ui::mod` sends for j, k, Home and End. PageDown and PageUp send
+    /// `visible - 1`, which depends on the pane and is applied where it is tested.
+    const SCROLL_KEYS: [i32; 4] = [1, -1, i32::MIN / 2, i32::MAX / 2];
+
+    /// Pane heights in terminal lines: none, one, two, a usual pane, a tall one.
+    const VISIBLE: [usize; 6] = [0, 1, 2, 3, 40, 4096];
+
+    /// A waterfall already laid out to `lines` terminal lines. What is on them does not
+    /// matter to the scrolling; how many there are is the whole of it.
+    fn sheet_of(lines: usize) -> Sheet {
+        let mut s = waterfall();
+        s.set_built(80, None, vec![Line::from("x"); lines]);
+        s
+    }
+
+    fn text_of(line: &Line<'_>) -> String {
+        line.spans.iter().map(|s| s.content.as_ref()).collect()
+    }
+
+    /// The window is what the pane draws, so the two invariants are the same one: the
+    /// scroll never passes the last screenful, and the window never runs off the end.
+    #[test]
+    fn no_pane_height_scrolls_the_sheet_past_its_last_screenful() {
+        for lines in [0usize, 1, 2, 19, 20, 21, 200, 1000] {
+            for visible in VISIBLE {
+                let mut s = sheet_of(lines);
+                for key in SCROLL_KEYS {
+                    s.scroll_by(key, visible);
+                    assert!(
+                        s.scroll_row() <= lines.saturating_sub(visible.max(1)),
+                        "{lines} lines in a {visible}-line pane scrolled to {}",
+                        s.scroll_row()
+                    );
+                    assert_eq!(
+                        s.window(visible).len(),
+                        visible.min(lines - s.scroll_row()),
+                        "the window neither invents lines nor hides them"
+                    );
+                }
+                // End leaves the last line of the sheet on the last line of the pane.
+                s.scroll_by(i32::MAX / 2, visible);
+                if visible > 0 && visible <= lines {
+                    assert_eq!(s.scroll_row() + visible, lines);
+                }
+            }
+        }
+    }
+
+    /// Paging down until it stops and then up the same number of times lands back at
+    /// the top: the step is the same in both directions, and the clamp at each end
+    /// swallows the overshoot rather than losing a screenful to it.
+    #[test]
+    fn paging_to_the_end_and_back_lands_where_it_started() {
+        for lines in [0usize, 1, 2, 19, 20, 21, 200, 1000] {
+            for visible in [2usize, 3, 40, 4096] {
+                let mut s = sheet_of(lines);
+                let step = visible as i32 - 1;
+                let mut pages = 0;
+                loop {
+                    let before = s.scroll_row();
+                    s.scroll_by(step, visible);
+                    if s.scroll_row() == before {
+                        break;
+                    }
+                    pages += 1;
+                    assert!(pages < 100_000, "paging never reached the end");
+                }
+                assert_eq!(s.scroll_row(), lines.saturating_sub(visible));
+                for _ in 0..pages {
+                    s.scroll_by(-step, visible);
+                }
+                assert_eq!(
+                    s.scroll_row(),
+                    0,
+                    "{lines} lines paged down {pages} time(s) in a {visible}-line pane \
+                     and back up as many"
+                );
+            }
+        }
+        // Home and End are the same round trip in one keypress each.
+        let mut s = sheet_of(200);
+        s.scroll_by(i32::MAX / 2, 40);
+        assert_eq!(s.scroll_row(), 160);
+        s.scroll_by(i32::MIN / 2, 40);
+        assert_eq!(s.scroll_row(), 0);
+        s.scroll_by(i32::MAX / 2, 40);
+        assert_eq!(s.scroll_row(), 160);
+    }
+
+    /// A pane one line tall pages by nothing at all: `ui::mod` sends `visible - 1`, so
+    /// PageDown, PageUp and Space are dead keys in it. Nothing a reader can produce is
+    /// one line tall — `draw_sheet` gives up below two, and never records a height it
+    /// gave up on — so the trap is latent, and this is where it is written down.
+    #[test]
+    fn a_pane_one_line_tall_cannot_be_paged() {
+        let mut s = sheet_of(200);
+        s.scroll_by(1 - 1, 1);
+        assert_eq!(s.scroll_row(), 0, "a page of one line moves by none of it");
+        // The other keys still work there.
+        s.scroll_by(1, 1);
+        assert_eq!(s.scroll_row(), 1);
+        s.scroll_by(i32::MAX / 2, 1);
+        assert_eq!(s.scroll_row(), 199);
+        assert_eq!(s.window(1).len(), 1);
+    }
+
+    #[test]
+    fn a_sheet_that_has_not_been_laid_out_draws_nothing_and_scrolls_nowhere() {
+        let mut s = waterfall();
+        assert_eq!(s.lines(), 0);
+        assert!(!s.is_built_for(80, None));
+        assert!(s.window(40).is_empty());
+        for visible in VISIBLE {
+            for key in SCROLL_KEYS {
+                s.scroll_by(key, visible);
+                assert_eq!(s.scroll_row(), 0);
+            }
+        }
+    }
+
+    /// `set_built` keeps a rendering; it does not touch the scroll. A sheet laid out
+    /// again shorter than the one the reader had scrolled through therefore starts past
+    /// its own end and draws blank, which is why `draw_sheet` clamps on every frame
+    /// after building. Take that line out and this is the test that says what breaks.
+    #[test]
+    fn a_sheet_laid_out_shorter_needs_the_clamp_the_drawing_does() {
+        let mut s = sheet_of(200);
+        s.scroll_by(i32::MAX / 2, 20);
+        assert_eq!(s.scroll_row(), 180);
+        s.set_built(40, None, vec![Line::from("x"); 30]);
+        assert_eq!(
+            s.scroll_row(),
+            180,
+            "laying out again does not move the scroll"
+        );
+        assert!(
+            s.window(20).is_empty(),
+            "and until it is clamped, it is blank"
+        );
+        s.scroll_by(0, 20);
+        assert_eq!(s.scroll_row(), 10, "the last screenful of the new layout");
+        assert_eq!(s.window(20).len(), 20);
+    }
+
+    #[test]
+    fn the_window_starts_at_the_scroll_and_stops_at_the_last_line() {
+        let mut s = waterfall();
+        s.set_built(
+            80,
+            None,
+            (0..200).map(|i| Line::from(i.to_string())).collect(),
+        );
+        s.scroll_by(37, 20);
+        let window = s.window(20);
+        assert_eq!(window.len(), 20);
+        assert_eq!(text_of(&window[0]), "37");
+        assert_eq!(text_of(&window[19]), "56");
+        s.scroll_by(i32::MAX / 2, 20);
+        let window = s.window(20);
+        assert_eq!(text_of(&window[19]), "199", "the last line is reachable");
+        // A pane taller than the sheet is pulled back to the top and shows all of it.
+        s.scroll_by(0, 4096);
+        assert_eq!(s.scroll_row(), 0);
+        assert_eq!(s.window(4096).len(), 200);
+    }
+
+    // ----- sheets at the extremes -----
+
+    #[test]
+    fn a_comparison_holds_from_one_face_to_a_hundred() {
+        let f = face("Amiri-Regular.ttf");
+        for n in [1usize, 2, 5, 100] {
+            let s = Sheet::compare(vec![f.clone(); n], 32.0);
+            assert_eq!(s.rows().len(), n);
+            assert!(s.title().contains(&format!("{n} face(s)")), "{}", s.title());
+            assert!(s.rows().iter().all(|r| r.size == 32.0));
+            let texts: std::collections::BTreeSet<String> =
+                s.rows().iter().map(|r| s.text_for(r, None)).collect();
+            assert_eq!(texts.len(), 1, "one comparison, one set of words");
+        }
+    }
+
+    /// `ui::mod` refuses to open one of these, so it is the type's own floor rather
+    /// than a screen a reader can reach — but the arithmetic still has to hold.
+    #[test]
+    fn a_comparison_of_no_faces_is_empty_rather_than_broken() {
+        let mut s = Sheet::compare(Vec::new(), 32.0);
+        assert!(s.rows().is_empty());
+        assert_eq!(s.size(), 0.0, "no row, no size to report");
+        assert_eq!(s.title(), "compare — 0 face(s) at 0 px, +/- to resize");
+        assert!(!s.resize(8.0), "there is nothing to resize");
+        assert_eq!(s.lines(), 0);
+        assert!(s.window(40).is_empty());
+        for key in SCROLL_KEYS {
+            s.scroll_by(key, 40);
+            assert_eq!(s.scroll_row(), 0);
+        }
+    }
+
+    /// Whatever the reader types is what every row is set in, and the rendering is cut
+    /// to the pane rather than to the words.
+    #[test]
+    fn the_sample_text_may_be_empty_a_space_or_wider_than_any_terminal() {
+        let f = face("Amiri-Regular.ttf");
+        let w = Sheet::waterfall(f.clone(), Vec::new(), Vec::new());
+        let c = Sheet::compare(vec![f, face("SourceSerif4-Regular.otf")], 32.0);
+        let wide = "Hamburgefonstiv ".repeat(60);
+        for chosen in ["", " ", wide.as_str()] {
+            for (sheet, row) in [(&w, &w.rows()[0]), (&c, &c.rows()[1])] {
+                assert_eq!(sheet.text_for(row, Some(chosen)), chosen);
+                let opts = sheet.options(row, chosen.to_string(), 60);
+                assert_eq!(opts.max_width, Some(60), "cut to the pane, not the words");
+                assert_eq!(opts.padding, 1);
+                assert_eq!(opts.size, row.size);
+                let bitmap = fontina_core::render::render_face(&row.face, &opts).unwrap();
+                assert!(
+                    bitmap.width <= 60,
+                    "{} pixels of type in a 60-column pane",
+                    bitmap.width
+                );
+            }
+        }
+    }
+
+    /// The fallback differs by kind, and that is the point of the kinds: a waterfall is
+    /// one face, so it can use that face's own embedded sample string; a comparison
+    /// holds the words constant across faces, so it cannot.
+    #[test]
+    fn only_a_waterfall_falls_back_to_the_faces_own_sample_string() {
+        let mut f = face("Amiri-Regular.ttf");
+        f.names.sample_text = Some("A specimen".into());
+        let w = Sheet::waterfall(f.clone(), Vec::new(), Vec::new());
+        assert!(w.rows().iter().all(|r| w.text_for(r, None) == "A specimen"));
+
+        let c = Sheet::compare(vec![f.clone(), face("SourceSerif4-Regular.otf")], 32.0);
+        let shared = typography::preview_text(&f);
+        assert!(c.rows().iter().all(|r| c.text_for(r, None) == shared));
+        assert_ne!(
+            c.text_for(&c.rows()[0], None),
+            "A specimen",
+            "one face's sample string is not what the other face is compared against"
+        );
+    }
+
+    /// `text_for` hands back the face's embedded sample string as it stands, blank
+    /// included: nothing in the sheet looks at it. What keeps a waterfall from being
+    /// set in nothing at all is `parse::english`, which drops a name that trims empty.
+    /// That is a coupling between two crates and it is written down nowhere, so it is
+    /// written down here, in the test that would fail if it were relaxed.
+    #[test]
+    fn a_blank_embedded_sample_string_would_set_a_waterfall_in_nothing() {
+        let mut f = face("Amiri-Regular.ttf");
+        f.names.sample_text = Some("   ".into());
+        let w = Sheet::waterfall(f, Vec::new(), Vec::new());
+        assert_eq!(w.text_for(&w.rows()[0], None), "   ");
+
+        for name in [
+            "Amiri-Regular.ttf",
+            "SourceSerif4-Regular.otf",
+            "BricolageGrotesque[opsz,wdth,wght].ttf",
+            "Nabla[EDPT,EHLT].ttf",
+            "inter-latin-400-normal.woff",
+        ] {
+            let parsed = face(name);
+            assert!(
+                parsed
+                    .names
+                    .sample_text
+                    .as_deref()
+                    .is_none_or(|s| !s.trim().is_empty()),
+                "{name} came out of the parser with a blank sample string"
+            );
+        }
+    }
+
+    #[test]
+    fn the_title_says_which_sheet_it_is_and_what_it_is_set_at() {
+        assert_eq!(
+            waterfall().title(),
+            format!("waterfall — {} sizes", typography::WATERFALL_SIZES.len())
+        );
+        let mut c = Sheet::compare(vec![face("Amiri-Regular.ttf")], 32.0);
+        assert_eq!(c.title(), "compare — 1 face(s) at 32 px, +/- to resize");
+        assert!(c.resize(-4.0));
+        assert_eq!(c.title(), "compare — 1 face(s) at 28 px, +/- to resize");
+    }
+
+    #[test]
+    fn a_resize_moves_every_row_together_and_stops_together() {
+        let mut c = Sheet::compare(
+            vec![
+                face("Amiri-Regular.ttf"),
+                face("SourceSerif4-Regular.otf"),
+                face("BricolageGrotesque[opsz,wdth,wght].ttf"),
+            ],
+            158.0,
+        );
+        assert!(
+            c.resize(8.0),
+            "a step that only part of the way is still a step"
+        );
+        assert!(
+            c.rows().iter().all(|r| r.size == 160.0),
+            "clamped, and clamped together"
+        );
+        assert!(!c.resize(8.0));
+        for _ in 0..40 {
+            c.resize(-8.0);
+        }
+        assert!(c.rows().iter().all(|r| r.size == 8.0));
+        assert_eq!(
+            c.size(),
+            8.0,
+            "and the title reports what the rows are set at"
+        );
+    }
+
+    // ----- frames -----
+    //
+    // The sheet is a mode rather than a pane: it covers the browser and has to stay
+    // inside the area it was handed. `ui::mod` draws it, so these go through a frame.
+
+    /// The browser over the fixture fonts, with a blank sample text: what the preview
+    /// draws has its own tests in `ui::mod`, and a rasteriser in these frames would
+    /// make them say more about this machine than about the sheet.
+    fn app() -> crate::ui::App {
+        let mut index = fontina_core::Index::open_in_memory().unwrap();
+        let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures");
+        fontina_core::scan::scan(&mut index, &[fixtures], &Default::default()).unwrap();
+        let mut app = crate::ui::App::new(index).unwrap();
+        app.preview_text = Some(" ".into());
+        app
+    }
+
+    /// The browser drawn into an in-memory terminal, one string per terminal row.
+    fn frame(app: &mut crate::ui::App, width: u16, height: u16) -> Vec<String> {
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, height)).unwrap();
+        terminal.draw(|f| app.draw(f)).unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        (0..buffer.area.height)
+            .map(|y| {
+                (0..buffer.area.width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>()
+            })
+            .collect()
+    }
+
+    // Two columns leave nothing at all once the border has taken them; nine leave seven,
+    // one short of the width `draw_sheet` insists on; four rows leave the pane no room
+    // for a line of type once the border has had two of them.
+    const SIZES: [(u16, u16); 16] = [
+        (1, 1),
+        (1, 2),
+        (2, 1),
+        (2, 20),
+        (1, 40),
+        (40, 1),
+        (3, 3),
+        (9, 20),
+        (10, 20),
+        (20, 4),
+        (20, 5),
+        (80, 24),
+        (120, 40),
+        (200, 60),
+        (400, 12),
+        (400, 120),
+    ];
+
+    /// Every terminal size the sheet can be asked to draw in: one column, one row, no
+    /// usable area at all once the border has taken its two columns, and a wall of
+    /// them. Nothing may panic, and the sheet must stay inside the pane it was given —
+    /// the key line at the foot of the screen belongs to the browser underneath, and is
+    /// the same row either way.
+    #[test]
+    fn a_sheet_draws_at_any_terminal_size() {
+        for kind in [Kind::Waterfall, Kind::Compare] {
+            for (w, h) in SIZES {
+                let mut app = app();
+                let closed = frame(&mut app, w, h);
+                app.open_sheet(kind).unwrap();
+                assert!(app.sheet.is_some(), "a face was selected");
+                let open = frame(&mut app, w, h);
+                assert_eq!(open.len(), h as usize, "one row per line on {w}x{h}");
+                for row in &open {
+                    assert!(
+                        row.chars().count() <= w as usize,
+                        "a row is wider than the {w}-column terminal it is drawn in"
+                    );
+                }
+                if h >= 5 {
+                    assert_eq!(
+                        open.last(),
+                        closed.last(),
+                        "the sheet drew over the key line on a {w}x{h} terminal"
+                    );
+                }
+                // And what the frame left behind is a scroll the next keypress can use.
+                let sheet = app.sheet.as_ref().unwrap();
+                assert!(
+                    sheet.scroll_row() <= sheet.lines().saturating_sub(1),
+                    "a {w}x{h} frame left the scroll past the end of the sheet"
+                );
+            }
+        }
+    }
+
+    /// Every cell outside the pane the sheet was handed belongs to something else. The
+    /// panes underneath are drawn first and the sheet goes over them, so a cell it
+    /// writes outside its own area is a pane it has silently eaten.
+    #[test]
+    fn a_sheet_writes_nothing_outside_the_pane_it_is_given() {
+        use ratatui::layout::{Position, Rect};
+        let mut app = app();
+        app.open_sheet(Kind::Waterfall).unwrap();
+        for pane in [
+            Rect::new(3, 2, 60, 20),
+            Rect::new(0, 0, 1, 1),
+            Rect::new(10, 10, 2, 2),
+            Rect::new(5, 1, 40, 1),
+            Rect::new(0, 0, 80, 30),
+            Rect::new(79, 29, 1, 1),
+        ] {
+            let mut terminal =
+                ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 30)).unwrap();
+            terminal.draw(|f| app.draw_sheet(f, pane)).unwrap();
+            let buffer = terminal.backend().buffer().clone();
+            for y in 0..30 {
+                for x in 0..80 {
+                    if pane.contains(Position::new(x, y)) {
+                        continue;
+                    }
+                    let cell = &buffer[(x, y)];
+                    assert!(
+                        cell.symbol() == " "
+                            && cell.fg == ratatui::style::Color::Reset
+                            && cell.bg == ratatui::style::Color::Reset,
+                        "the sheet wrote {:?} at ({x}, {y}), outside {pane:?}",
+                        cell.symbol()
+                    );
+                }
+            }
+        }
+    }
+
+    /// A comparison of every fixture at once, in panes that cannot hold one row of it.
+    #[test]
+    fn a_comparison_of_every_fixture_draws_in_a_pane_that_cannot_hold_a_row() {
+        let mut app = app();
+        let faces = [
+            "Amiri-Regular.ttf",
+            "SourceSerif4-Regular.otf",
+            "BricolageGrotesque[opsz,wdth,wght].ttf",
+            "Nabla[EDPT,EHLT].ttf",
+            "inter-latin-400-normal.woff",
+        ]
+        .map(face)
+        .to_vec();
+        app.sheet = Some(Sheet::compare(faces, 96.0));
+        for (w, h) in SIZES {
+            let drawn = frame(&mut app, w, h);
+            assert_eq!(drawn.len(), h as usize);
+            for row in &drawn {
+                assert!(row.chars().count() <= w as usize);
+            }
+        }
+        // A row of type at 96 px is taller than any of those panes, so the sheet is
+        // longer than the tallest of them and the reader has to scroll it.
+        let sheet = app.sheet.as_ref().unwrap();
+        assert!(sheet.lines() > 120, "{} lines", sheet.lines());
+    }
+
+    /// Words far wider than the pane are cut to the pane, not wrapped and not spilled.
+    #[test]
+    fn words_wider_than_the_terminal_stay_inside_the_pane() {
+        let mut app = app();
+        app.preview_text = Some("Hamburgefonstiv ".repeat(40));
+        app.open_sheet(Kind::Compare).unwrap();
+        for w in [20u16, 40, 120] {
+            for (n, row) in frame(&mut app, w, 30).iter().enumerate() {
+                assert!(
+                    row.chars().count() <= w as usize,
+                    "row {n} overflows a {w}-column terminal"
+                );
+            }
+        }
+    }
+
+    /// Laying a sheet out is nine rasterisations for a waterfall, so it happens once
+    /// per pane width and sample text and not once per frame — and not at all in a pane
+    /// with no room to draw in.
+    #[test]
+    fn a_pane_with_no_room_lays_out_nothing_and_a_resized_one_lays_out_again() {
+        let mut app = app();
+        app.open_sheet(Kind::Waterfall).unwrap();
+        frame(&mut app, 9, 30);
+        assert_eq!(
+            app.sheet.as_ref().unwrap().lines(),
+            0,
+            "seven usable columns is below the floor draw_sheet keeps"
+        );
+        frame(&mut app, 120, 4);
+        assert_eq!(
+            app.sheet.as_ref().unwrap().lines(),
+            0,
+            "and so is no height"
+        );
+
+        frame(&mut app, 120, 40);
+        let lines = app.sheet.as_ref().unwrap().lines();
+        assert!(lines > 0, "given room, it laid out");
+        assert!(app.sheet.as_ref().unwrap().is_built_for(118, Some(" ")));
+        frame(&mut app, 120, 40);
+        assert_eq!(
+            app.sheet.as_ref().unwrap().lines(),
+            lines,
+            "the same pane and the same words are the same layout"
+        );
+        frame(&mut app, 60, 40);
+        assert!(
+            app.sheet.as_ref().unwrap().is_built_for(58, Some(" ")),
+            "a narrower pane is a new layout"
+        );
+    }
+
+    /// A waterfall runs to a few hundred lines, so the title says where in it the
+    /// reader is. It is built from the layout the *previous* frame left behind, which
+    /// is why the first frame of a sheet has no position on it at all.
+    #[test]
+    fn the_title_says_where_in_the_sheet_the_reader_is() {
+        let mut app = app();
+        app.open_sheet(Kind::Waterfall).unwrap();
+        let first = frame(&mut app, 120, 40).join("\n");
+        assert!(
+            !first.contains("[1/"),
+            "the sheet had not been laid out when this title was written: {}",
+            first.lines().next().unwrap_or_default()
+        );
+        let total = app.sheet.as_ref().unwrap().lines();
+        assert!(total > 40, "{total} lines");
+        let second = frame(&mut app, 120, 40).join("\n");
+        assert!(second.contains(&format!("[1/{total}]")), "{second}");
+
+        let visible = app.sheet_visible;
+        app.sheet.as_mut().unwrap().scroll_by(5, visible);
+        let third = frame(&mut app, 120, 40).join("\n");
+        assert!(third.contains(&format!("[6/{total}]")), "{third}");
+    }
 }
