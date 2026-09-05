@@ -625,6 +625,116 @@ fn an_opentype_claim_and_a_name_record_are_not_the_same_claim() {
     );
 }
 
+/// Identical coverage is not identity, and the fixtures already hold the pair that
+/// proves it.
+///
+/// `inter-latin-400-normal.woff` and `.woff2` cover exactly the same codepoints in the
+/// same ranges and are built a few glyphs apart. They must score 1.0 while remaining two
+/// different files — which is the whole argument for printing the metrics beside the
+/// score rather than thresholding on it.
+#[test]
+fn coverage_overlap_finds_the_same_font_in_two_containers() {
+    let index = indexed();
+    let inter = index
+        .list(&FaceFilter {
+            family: Some("Inter".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(inter.len(), 2, "one WOFF and one WOFF2");
+
+    let related = index.related(inter[0].id, 0.0).unwrap();
+    let twin = related
+        .iter()
+        .find(|r| r.face.id == inter[1].id)
+        .expect("the other container is in the answer");
+    assert_eq!(twin.overlap, 1.0, "the same codepoints, exactly");
+    assert_eq!(twin.shared, twin.union);
+    assert!(twin.metrics_agree, "and the same design");
+    assert_ne!(
+        twin.face.path, inter[0].path,
+        "still two different files, which is why the score is not the verdict"
+    );
+
+    // Sorted most alike first, so the twin leads.
+    assert_eq!(related[0].face.id, inter[1].id, "{related:?}");
+
+    // Amiri against Source Serif is near zero: both cover Latin, and little else in
+    // common. A threshold that admits them would admit anything.
+    let amiri = id_of(&index, "Amiri");
+    let source = id_of(&index, "Source Serif 4");
+    let far = index
+        .related(amiri, 0.0)
+        .unwrap()
+        .into_iter()
+        .find(|r| r.face.id == source)
+        .expect("still in the answer at min 0.0");
+    assert!(
+        far.overlap < 0.25,
+        "Arabic and Cyrillic barely intersect: {}",
+        far.overlap
+    );
+
+    // `min` is a floor, not a suggestion.
+    let strict = index.related(inter[0].id, 0.99).unwrap();
+    assert_eq!(strict.len(), 1, "only the twin clears 0.99: {strict:?}");
+    assert!(index.related(inter[0].id, 1.01).unwrap().is_empty());
+
+    // A face is never related to itself; that is what `dupes` is for.
+    assert!(
+        index
+            .related(inter[0].id, 0.0)
+            .unwrap()
+            .iter()
+            .all(|r| r.face.id != inter[0].id)
+    );
+
+    // Asking about a face that is not there is an error, not an empty answer.
+    assert!(index.related(99999, 0.0).is_err());
+}
+
+/// The score is a real Jaccard, not a coverage ratio dressed up as one.
+///
+/// A subset scores below 1.0 even though every codepoint it has is shared, because the
+/// union is the larger set. Getting this wrong would rank every small font as a perfect
+/// match for every large one that contains it.
+#[test]
+fn overlap_is_the_intersection_over_the_union() {
+    let index = indexed();
+    let inter = index
+        .list(&FaceFilter {
+            family: Some("Inter".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    let related = index.related(inter[0].id, 0.0).unwrap();
+
+    for r in &related {
+        assert!(
+            (0.0..=1.0).contains(&r.overlap),
+            "{} is not a similarity",
+            r.overlap
+        );
+        assert!(r.shared <= r.union, "{r:?}");
+        assert!(
+            (r.overlap - f64::from(r.shared) / f64::from(r.union)).abs() < 1e-9,
+            "the score is the ratio it says it is: {r:?}"
+        );
+    }
+
+    // Every candidate that is not the twin shares less than it covers in total, so none
+    // of them can reach 1.0 by covering a subset.
+    let others: Vec<_> = related
+        .iter()
+        .filter(|r| r.face.id != inter[1].id)
+        .collect();
+    assert!(!others.is_empty());
+    assert!(
+        others.iter().all(|r| r.overlap < 1.0),
+        "a subset is not a match: {others:?}"
+    );
+}
+
 /// What `post.isFixedPitch` says, reported and never second-guessed.
 ///
 /// §12: a font whose advance widths contradict its own flag is a health check, not a
