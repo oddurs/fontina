@@ -20,8 +20,8 @@ use crate::error::Result;
 use crate::index::{Index, SourceKind};
 use crate::model::Container;
 use crate::{FaceMetadata, FileInfo};
+use rayon::prelude::*;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use walkdir::WalkDir;
 
 #[derive(Debug, Clone, Default)]
@@ -86,60 +86,19 @@ pub fn collect_candidates(roots: &[PathBuf], follow_symlinks: bool) -> Vec<PathB
 /// One parsed file: its info and faces, or the error.
 pub type ParsedFile = Result<(FileInfo, Vec<FaceMetadata>)>;
 
-/// Parse one path, catching a panic in the parser as a last line of defence.
-fn parse_one(path: &Path) -> (PathBuf, ParsedFile) {
-    let result = std::panic::catch_unwind(|| crate::load_file(path)).unwrap_or_else(|_| {
-        Err(crate::Error::Parse(
-            "parser panicked on malformed input".into(),
-        ))
-    });
-    (path.to_path_buf(), result)
-}
-
 /// Parse a set of paths in parallel. Does not touch the index.
-///
-/// One scoped thread per core, each claiming the next path with an atomic counter. The
-/// work is handed out as threads finish rather than split up front because parse cost
-/// varies by two orders of magnitude between a small icon font and a large CJK face,
-/// and a static split would leave threads idle at the end of a scan. `scan` calls this
-/// once per run, so the cost of starting the threads is paid once over the whole corpus.
-///
-/// Results are returned in input order, which the scan report depends on.
 pub fn parse_paths(paths: &[PathBuf]) -> Vec<(PathBuf, ParsedFile)> {
-    if paths.len() < 2 {
-        return paths.iter().map(|p| parse_one(p)).collect();
-    }
-
-    let workers = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(1)
-        .min(paths.len());
-
-    let next = AtomicUsize::new(0);
-    let mut numbered: Vec<(usize, (PathBuf, ParsedFile))> = std::thread::scope(|scope| {
-        let threads: Vec<_> = (0..workers)
-            .map(|_| {
-                scope.spawn(|| {
-                    let mut mine = Vec::new();
-                    loop {
-                        let i = next.fetch_add(1, Ordering::Relaxed);
-                        let Some(path) = paths.get(i) else { break };
-                        mine.push((i, parse_one(path)));
-                    }
-                    mine
-                })
-            })
-            .collect();
-        threads
-            .into_iter()
-            // A worker only panics if something outside the parser did, and rayon
-            // propagated such a panic to the caller too. Keep that behaviour.
-            .flat_map(|t| t.join().unwrap_or_else(|e| std::panic::resume_unwind(e)))
-            .collect()
-    });
-
-    numbered.sort_unstable_by_key(|(i, _)| *i);
-    numbered.into_iter().map(|(_, parsed)| parsed).collect()
+    paths
+        .par_iter()
+        .map(|p| {
+            let result = std::panic::catch_unwind(|| crate::load_file(p)).unwrap_or_else(|_| {
+                Err(crate::Error::Parse(
+                    "parser panicked on malformed input".into(),
+                ))
+            });
+            (p.clone(), result)
+        })
+        .collect()
 }
 
 /// Scan `roots` into `index`.
