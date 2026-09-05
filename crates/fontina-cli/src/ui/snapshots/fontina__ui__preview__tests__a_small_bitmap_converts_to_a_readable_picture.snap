@@ -1,0 +1,8 @@
+---
+source: crates/fontina-cli/src/ui/preview.rs
+expression: out
+---
+  .#.#.#.#.#.#
+  ##.-.+.+.-##
+  ##.#.#.#.###
+      -.-.

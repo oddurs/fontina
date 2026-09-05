@@ -1,0 +1,34 @@
+---
+source: crates/fontina-core/tests/render.rs
+expression: out
+---
+Amiri-Regular.ttf
+      8 px     63x23    baseline   12.99  glyphs 15  missing 0
+     12 px     90x30    baseline   17.49  glyphs 15  missing 0
+     48 px    336x93    baseline   57.95  glyphs 15  missing 0
+     96 px    664x177   baseline  111.90  glyphs 15  missing 0
+BricolageGrotesque[opsz,wdth,wght].ttf
+      8 px     71x18    baseline   11.44  glyphs 15  missing 0
+     12 px    102x23    baseline   15.16  glyphs 15  missing 0
+     48 px    382x66    baseline   48.64  glyphs 15  missing 0
+     96 px    755x124   baseline   93.28  glyphs 15  missing 0
+Nabla[EDPT,EHLT].ttf
+      8 px     72x22    baseline   14.10  glyphs 15  missing 0
+     12 px    103x28    baseline   19.16  glyphs 15  missing 0
+     48 px    387x87    baseline   64.62  glyphs 15  missing 0
+     96 px    766x166   baseline  125.25  glyphs 15  missing 0
+SourceSerif4-Regular.otf
+      8 px     71x19    baseline   12.29  glyphs 15  missing 0
+     12 px    102x25    baseline   16.43  glyphs 15  missing 0
+     48 px    382x74    baseline   53.73  glyphs 15  missing 0
+     96 px    756x140   baseline  103.46  glyphs 15  missing 0
+inter-latin-400-normal.woff
+      8 px     74x18    baseline   11.75  glyphs 15  missing 0
+     12 px    106x23    baseline   15.62  glyphs 15  missing 0
+     48 px    399x67    baseline   50.50  glyphs 15  missing 0
+     96 px    789x125   baseline   97.00  glyphs 15  missing 0
+inter-latin-400-normal.woff2
+      8 px     74x18    baseline   11.75  glyphs 15  missing 0
+     12 px    106x23    baseline   15.62  glyphs 15  missing 0
+     48 px    399x67    baseline   50.50  glyphs 15  missing 0
+     96 px    789x125   baseline   97.00  glyphs 15  missing 0
