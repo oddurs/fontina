@@ -161,7 +161,7 @@ fn install_over_an_activation_leaves_no_registration_behind() {
     let s = session("install-over-activate");
     let id = s.id.clone();
 
-    s.ok(&["activate", "--user", &id]);
+    s.ok(&["activate", &id]);
     assert_eq!(s.active_links().len(), 1, "the font is registered in place");
 
     s.ok(&["install", &id]);
@@ -194,7 +194,7 @@ fn activate_over_an_install_leaves_no_copy_behind() {
     let copy = s.installed_path().expect("a copy was recorded");
     assert!(copy.exists());
 
-    s.ok(&["activate", "--user", &id]);
+    s.ok(&["activate", &id]);
     assert!(
         !copy.exists(),
         "activating removed the copy it replaced: {}",
