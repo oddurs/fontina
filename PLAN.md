@@ -246,6 +246,16 @@ path, or `family:<name>`.
 
 ## 5. Roadmap
 
+**The backlog lives in `cairn/items`, not here.** `ROADMAP.md` is generated from it and
+`cairn next` says what is ready to start. This section holds the milestones and the
+argument for them — what each is *for*, and why it is shaped that way — because that is
+the part a tracker holds badly and a reader needs first.
+
+The division, so it does not blur: if it explains a decision it belongs here; if it is a
+piece of work someone will claim, it belongs in an item. The delivered milestones keep
+their pull-request lists as a record of what was actually built.
+
+
 ### M0 — Foundations (done, 2026-09-03)
 - Workspace, CI matrix (ubuntu/macos/windows), fixtures, `cargo-deny`, clippy, release
   binaries with provenance and SBOM, release-please.
@@ -444,6 +454,40 @@ while installing fontina means downloading a tarball. Ship first, then decide wi
 something other than a guess.
 
 Laid out as pull requests in §13.
+
+### M6 — The browser, properly (four sprints)
+
+M1 gave the browser its panes and M2 gave it typography. What it has never had is the
+thing a font manager exists for: showing you the fonts. Every row of the family list is
+set in the terminal's own face, so the one view built for choosing a typeface shows you
+none of them.
+
+Four sprints, tracked as items under the `tui-*` milestones in `cairn`:
+
+1. **Craft.** Every family set in the face it names, drawn through the image protocol the
+   terminal already supports — kitty, iTerm2 or sixel, falling back to what is drawn
+   today. A specimen view that agrees with the HTML one because both read `typography`.
+   One colour scheme defined at three colour depths. A layout that is usable at sixty
+   columns rather than merely drawn there.
+2. **Speed.** Instant on ten thousand faces rather than on six: only visible rows built,
+   search off the drawing thread and cancelled by the next keystroke, previews cached by
+   face and size and axes, and a frame budget in §7 that CI enforces the way it enforces
+   scan and list.
+3. **Depth.** Select many and act once, undo anything that changed the index, a command
+   palette generated from the clap tree so it cannot drift from the CLI, and filters
+   composed while watching the matching count.
+4. **Discovery.** Pin and compare at one size, "faces like this one" over the
+   `Index::related` M4 already shipped, paste text and see who can set it, and a pairing
+   ranking that shows its measurements and never calls anything good.
+
+Sprint 1 item 1 is the one that matters. The rest of that sprint exists to make it
+bearable, and sprints 2 to 4 are claims nobody can check until it is true.
+
+M6 comes after M5 deliberately. §11 deferred the graphical shell on the evidence of a
+month's real use, and M5 says that evidence cannot exist while installing fontina means
+downloading a tarball. It equally cannot exist while the browser still shows a list of
+names — a month spent with a font manager that cannot show fonts would answer a question
+nobody asked.
 
 Explicit non-goals, unchanged: font editing, format conversion/subsetting (point to
 `fonttools`), cloud sync, accounts, telemetry, an Electron shell.
