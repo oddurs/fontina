@@ -175,7 +175,8 @@ const KEYS: &[(&str, &str)] = &[
     ("u", "uninstall"),
     ("e", "text"),
     ("+/-", "size"),
-    ("s", "specimen"),
+    ("P", "specimens"),
+    ("s", "export"),
     ("R", "rescan"),
     ("q", "quit"),
 ];
