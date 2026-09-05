@@ -136,13 +136,33 @@ pub fn load() -> Result<Loaded> {
         }
         Err(e) => return Err(e).with_context(|| format!("reading {}", path.display())),
     };
-    let config: Config =
-        toml::from_str(&text).with_context(|| format!("reading {}", path.display()))?;
+    let config: Config = toml::from_str(&text)
+        .map_err(backslash_hint)
+        .with_context(|| format!("reading {}", path.display()))?;
     Ok(Loaded {
         config,
         path,
         found: true,
     })
+}
+
+/// Say what to do about `db = "C:\\Users\\me\\index.db"`.
+///
+/// A double-quoted TOML string takes backslash escapes, so a Windows path written the
+/// obvious way is a parse error about an unknown escape rather than about the path, and
+/// `\U` in particular is the start of a Unicode escape. TOML's answer is the
+/// single-quoted literal string. The error is where a person is looking, so the answer
+/// goes there too.
+fn backslash_hint(e: toml::de::Error) -> anyhow::Error {
+    let msg = e.to_string();
+    if msg.contains("escape") || msg.contains("unicode") {
+        anyhow::anyhow!(
+            "{msg}\n\nA path in double quotes takes backslash escapes. Write it in single \
+             quotes instead, which takes it literally:\n    db = 'C:\\Users\\me\\index.db'"
+        )
+    } else {
+        e.into()
+    }
 }
 
 /// Expand a leading `~/`, so a config file can say `~/Fonts` and mean it.
@@ -265,6 +285,8 @@ pub const EXAMPLE: &str = r##"# fontina configuration.
 [index]
 # Where the index lives. `--db` and FONTINA_DB both win over this.
 # db = "~/.local/share/fontina/index.db"
+# On Windows, put paths in single quotes so the backslashes stay backslashes:
+# db = 'C:\Users\me\AppData\Roaming\fontina\index.db'
 
 [scan]
 # Directories `fontina scan` walks when you give it none.

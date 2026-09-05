@@ -156,15 +156,51 @@ fn a_key_nobody_recognises_is_refused_rather_than_ignored() {
     assert!(err.contains("size"), "and what was probably meant: {err}");
 }
 
+/// A Windows path in double quotes is a TOML escape error, and the message says so.
+///
+/// `db = "C:\Users\me\index.db"` is the obvious way to write it and it does not parse:
+/// `\U` starts a Unicode escape. The error TOML gives on its own talks about escapes and
+/// never about quoting, which leaves the reader with a valid-looking path and no idea
+/// what to change. This holds the answer in the message.
+#[test]
+fn a_windows_path_in_double_quotes_says_to_use_single_ones() {
+    let sb = Sandbox::new("backslash");
+    let path = sb.write("[index]\ndb = \"C:\\Users\\me\\index.db\"\n");
+    let out = sb.run(Some(&path), &["config"]);
+    assert!(!out.status.success(), "it does not parse");
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        err.contains("single quotes"),
+        "the message says what to do instead: {err}"
+    );
+    assert!(
+        err.contains(&path.display().to_string()),
+        "and which file: {err}"
+    );
+
+    // And the single-quoted form is accepted.
+    let sb = Sandbox::new("backslash-ok");
+    let path = sb.write("[index]\ndb = 'C:\\Users\\me\\index.db'\n");
+    let out = sb.run(Some(&path), &["config"]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&out.stdout).contains("index.db"),
+        "the path is read literally"
+    );
+}
+
 #[test]
 fn a_bare_scan_uses_the_sources_in_the_file() {
     let sb = Sandbox::new("sources");
     let db = sb.dir.join("index.db");
     let db = db.to_string_lossy().into_owned();
-    let path = sb.write(&format!(
-        "[scan]\nsources = [\"{}\"]\n",
-        fixtures().display()
-    ));
+    // A TOML literal string, not a basic one: a Windows path is full of backslashes and
+    // a double-quoted string would read them as escapes.
+    let path = sb.write(&format!("[scan]\nsources = ['{}']\n", fixtures().display()));
     let out = sb.run(Some(&path), &["--db", &db, "scan"]);
     assert!(
         out.status.success(),
