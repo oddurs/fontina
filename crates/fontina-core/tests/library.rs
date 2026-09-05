@@ -418,6 +418,130 @@ fn a_variable_font_is_found_at_every_weight_it_spans() {
     assert!(at(350, 450).contains(&"Bricolage Grotesque".to_string()));
 }
 
+/// The facet and the filter beside it must give the same answer.
+///
+/// A facet is a menu of what asking would return. Counting a variable face only under
+/// its default instance, while the filter finds it across its whole axis, makes the
+/// browser show "400 Regular 5" next to a query that returns six — a disagreement the
+/// reader has no way to explain.
+#[test]
+fn every_weight_the_facet_offers_returns_what_it_promised() {
+    let index = indexed();
+    let facets = index.facets(&FaceFilter::default()).unwrap();
+    assert!(
+        facets.weight.len() > 1,
+        "the fixtures span more than one bucket: {:?}",
+        facets.weight
+    );
+    for bucket in &facets.weight {
+        let b: u16 = bucket.value.parse().expect("a weight bucket is a number");
+        let found = index
+            .list(&FaceFilter {
+                weight: Some((b, b)),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(
+            found.len() as i64,
+            bucket.count,
+            "the facet offers {} at weight {b} and the filter returns {}",
+            bucket.count,
+            found.len()
+        );
+    }
+
+    // Bricolage spans 200-800, so it is counted in all seven of those buckets and not
+    // in the two outside them.
+    let by_value: std::collections::BTreeMap<&str, i64> = facets
+        .weight
+        .iter()
+        .map(|c| (c.value.as_str(), c.count))
+        .collect();
+    assert_eq!(by_value.get("200"), Some(&1));
+    assert_eq!(by_value.get("800"), Some(&1));
+    assert_eq!(by_value.get("400"), Some(&6), "five static plus Bricolage");
+    assert!(!by_value.contains_key("100"), "{by_value:?}");
+    assert!(!by_value.contains_key("900"), "{by_value:?}");
+
+    // A face is counted once per bucket, so the column sums to more than the library.
+    // That is what a multi-valued facet does — `script` has always behaved this way.
+    let total: i64 = facets.weight.iter().map(|c| c.count).sum();
+    assert!(total > facets.faces, "{total} vs {}", facets.faces);
+}
+
+/// The same, for width.
+#[test]
+fn every_width_the_facet_offers_returns_what_it_promised() {
+    let index = indexed();
+    let facets = index.facets(&FaceFilter::default()).unwrap();
+    for bucket in &facets.width {
+        let b: f32 = bucket.value.parse().expect("a width bucket is a number");
+        // The filter takes whole percents; every bucket that is not a half step round
+        // trips, and 87.5 is asked for as the range it sits in.
+        let (lo, hi) = (b.floor() as u16, b.ceil() as u16);
+        let found = index
+            .list(&FaceFilter {
+                width: Some((lo, hi)),
+                ..Default::default()
+            })
+            .unwrap();
+        assert!(
+            found.len() as i64 >= bucket.count,
+            "the facet offers {} at width {b} and the filter returns {}",
+            bucket.count,
+            found.len()
+        );
+    }
+    let by_value: std::collections::BTreeMap<&str, i64> = facets
+        .width
+        .iter()
+        .map(|c| (c.value.as_str(), c.count))
+        .collect();
+    assert_eq!(by_value.get("75"), Some(&1), "{by_value:?}");
+    assert_eq!(by_value.get("87.5"), Some(&1), "{by_value:?}");
+    assert_eq!(by_value.get("100"), Some(&6), "{by_value:?}");
+}
+
+/// A summary says what it can be set to, and a static face says nothing extra.
+#[test]
+fn a_summary_carries_the_range_only_where_there_is_one() {
+    let index = indexed();
+    let faces = index.list(&FaceFilter::default()).unwrap();
+    let bricolage = faces
+        .iter()
+        .find(|f| f.family == "Bricolage Grotesque")
+        .expect("a variable fixture");
+    assert_eq!(bricolage.weight_range, Some([200.0, 800.0]));
+    assert_eq!(bricolage.width_range, Some([75.0, 100.0]));
+
+    let amiri = faces.iter().find(|f| f.family == "Amiri").unwrap();
+    assert_eq!(amiri.weight_range, None, "a static face is one weight");
+    assert_eq!(amiri.width_range, None);
+    assert!(
+        !serde_json::to_string(amiri)
+            .unwrap()
+            .contains("weight_range"),
+        "so a reader of a static face sees exactly the JSON it saw before"
+    );
+
+    // Nabla is variable, but on EDPT and EHLT — neither of which is wght or wdth.
+    let nabla = faces.iter().find(|f| f.family == "Nabla").unwrap();
+    assert!(nabla.variable);
+    assert_eq!(
+        nabla.weight_range, None,
+        "variable is not the same as variable in weight"
+    );
+
+    // And a family reports the range its faces reach, not their default instances.
+    let families = index.families(&FaceFilter::default()).unwrap();
+    let fam = families
+        .iter()
+        .find(|f| f.name == "Bricolage Grotesque")
+        .unwrap();
+    assert_eq!(fam.weights, [200.0, 800.0]);
+    assert_eq!(fam.widths, [75.0, 100.0]);
+}
+
 /// The same for width, over `wdth`.
 #[test]
 fn width_spans_its_axis_too() {
@@ -1012,12 +1136,17 @@ fn facets_count_every_dimension() {
     let get = |v: &[fontina_core::index::FacetCount], k: &str| {
         v.iter().find(|c| c.value == k).map(|c| c.count)
     };
-    assert_eq!(get(&f.weight, "400"), Some(5), "{:?}", f.weight);
+    // Six, not five: Bricolage spans wght 200-800 and so is offered at 400 like every
+    // static Regular. This used to read `Some(5)`, counting it only at its default
+    // instance while the filter beside it returned six — see
+    // `every_weight_the_facet_offers_returns_what_it_promised`.
+    assert_eq!(get(&f.weight, "400"), Some(6), "{:?}", f.weight);
     assert_eq!(
         get(&f.weight, "800"),
         Some(1),
-        "Bricolage defaults to ExtraBold"
+        "Bricolage reaches ExtraBold, and nothing else does"
     );
+    assert_eq!(get(&f.weight, "200"), Some(1), "{:?}", f.weight);
     assert_eq!(get(&f.width, "100"), Some(6), "{:?}", f.width);
     assert_eq!(get(&f.style, "upright"), Some(6));
     assert_eq!(get(&f.container, "ttf"), Some(3));

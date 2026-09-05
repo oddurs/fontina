@@ -59,6 +59,16 @@ pub struct FaceSummary {
     pub postscript_name: Option<String>,
     pub weight: f32,
     pub width: f32,
+    /// The weights this face can be set to, when a `wght` axis lets it be set at all.
+    ///
+    /// Absent for a face that is only the one weight `weight` names, so the shape of a
+    /// static face's JSON is exactly what it was, and presence is itself the answer to
+    /// "does this reach further than it says".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weight_range: Option<[f32; 2]>,
+    /// The same, in percent, over `wdth`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width_range: Option<[f32; 2]>,
     pub italic: bool,
     pub variable: bool,
     pub color: bool,
@@ -371,6 +381,13 @@ impl Index {
     }
 
     fn row_to_summary(r: &rusqlite::Row) -> rusqlite::Result<FaceSummary> {
+        /// A span, or `None` where the two ends are the same number and there is nothing
+        /// to say.
+        fn span(r: &rusqlite::Row, lo: &str, hi: &str) -> rusqlite::Result<Option<[f32; 2]>> {
+            let (lo, hi): (f32, f32) = (r.get(lo)?, r.get(hi)?);
+            Ok((lo < hi).then_some([lo, hi]))
+        }
+
         let scripts: String = r.get("scripts")?;
         let tags: Option<String> = r.get("tags")?;
         let activation: Option<String> = r.get("activation")?;
@@ -384,6 +401,8 @@ impl Index {
             postscript_name: r.get("postscript_name")?,
             weight: r.get("weight")?,
             width: r.get("width")?,
+            weight_range: span(r, "weight_min", "weight_max")?,
+            width_range: span(r, "width_min", "width_max")?,
             italic: r.get("italic")?,
             variable: r.get("is_variable")?,
             color: r.get("is_color")?,
@@ -406,7 +425,8 @@ impl Index {
     }
 
     const SUMMARY_SELECT: &'static str = "SELECT f.id, fi.path, f.face_index, f.family, f.subfamily, f.postscript_name,
-        f.weight, f.width, f.italic, f.is_variable, f.is_color, f.glyph_count, f.license_spdx, f.scripts, fi.container,
+        f.weight, f.width, f.weight_min, f.weight_max, f.width_min, f.width_max,
+        f.italic, f.is_variable, f.is_color, f.glyph_count, f.license_spdx, f.scripts, fi.container,
         f.vendor, f.designer,
         (SELECT group_concat(name, char(31)) FROM (SELECT t.name FROM face_tags ft JOIN tags t ON t.id = ft.tag_id
             WHERE ft.face_id = f.id ORDER BY t.name COLLATE NOCASE)) AS tags,

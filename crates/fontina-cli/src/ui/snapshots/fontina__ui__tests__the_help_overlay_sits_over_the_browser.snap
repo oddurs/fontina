@@ -4,37 +4,37 @@ expression: drawn
 ---
 ┌ 6 faces ───────────────┐┌ 5 families ──────────────────────────────────┐┌ Details ───────────────────────────────────┐
 │Weight                  ││Amiri                                   1     ││Amiri Regular                               │
-│  400 Regular         5 ││Bricolage Grotesque                     1 V   ││style     weight 400 · width 100% · normal  │
-│  800 ExtraBold       1 ││Inter                                   2     ││glyphs    6710 · 1699 codepoints · Arab Latn│
-│Width                   ││Nabla                                   1 VC  ││Zyyy Zinh                                   │
-│  100% Normal ┌────────────────────────────────────────────────────────────────────────────────────────┐nit liga locl │
-│Style         │fontina ui                                                                              │              │
-│  upright     │                                                                                        │              │
-│Variable      │ Move        j/k ↑/↓ PgUp/PgDn g/G        Tab cycles facets, list, controls             │              │
-│  variable    │ Filter      / type to search  Esc clears   Enter/Space toggles a facet   x clears all  │              │
-│Color         │ Families    Enter opens a family, Backspace/Esc closes it                              │              │
-│  color       │ Organise    t tag the selection   c add it to a collection                             │-Regular.ttf  │
-│Script        │ Activate    a for the user, A until logout, i install a copy, d deactivate, u uninstall│              │
-│  Latn        │ Preview     e sets the sample text   + / - change the size                             │              │
-│  Zinh        │ Controls    h/l ←/→ move an axis (H/L by ten)   Space toggles a feature                │              │
-│  Zyyy        │             n/p step through named instances   0 resets everything                     │s             │
-│  Grek        │ Glyphs      m opens the glyph map: h/l pick a block, j/k scroll, / finds a             │              │
-│  Arab        │             codepoint (U+0041, 0x41, 41) or a block by name                            │              │
-│  Cyrl        │ Sheets      w waterfalls the face down the size ladder; C compares every face          │              │
-│License       │             the selection stands for. j/k scroll, +/- resize a comparison              │              │
-│  OFL-1.1     │ Specimen    s writes an HTML specimen for the selection and opens it in your           │              │
-│Freedom       │             browser, for the things a terminal cannot show honestly                    │              │
-│  free        │ Index       R rescans every source (fontina scan --prune)                              │              │
-│Activation    │ Quit        q                                                                          │              │
-│  none        │                                                                                        │              │
-│Vendor        │ The status line shows the CLI command for what you see. Everything here is a command.  │              │
-│  RSMS        │                                                                                        │              │
-│  ADBO        │ any key to close                                                                       │              │
-│  ALIF        │                                                                                        │              │
-│  ATLR        │                                                                                        │              │
-│  TYPT        └────────────────────────────────────────────────────────────────────────────────────────┘              │
-│Container               ││                                              ││                                            │
-│  ttf                 3 ││                                              ││                                            │
+│  200 ExtraLight      1 ││Bricolage Grotesque                     1 V   ││style     weight 400 · width 100% · normal  │
+│  300 Light           1 ││Inter                                   2     ││glyphs    6710 · 1699 codepoints · Arab Latn│
+│  400 Regular         6 ││Nabla                                   1 VC  ││Zyyy Zinh                                   │
+│  500 Medium  ┌────────────────────────────────────────────────────────────────────────────────────────┐nit liga locl │
+│  600 SemiBold│fontina ui                                                                              │              │
+│  700 Bold    │                                                                                        │              │
+│  800 ExtraBol│ Move        j/k ↑/↓ PgUp/PgDn g/G        Tab cycles facets, list, controls             │              │
+│Width         │ Filter      / type to search  Esc clears   Enter/Space toggles a facet   x clears all  │              │
+│  75% Condense│ Families    Enter opens a family, Backspace/Esc closes it                              │              │
+│  87.5% SemiCo│ Organise    t tag the selection   c add it to a collection                             │-Regular.ttf  │
+│  100% Normal │ Activate    a for the user, A until logout, i install a copy, d deactivate, u uninstall│              │
+│Style         │ Preview     e sets the sample text   + / - change the size                             │              │
+│  upright     │ Controls    h/l ←/→ move an axis (H/L by ten)   Space toggles a feature                │              │
+│Variable      │             n/p step through named instances   0 resets everything                     │s             │
+│  variable    │ Glyphs      m opens the glyph map: h/l pick a block, j/k scroll, / finds a             │              │
+│Color         │             codepoint (U+0041, 0x41, 41) or a block by name                            │              │
+│  color       │ Sheets      w waterfalls the face down the size ladder; C compares every face          │              │
+│Script        │             the selection stands for. j/k scroll, +/- resize a comparison              │              │
+│  Latn        │ Specimen    s writes an HTML specimen for the selection and opens it in your           │              │
+│  Zinh        │             browser, for the things a terminal cannot show honestly                    │              │
+│  Zyyy        │ Index       R rescans every source (fontina scan --prune)                              │              │
+│  Grek        │ Quit        q                                                                          │              │
+│  Arab        │                                                                                        │              │
+│  Cyrl        │ The status line shows the CLI command for what you see. Everything here is a command.  │              │
+│License       │                                                                                        │              │
+│  OFL-1.1     │ any key to close                                                                       │              │
+│Freedom       │                                                                                        │              │
+│  free        │                                                                                        │              │
+│Activation    └────────────────────────────────────────────────────────────────────────────────────────┘              │
+│  none                6 ││                                              ││                                            │
+│Vendor                  ││                                              ││                                            │
 └────────────────────────┘└──────────────────────────────────────────────┘└────────────────────────────────────────────┘
  $ fontina families
  / search  ⇥ facets  ⏎ open  ⌫ back  t tag  c collection  a/A activate  d deactivate  i install  u uninstall  e text  +/
