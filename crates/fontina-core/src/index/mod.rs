@@ -146,6 +146,30 @@ pub struct FaceFilter {
     pub limit: Option<usize>,
 }
 
+/// One candidate from [`Index::related`], with the numbers that say what the overlap
+/// means.
+///
+/// The score is printed rather than thresholded away, and the metrics stand beside it,
+/// because "covers the same characters" is not the same as "is the same design". High
+/// overlap with identical metrics is a variant of one typeface; high overlap with
+/// different metrics is two fonts that happen to serve the same languages. The reader
+/// draws that line, the way `freedom` reports a verdict and its reason rather than
+/// filtering silently.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct Related {
+    pub face: FaceSummary,
+    /// Jaccard similarity of the two codepoint sets: `|A ∩ B| / |A ∪ B|`, 0.0 to 1.0.
+    pub overlap: f64,
+    /// Codepoints both cover.
+    pub shared: u32,
+    /// Codepoints either covers.
+    pub union: u32,
+    /// True when units per em, ascender, descender and fixed pitch all agree with the
+    /// target — the four numbers that decide whether identical coverage means identical
+    /// design.
+    pub metrics_agree: bool,
+}
+
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct DuplicateGroup {
     pub reason: String,
@@ -696,6 +720,129 @@ impl Index {
 
     /// Faces that share an identity hash (same outlines and names across containers) or a
     /// PostScript name (installing both would conflict).
+    /// Faces whose character coverage overlaps `face_id` by at least `min`.
+    ///
+    /// The declared family is often the wrong unit for "these belong together", and there
+    /// is no standard that says what the right one is. §12 rules out storing a computed
+    /// superfamily: deciding what belongs together needs a rule, the only rule available
+    /// is a naming convention, those conventions belong to other projects and change
+    /// without telling anyone, and a stored grouping that is wrong is worse than none
+    /// because everything downstream inherits the mistake.
+    ///
+    /// A question is the right shape instead. Asked of one face it is answerable from
+    /// evidence already in the index, it costs nothing when nobody asks, and when it is
+    /// wrong it is wrong once rather than permanently.
+    ///
+    /// Jaccard over the codepoint sets, computed straight from `face_ranges`, which
+    /// already holds them as sorted ranges indexed by face — so an intersection is a
+    /// linear merge and the whole query is one pass over the library.
+    ///
+    /// This is why it is not `dupes` and does not become a flag on it. `dupes` can sweep
+    /// the whole library because exact identity is hash equality: group by
+    /// `identity_hash`, one pass. Similarity has no such trick — it is pairwise, and a
+    /// sweep is quadratic over a library that may hold tens of thousands of faces. Same
+    /// axis, different cost, so a different shape: `dupes` sweeps, this answers about a
+    /// target.
+    pub fn related(&self, face_id: i64, min: f64) -> Result<Vec<Related>> {
+        if self.get_summary(face_id)?.is_none() {
+            return Err(crate::Error::Other(format!("no face with id {face_id}")));
+        }
+        let mine = self.ranges_of(face_id)?;
+        if mine.is_empty() {
+            return Ok(Vec::new());
+        }
+        let target_metrics = self.metrics_key(face_id)?;
+
+        let mut out = Vec::new();
+        let mut stmt = self.conn.prepare(
+            "SELECT face_id, lo, hi FROM face_ranges WHERE face_id != ?1 ORDER BY face_id, lo",
+        )?;
+        let rows = stmt.query_map(params![face_id], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, i64>(1)? as u32,
+                r.get::<_, i64>(2)? as u32,
+            ))
+        })?;
+        let mut current: Option<(i64, Vec<[u32; 2]>)> = None;
+        let finish = |id: i64, ranges: &[[u32; 2]], out: &mut Vec<(i64, u32, u32)>| {
+            let (shared, union) = overlap(&mine, ranges);
+            if union > 0 {
+                out.push((id, shared, union));
+            }
+        };
+        let mut scored: Vec<(i64, u32, u32)> = Vec::new();
+        for row in rows {
+            let (id, lo, hi) = row?;
+            match &mut current {
+                Some((cur, ranges)) if *cur == id => ranges.push([lo, hi]),
+                Some((cur, ranges)) => {
+                    finish(*cur, ranges, &mut scored);
+                    current = Some((id, vec![[lo, hi]]));
+                }
+                None => current = Some((id, vec![[lo, hi]])),
+            }
+        }
+        if let Some((cur, ranges)) = &current {
+            finish(*cur, ranges, &mut scored);
+        }
+
+        for (id, shared, union) in scored {
+            let score = f64::from(shared) / f64::from(union);
+            if score < min {
+                continue;
+            }
+            let Some(face) = self.get_summary(id)? else {
+                continue;
+            };
+            out.push(Related {
+                metrics_agree: self.metrics_key(id)? == target_metrics,
+                face,
+                overlap: score,
+                shared,
+                union,
+            });
+        }
+        // Most alike first, and by id after that so the order does not wander between
+        // runs over a library where several faces tie.
+        out.sort_by(|a, b| {
+            b.overlap
+                .total_cmp(&a.overlap)
+                .then(a.face.id.cmp(&b.face.id))
+        });
+        Ok(out)
+    }
+
+    /// The four numbers that decide whether identical coverage means identical design.
+    fn metrics_key(&self, face_id: i64) -> Result<(u16, i16, i16, bool)> {
+        let json: String = self.conn.query_row(
+            "SELECT metadata FROM faces WHERE id = ?1",
+            params![face_id],
+            |r| r.get(0),
+        )?;
+        let face: FaceMetadata = serde_json::from_str(&json)?;
+        Ok((
+            face.metrics.units_per_em,
+            face.metrics.ascender,
+            face.metrics.descender,
+            face.metrics.is_fixed_pitch,
+        ))
+    }
+
+    fn ranges_of(&self, face_id: i64) -> Result<Vec<[u32; 2]>> {
+        let mut stmt = self
+            .conn
+            .prepare_cached("SELECT lo, hi FROM face_ranges WHERE face_id = ?1 ORDER BY lo")?;
+        let rows = stmt.query_map(params![face_id], |r| {
+            Ok([r.get::<_, i64>(0)? as u32, r.get::<_, i64>(1)? as u32])
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    fn get_summary(&self, face_id: i64) -> Result<Option<FaceSummary>> {
+        Ok(self.summaries(&[face_id])?.into_iter().next())
+    }
+
     pub fn duplicates(&self) -> Result<Vec<DuplicateGroup>> {
         let mut groups = Vec::new();
         for (reason, column) in [
@@ -888,6 +1035,30 @@ pub(crate) fn insert_scripts(
         stmt.execute(params![face_id, s.script, s.codepoints])?;
     }
     Ok(())
+}
+
+/// Sizes of the intersection and the union of two sorted, merged range lists.
+///
+/// A linear merge: both sides are already sorted and non-overlapping, which is what
+/// `Coverage.ranges` guarantees and what `face_ranges` stores.
+fn overlap(a: &[[u32; 2]], b: &[[u32; 2]]) -> (u32, u32) {
+    let count = |r: &[[u32; 2]]| -> u32 { r.iter().map(|[lo, hi]| hi - lo + 1).sum() };
+    let (mut i, mut j, mut shared) = (0usize, 0usize, 0u32);
+    while i < a.len() && j < b.len() {
+        let (x, y) = (a[i], b[j]);
+        let lo = x[0].max(y[0]);
+        let hi = x[1].min(y[1]);
+        if lo <= hi {
+            shared += hi - lo + 1;
+        }
+        if x[1] < y[1] {
+            i += 1;
+        } else {
+            j += 1;
+        }
+    }
+    // |A ∪ B| = |A| + |B| - |A ∩ B|, which costs nothing once the intersection is known.
+    (shared, count(a) + count(b) - shared)
 }
 
 pub(crate) fn insert_ranges(tx: &Transaction, face_id: i64, ranges: &[[u32; 2]]) -> Result<()> {
