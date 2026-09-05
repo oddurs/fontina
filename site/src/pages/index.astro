@@ -78,45 +78,41 @@ const status = `
 <Base title="fontina" description="A font manager for the terminal. Finds every font on a machine, reads what is actually in it, and makes any of them available to every application — per user, in place, on GNU/Linux, macOS and Windows." source="site/src/pages/index.astro">
 
   <section class="hero">
-    <h1>Find any font you have. Use it in anything. Install nothing.</h1>
+    <h1>Find any font. Use it anywhere.</h1>
     <p class="lead">
-      fontina is a font manager for the terminal. It reads what is actually inside every
-      font on a machine &mdash; the weights, the widths, the scripts it covers, the
-      licence it carries &mdash; keeps that in a searchable index, and makes any face
-      available to every application, per user and in place, on GNU/Linux, macOS and
-      Windows.
+      fontina reads every font on your machine and makes any of them available to any
+      application. No installing, no administrator, on GNU/Linux, macOS and Windows.
     </p>
     <p class="btn-row">
       <a class="btn btn--primary" href={u('/download/')}>Download</a>
       <a class="btn" href={u('/docs/getting-started/')}>Get started</a>
-      <a class="btn btn--quiet" href={repo}>Source</a>
     </p>
     <ul class="strip">
       <li><span class="badge">No network</span></li>
       <li><span class="badge">No telemetry</span></li>
-      <li><span class="badge">No elevation</span></li>
-      <li><span class="badge">Never touches system fonts</span></li>
-      <li><span class="badge badge--accent"><a href={u('/license/')}>GPL-3.0-or-later</a></span></li>
+      <li><span class="badge badge--accent"><a href={u('/license/')}>Free software</a></span></li>
     </ul>
 
-  <p>Real output, on the fonts the test fixtures ship. Only the paths are shortened.</p>
-  <pre class="term"><span class="cmd">$ fontina scan ~/Fonts</span>
+    <div class="terminal">
+      <div class="terminal-bar"><span class="where">~/Fonts</span><span>fontina</span></div>
+      <pre class="term"><span class="cmd">$ fontina scan ~/Fonts</span>
 scanned 5 candidates in 0.00s: 5 parsed (5 faces), 0 unchanged, 0 removed, 0 failed
 
 <span class="cmd">$ fontina list</span>
     id  family               style           wght  wdth  flags  license   path
      1  Amiri                Regular          400   100  ----F  OFL-1.1   ~/Fonts/Amiri-Regular.ttf
-     2  Bricolage Grotesque  96pt ExtraBold   800   100  V---F  OFL-1.1   ~/Fonts/BricolageGrotesque[opsz,wdth,wght].ttf
-     5  Inter                Regular          400   100  ----F  OFL-1.1   ~/Fonts/inter-latin-400-normal.woff2
+     2  Bricolage Grotesque  96pt ExtraBold   800   100  V---F  OFL-1.1   ~/Fonts/Bricolage[opsz,wdth,wght].ttf
      3  Nabla                Regular          400   100  VC--F  OFL-1.1   ~/Fonts/Nabla[EDPT,EHLT].ttf
      4  Source Serif 4       Regular          400   100  ----F  OFL-1.1   ~/Fonts/SourceSerif4-Regular.otf
-5 face(s)</pre>
+4 face(s)
+
+<span class="cmd">$ </span><span class="cursor" aria-hidden="true"></span></pre>
+    </div>
   </section>
 
 
   <section class="section">
     <h2 id="what-it-does">What it does</h2>
-    <p>Six things, each with the chapter that explains it.</p>
     <div class="grid">
       <div class="tile">
         <h3><a href={u('/docs/index-and-paths/')}>Finds and indexes</a></h3>
@@ -158,15 +154,15 @@ scanned 5 candidates in 0.00s: 5 parsed (5 faces), 0 unchanged, 0 removed, 0 fai
       middle, the face itself on the right. Not a screenshot &mdash; the browser draws
       text, so this is that text, read from the snapshot a test asserts on every run.
     </p>
-    <pre class="term">{browser}</pre>
+    <div class="terminal">
+      <div class="terminal-bar"><span class="where">fontina ui</span><span>80 &times; 24</span></div>
+      <pre class="term">{browser}</pre>
+    </div>
   </section>
 
   <section class="section">
     <h2 id="install">Install</h2>
-    <p>
-      A release archive holds one static binary, the manual, shell completions and man
-      pages. There is no installer and nothing to configure.
-    </p>
+    <p>One static binary, the manual, completions and man pages. No installer, nothing to configure.</p>
     <pre class="term"><span class="cmd"># GNU/Linux and macOS: put the binary on your PATH</span>
 tar xf fontina-vX.Y.Z-x86_64-unknown-linux-musl.tar.gz
 install -Dm755 fontina ~/.local/bin/fontina
@@ -185,11 +181,7 @@ cargo install --git https://github.com/oddurs/fontina fontina-cli</pre>
 
   <section class="section">
     <h2 id="free">Free software, in these specific ways</h2>
-    <p>
-      fontina is <a href={u('/license/')}>GPL-3.0-or-later</a> and the manual is GFDL
-      1.3-or-later. That is the licence. These are the properties it was built to have,
-      each of which you can check.
-    </p>
+    <p>The licence is <a href={u('/license/')}>GPL-3.0-or-later</a>. These are the properties behind it, each one you can check.</p>
     <dl class="props">
       <dt>It makes no network connections</dt>
       <dd>Not for updates, not for metadata, not for anything. The core and the command

@@ -96,6 +96,12 @@ html {
   background: var(--bg);
   color: var(--ink);
   -webkit-text-size-adjust: 100%;
+  /* One step up: 16px was right for a reference manual and small for a page
+     someone is deciding whether to read. This is a percentage of whatever the
+     reader set, not a fixed size, so a person who runs their browser at 20px
+     still gets 22.5 and the whole scale moves with them. Everything on the site
+     is in `rem`, so this is the only line that has to change. */
+  font-size: 112.5%;
 }
 
 body {
@@ -251,9 +257,18 @@ a:focus-visible {
 .lockup .mark {
   font-family: var(--font-emoji);
   font-size: 0.92em;
-  line-height: 1;
   flex: none;
-  transform: translateY(0.02em);
+  /* A square of known size, with the glyph centred inside it by the grid rather
+     than positioned by the font. Centring the *box* was not enough: with
+     `line-height: 1` an emoji font's content area is taller than its line box,
+     so the glyph drew off-centre inside a box that was itself centred correctly,
+     and no amount of nudging fixes that for every font at once. A fixed square
+     and `place-items: center` takes the font's metrics out of it. */
+  width: 1em;
+  height: 1em;
+  display: grid;
+  place-items: center;
+  line-height: 1;
   /* A tofu box should not become a selection target in the middle of a name. */
   user-select: none;
 }
@@ -582,7 +597,15 @@ a:focus-visible {
 /* Rhythm. A long page of undifferentiated blocks is the thing that makes a
    GNU-era page feel like an archive; a rule and a wider gap is enough to say
    "new subject" without inventing a card for everything. */
-.section { margin: var(--space-8) 0 0; padding-top: var(--space-6); border-top: 1px solid var(--line); }
+.section {
+  margin: var(--space-8) 0 0;
+  padding-top: var(--space-7);
+  border-top: 1px solid var(--line);
+}
+/* A section's opening line stands away from its heading; a page of sections is
+   read by skimming the headings first, and they need room to be found. */
+.section > h2 { margin-bottom: var(--space-4); }
+.section > .grid, .section > .props, .section > .terminal { margin-top: var(--space-6); }
 .section > h2:first-child { margin-top: 0; }
 .section > p:first-of-type { max-width: var(--measure); }
 
@@ -851,6 +874,58 @@ pre.astro-code, pre.astro-code span {
 .colophon p:last-child { margin-bottom: 0; }
 .colophon strong { color: var(--ink); font-weight: var(--weight-semi); }
 /* The notice follows it, so it should not draw a second rule of its own. */
+
+/* -------------------------------------------------------------- Terminal */
+/* A transcript in a frame that says what it is. The bar carries the working
+   directory the way a terminal's own title bar does — no traffic lights, which
+   are one platform's window decoration and would be costume rather than
+   information.
+
+   The frame is the one place on the site with a radius larger than 5px and the
+   one place with a filled ground, because a terminal is a thing being quoted
+   rather than part of the page. */
+.terminal {
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin: 0 0 var(--space-4);
+}
+.terminal-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  background: var(--bg-subtle);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+}
+.terminal-bar .where { color: var(--ink-soft); }
+.terminal .term {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  padding: var(--space-4);
+}
+
+/* The only animation on the site. A cursor that does not blink reads as a
+   screenshot; one that does says the transcript is a session someone is in the
+   middle of. It is two lines of CSS, no script, and it stops on request —
+   `prefers-reduced-motion` is a setting a person chose, not a hint. */
+.cursor {
+  display: inline-block;
+  width: 0.55em;
+  height: 1.05em;
+  background: var(--accent);
+  vertical-align: text-bottom;
+  animation: cursor-blink 1.1s steps(1, end) infinite;
+}
+@keyframes cursor-blink { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .cursor { animation: none; }
+}
 
 /* ---------------------------------------------------------------- Notice */
 /* The GNU copyright box, unboxed: a rule, then the small print. */

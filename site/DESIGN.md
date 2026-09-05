@@ -33,8 +33,14 @@ between a cheese and an outline of one.
 
 ## Type scale
 
-Seven steps, ratio about 1.25, all in `rem` so they follow the reader's browser setting
+Eight steps, ratio about 1.25, all in `rem` so they follow the reader's browser setting
 rather than overriding it.
+
+The root is set to `112.5%`, so `--text-base` lands at 18px where a browser's default is
+16. That is not an override: it is a proportion of whatever the reader chose, so someone
+running at 20px gets 22.5 and the whole scale moves with them. 16px was right for a
+reference manual and small for a page someone is still deciding whether to read.
+Everything on the site is in `rem`, so it is the only line that had to change.
 
 | Token | Value | At 16px | Used for |
 |---|---|---|---|
@@ -521,6 +527,27 @@ and cannot be handed a wrapper, so the nine tables in the manual previously had 
 stopping them pushing the whole page sideways on a phone. There is no `.wide` helper
 any more; it existed only to do this by hand, and by hand it was never applied to the
 Markdown that needed it most.
+
+### Terminal
+
+```html
+<div class="terminal">
+  <div class="terminal-bar"><span class="where">~/Fonts</span><span>fontina</span></div>
+  <pre class="term">…<span class="cursor" aria-hidden="true"></span></pre>
+</div>
+```
+
+A transcript in a frame that says what it is: the bar carries the working directory the
+way a terminal's own title bar does. No traffic lights — those are one platform's window
+decoration, and on this site they would be costume rather than information.
+
+It is the only place with a radius above 5px and the only filled ground on the page,
+because a terminal is a thing being *quoted* rather than part of the page.
+
+**The cursor is the only animation on the site.** A cursor that does not blink reads as a
+screenshot; one that does says the transcript is a session someone is in the middle of.
+Two lines of CSS, no script, and it stops under `prefers-reduced-motion: reduce` —
+that is a setting a person chose, not a hint.
 
 ### Code
 
