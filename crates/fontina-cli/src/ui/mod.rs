@@ -764,13 +764,21 @@ impl App {
                 }
                 let cur = self.facet_list.selected().unwrap_or(0) as i32;
                 let mut next = (cur + delta).clamp(0, self.rows.len() as i32 - 1) as usize;
-                // Skip headers in the direction of travel.
+                // Skip headers in the direction of travel. Row 0 is always a header, so
+                // running off an end has to fall back to the nearest selectable row
+                // rather than abandoning the move: PageUp from row 8 used to do nothing
+                // at all, while Home on the same row settled on row 1.
+                let mut ran_off = false;
                 while self.rows[next].header {
                     let n = next as i32 + delta.signum();
                     if n < 0 || n >= self.rows.len() as i32 {
-                        return Ok(());
+                        ran_off = true;
+                        break;
                     }
                     next = n as usize;
+                }
+                if ran_off {
+                    next = first_selectable(&self.rows, next);
                 }
                 self.facet_list.select(Some(next));
             }
@@ -1788,27 +1796,57 @@ fn shell_quote(s: &str) -> String {
 /// which is how ratatui wraps. `width / columns` rounded up is a row short whenever a
 /// break lands at a space: on an eighty column terminal that lost the `.ttf` off the end
 /// of the file name.
+///
+/// Whitespace costs its own columns. The paragraph is drawn with `Wrap { trim: false }`,
+/// and that keeps every space — including a run at the start of a line — so counting
+/// words alone under-charges by the width of every gap. Two lines in this pane are made
+/// almost entirely of such a gap: `kv` pads its label to ten columns, and the licence
+/// reason is indented by ten. Under-counting there is what clips the bottom of the block,
+/// which is the one thing this function exists to prevent.
 fn wrapped_rows(line: &Line<'_>, cols: u16) -> u16 {
     let cols = cols.max(1) as usize;
     let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
     let mut rows = 1usize;
     let mut used = 0usize;
-    for word in text.split_whitespace() {
-        let w = word.chars().count();
-        let need = if used == 0 { w } else { w + 1 };
-        if used + need <= cols {
-            used += need;
+    // Alternating runs of whitespace and non-whitespace. A gap is laid down as it comes;
+    // a word moves to the next line whole if it does not fit and could fit alone.
+    for token in tokens(&text) {
+        let w = token.chars().count();
+        let space = token.starts_with(char::is_whitespace);
+        if used + w <= cols {
+            used += w;
+        } else if space {
+            // A gap that runs off the end fills the line and carries the rest over.
+            let over = used + w - cols;
+            rows += over.div_ceil(cols);
+            used = over % cols;
         } else if w <= cols {
             rows += 1;
             used = w;
         } else {
-            // Longer than a line: it is broken across as many as it takes.
             let taken = w.div_ceil(cols);
             rows += taken;
             used = w - (taken - 1) * cols;
         }
     }
     rows.try_into().unwrap_or(u16::MAX)
+}
+
+/// `text` split into runs of whitespace and runs of everything else, in order.
+fn tokens(text: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut rest = text;
+    while !rest.is_empty() {
+        let space = rest.starts_with(char::is_whitespace);
+        let end = rest
+            .char_indices()
+            .find(|(_, c)| c.is_whitespace() != space)
+            .map(|(i, _)| i)
+            .unwrap_or(rest.len());
+        out.push(&rest[..end]);
+        rest = &rest[end..];
+    }
+    out
 }
 
 #[cfg(test)]
@@ -2083,6 +2121,29 @@ mod tests {
 
     /// The pane sizes itself from wrapped rows, so a long value cannot push what comes
     /// after it off the bottom. Measured with the same arithmetic the layout uses.
+    /// The paragraph wraps with `trim: false`, which keeps every space, so a gap costs
+    /// columns. Counting words alone under-charged by the width of each one — and two
+    /// lines in this pane are mostly gap: `kv` pads its label to ten columns and the
+    /// licence reason is indented by ten.
+    #[test]
+    fn an_indent_costs_the_columns_it_occupies() {
+        // Ten columns of indent plus twenty of text does not fit in twenty-five.
+        let indented = Line::from(format!("{:<10}{}", "", "a b c d e f g h i j"));
+        assert!(
+            wrapped_rows(&indented, 25) > 1,
+            "an indented line that overflows must be charged for the indent"
+        );
+        // The same words with no indent do fit.
+        assert_eq!(wrapped_rows(&Line::from("a b c d e f g h i j"), 25), 1);
+
+        // A padded label is charged its padding, not its text length.
+        let padded = kv("file", "x".repeat(18));
+        assert!(
+            wrapped_rows(&padded, 25) > 1,
+            "kv pads the label to ten columns, so this is 28 columns, not 22"
+        );
+    }
+
     #[test]
     fn a_long_value_does_not_cost_the_lines_below_it() {
         let long = kv("file", "/a/very/long/path/".repeat(6));

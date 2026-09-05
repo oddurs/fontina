@@ -69,7 +69,17 @@ pub struct AgentStatus {
 /// `WantedBy` both name `graphical-session.target`: `After=` alone orders units within a
 /// transaction that this one would never join, so it would have been inert and `restore`
 /// could have run before the session existed.
-pub fn systemd_unit(command: &str) -> String {
+pub fn systemd_unit(exe: &Path, args: &[String]) -> String {
+    let mut command = quoted(&exe.display().to_string());
+    for a in args {
+        command.push(' ');
+        command.push_str(&quoted(a));
+    }
+    systemd_unit_from(&command)
+}
+
+/// The unit around an `ExecStart` line that is already quoted word by word.
+fn systemd_unit_from(command: &str) -> String {
     format!(
         "[Unit]\n\
          Description=Re-apply fontina font activations\n\
@@ -87,9 +97,10 @@ pub fn systemd_unit(command: &str) -> String {
     )
 }
 
-/// systemd splits `ExecStart` on whitespace and reads `%` as a specifier, so a path with
-/// a space in it would lose everything after the space and fail 203/EXEC at every login,
-/// silently. Quote the whole line and double any `%`.
+/// `%` starts a systemd specifier, so a literal one has to be doubled. Quoting is done
+/// per word by [`quoted`] before this is reached — the two together are what stop a path
+/// containing a space from losing everything after it and failing 203/EXEC at every
+/// login, silently.
 fn systemd_escape(command: &str) -> String {
     command.replace('%', "%%")
 }
@@ -124,10 +135,14 @@ pub fn launch_agent(args: &[String]) -> String {
 /// needs no registry crate and no new dependency, and a reader can find and delete it
 /// without a registry editor.
 pub fn startup_script(exe: &Path, args: &[String]) -> String {
-    let extra: String = args.iter().map(|a| format!(" \"{a}\"")).collect();
+    // cmd.exe expands `%VAR%` when it reads the file, so a `%` in a path or in a `--db`
+    // argument has to be doubled — the same hazard systemd has, and it was escaped there
+    // and not here. Without this the agent would quietly restore from a different index.
+    let cmd = |s: &str| s.replace('%', "%%");
+    let extra: String = args.iter().map(|a| format!(" \"{}\"", cmd(a))).collect();
     format!(
         "@echo off\r\nstart \"\" /b \"{}\"{extra}\r\n",
-        exe.display()
+        cmd(&exe.display().to_string())
     )
 }
 
@@ -137,10 +152,9 @@ fn xml_escape(s: &str) -> String {
         .replace('>', "&gt;")
 }
 
-/// Quote one word of a systemd `ExecStart` line. Only systemd needs this — launchd
-/// takes an argument array and the Startup script does its own quoting — but the tests
-/// check the systemd output from every platform, so it is compiled for them too.
-#[cfg(any(all(unix, not(target_os = "macos")), test))]
+/// Quote one word of a systemd `ExecStart` line. Only systemd needs it — launchd takes
+/// an argument array and the Startup script does its own quoting — but `systemd_unit` is
+/// public and generates that file on any platform, so this is not gated.
 fn quoted(s: &str) -> String {
     format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
 }
@@ -159,14 +173,9 @@ pub fn plan(exe: &Path, args: &[String]) -> Option<AgentPlan> {
         let dir = directories::BaseDirs::new()?
             .config_dir()
             .join("systemd/user");
-        let mut command = quoted(&exe.display().to_string());
-        for a in args {
-            command.push(' ');
-            command.push_str(&quoted(a));
-        }
         Some(AgentPlan {
             path: dir.join(format!("{LABEL}.service")),
-            contents: systemd_unit(&command),
+            contents: systemd_unit(exe, args),
             kind: "systemd user unit",
             activate_with: Some(format!("systemctl --user enable --now {LABEL}.service")),
             deactivate_with: Some(format!("systemctl --user disable --now {LABEL}.service")),
@@ -278,7 +287,7 @@ mod tests {
 
     #[test]
     fn the_systemd_unit_runs_restore_once_at_login() {
-        let unit = systemd_unit(&quoted("/usr/bin/fontina"));
+        let unit = systemd_unit(Path::new("/usr/bin/fontina"), &[]);
         assert!(unit.contains("ExecStart=\"/usr/bin/fontina\""));
         assert!(
             unit.contains("Type=oneshot"),
@@ -298,15 +307,13 @@ mod tests {
     /// lose everything after it and fail 203/EXEC at every login, silently.
     #[test]
     fn a_systemd_path_with_a_space_or_a_percent_survives() {
-        let mut command = quoted("/home/u/font tools/fontina");
-        command.push_str(&format!(" {}", quoted("restore")));
-        let unit = systemd_unit(&command);
+        let unit = systemd_unit(Path::new("/home/u/font tools/fontina"), &args());
         assert!(
             unit.contains("ExecStart=\"/home/u/font tools/fontina\" \"restore\""),
             "{unit}"
         );
         // `%` starts a systemd specifier and has to be doubled to mean itself.
-        let unit = systemd_unit(&quoted("/opt/100%pure/fontina"));
+        let unit = systemd_unit(Path::new("/opt/100%pure/fontina"), &[]);
         assert!(unit.contains("100%%pure"), "{unit}");
     }
 
@@ -333,6 +340,25 @@ mod tests {
         );
     }
 
+    /// cmd.exe expands `%VAR%` when it reads the file, exactly as systemd expands a
+    /// specifier — the same hazard, and it used to be escaped on one side only.
+    #[test]
+    fn a_percent_in_a_windows_path_or_argument_is_not_expanded() {
+        let cmd = startup_script(
+            Path::new(r"C:\Users\me\%WORK%\fontina.exe"),
+            &[
+                "restore".into(),
+                "--db".into(),
+                r"C:\%WORK%\fonts.db".into(),
+            ],
+        );
+        assert!(cmd.contains("%%WORK%%"), "{cmd}");
+        assert!(
+            !cmd.contains(r"\%WORK%\fontina"),
+            "the raw form must not survive: {cmd}"
+        );
+    }
+
     #[test]
     fn the_startup_script_is_quoted_and_uses_crlf() {
         let cmd = startup_script(Path::new(r"C:\Program Files\fontina.exe"), &args());
@@ -352,13 +378,7 @@ mod tests {
             "--db".to_string(),
             "/srv/fonts.db".to_string(),
         ];
-        let unit = systemd_unit(
-            &extra
-                .iter()
-                .map(|a| quoted(a))
-                .collect::<Vec<_>>()
-                .join(" "),
-        );
+        let unit = systemd_unit(Path::new("/usr/bin/fontina"), &extra);
         assert!(unit.contains("\"--db\" \"/srv/fonts.db\""), "{unit}");
 
         let mut argv = vec!["/usr/bin/fontina".to_string()];
