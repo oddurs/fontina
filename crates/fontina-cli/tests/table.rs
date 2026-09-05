@@ -155,7 +155,13 @@ fn the_face_table_lines_up_with_a_japanese_family_name() {
     // The path is the last column, and it starts with the sandbox's own directory. A
     // separator would do on GNU/Linux and macOS and not on Windows, where there is no
     // `/` in a path at all.
-    let prefix = s.fonts.to_string_lossy().into_owned();
+    // Canonical, because that is what the index stores and what the row prints: on macOS
+    // the temporary directory is reached through a symlink, and the uncanonical form is
+    // a substring of the canonical one starting eight columns later.
+    let prefix = std::fs::canonicalize(&s.fonts)
+        .unwrap_or_else(|_| s.fonts.clone())
+        .to_string_lossy()
+        .into_owned();
     for row in &rows {
         assert_eq!(
             column_of(row, &prefix),
