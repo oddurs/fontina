@@ -19,8 +19,8 @@ mod ui;
 use anyhow::{Context, Result, bail};
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use fontina_core::{
-    ActivationState, FaceFilter, FaceSummary, Freedom, Index, ScanOptions, SourceKind,
-    TagSyncChange, TagSyncReport, TagSyncSkip,
+    ActivationState, FaceFilter, FaceSummary, Freedom, Index, LanguageSource, ScanOptions,
+    SourceKind, TagSyncChange, TagSyncReport, TagSyncSkip,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write as _;
@@ -582,8 +582,8 @@ struct FilterArgs {
     #[arg(long, value_name = "TAG")]
     lang: Option<String>,
     /// Which kind of claim `--lang` means: `opentype` or `name`.
-    #[arg(long, value_name = "KIND", requires = "lang")]
-    lang_source: Option<String>,
+    #[arg(long, value_name = "KIND", requires = "lang", value_parser = parse_lang_source)]
+    lang_source: Option<LanguageSource>,
     /// Only faces the font itself calls monospaced (`post.isFixedPitch`).
     #[arg(long, conflicts_with = "proportional")]
     mono: bool,
@@ -649,7 +649,7 @@ impl FilterArgs {
             scripts: self.script.clone(),
             script_min: self.script_min,
             lang: self.lang.clone(),
-            lang_source: self.lang_source.as_deref().and_then(|s| s.parse().ok()),
+            lang_source: self.lang_source,
             monospace: match (self.mono, self.proportional) {
                 (true, _) => Some(true),
                 (_, true) => Some(false),
@@ -673,6 +673,14 @@ impl FilterArgs {
 
 fn parse_freedom(s: &str) -> std::result::Result<Freedom, String> {
     s.parse()
+}
+
+/// A source that will not parse used to be silently dropped, and a dropped source
+/// *widens* the filter to "either kind of claim" — so `--lang-source Opentype` answered
+/// the opposite question and said nothing about it.
+fn parse_lang_source(s: &str) -> std::result::Result<LanguageSource, String> {
+    s.parse()
+        .map_err(|_| format!("unknown source {s:?}; use opentype or name"))
 }
 
 fn parse_state(s: &str) -> std::result::Result<ActivationState, String> {
