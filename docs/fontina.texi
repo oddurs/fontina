@@ -222,6 +222,40 @@ A bundle is the shareable form, and it is deliberately plain: a directory of fon
 one JSON file with a published schema.  You do not need @command{fontina} to open it, or
 our permission to write one.
 
+@section Piping into fontina
+
+Every command prints machine-readable output with @option{--json}, and every type it
+prints is in @file{schemas/cli-output.json}, which CI checks on every change.  This is the
+other half of that: wherever a command takes faces, a target of @samp{-} means
+@dfn{read the rest from standard input}.  So a program can pipe into
+@command{fontina} as well as out of it, and the CLI is a place to build on rather than
+only a place to look.
+
+@example
+fontina list --json --free | jq '[.[] | select(.variable)]' | fontina tag add variable -
+fontina list --json | fontina tag add everything -
+printf '1\n2\n' | fontina activate -
+@end example
+
+Two shapes, told apart by the first character that is not blank, because both are things
+a person will reasonably try:
+
+@table @asis
+@item JSON, beginning @samp{[} or @samp{@{}
+An array, a single object, or one object per line as @command{jq -c} writes them.  An
+object is read for its @code{id}, or its @code{path} if it has no id --- which is exactly
+what @code{fontina list --json} produces, so fontina's own output goes straight back in
+with nothing in between.  Bare numbers and strings are taken as written.
+@item otherwise, one target per line
+A face id, @code{family:@var{name}}, or a path.  Blank lines and lines beginning
+@samp{#} are ignored, so a list kept in a file works too.
+@end table
+
+@noindent
+An empty pipe is an error rather than a silent no-op: a program in a pipeline that
+quietly does nothing is worse than one that stops and says why.  Standard input is read
+once, so a second @samp{-} adds nothing, and @samp{-} can stand among ordinary targets.
+
 @node Freedom
 @chapter Which of your fonts are free software
 
