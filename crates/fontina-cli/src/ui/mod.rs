@@ -702,8 +702,13 @@ impl App {
             }
             KeyCode::Down | KeyCode::Char('j') => sheet.scroll_by(1, visible),
             KeyCode::Up | KeyCode::Char('k') => sheet.scroll_by(-1, visible),
-            KeyCode::PageDown | KeyCode::Char(' ') => sheet.scroll_by(visible as i32 - 1, visible),
-            KeyCode::PageUp => sheet.scroll_by(-(visible as i32 - 1), visible),
+            // A page is a screen less one line of overlap, and at least one line: in a
+            // pane one line tall the overlap would be the whole page, and PageDown,
+            // PageUp and Space were dead keys.
+            KeyCode::PageDown | KeyCode::Char(' ') => {
+                sheet.scroll_by((visible as i32 - 1).max(1), visible)
+            }
+            KeyCode::PageUp => sheet.scroll_by(-(visible as i32 - 1).max(1), visible),
             KeyCode::Home | KeyCode::Char('g') => sheet.scroll_by(i32::MIN / 2, visible),
             KeyCode::End | KeyCode::Char('G') => sheet.scroll_by(i32::MAX / 2, visible),
             KeyCode::Char('+') | KeyCode::Char('=') | KeyCode::Char('-') => {
@@ -2095,6 +2100,38 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// A page in a pane one line tall still moves.
+    ///
+    /// A page is a screen less one line of overlap, and in a one-line pane that left
+    /// nothing: PageDown, PageUp and Space did nothing at all. `draw_sheet` gives up
+    /// below two lines and never records a height it gave up on, so no reader could
+    /// reach it — which is exactly the kind of arithmetic that becomes reachable later
+    /// and is nobody's suspect when it does.
+    #[test]
+    fn a_page_in_a_one_line_pane_still_moves() {
+        let mut app = app();
+        app.open_sheet(sheet::Kind::Waterfall).unwrap();
+        app.sheet_visible = 1;
+        // A sheet has to be laid out before it can scroll; one line per row is enough.
+        let rows = app.sheet.as_ref().unwrap().rows().len();
+        assert!(rows > 1, "a waterfall has rows to page through");
+        app.sheet
+            .as_mut()
+            .unwrap()
+            .set_built(40, None, vec![Line::from("x"); rows]);
+
+        app.handle_sheet_key(KeyCode::PageDown).unwrap();
+        assert_eq!(
+            app.sheet.as_ref().unwrap().scroll_row(),
+            1,
+            "PageDown in a one-line pane moves one line, not none"
+        );
+        app.handle_sheet_key(KeyCode::PageUp).unwrap();
+        assert_eq!(app.sheet.as_ref().unwrap().scroll_row(), 0);
+        app.handle_sheet_key(KeyCode::Char(' ')).unwrap();
+        assert_eq!(app.sheet.as_ref().unwrap().scroll_row(), 1);
     }
 
     /// Pressing an activation key with nothing selected says so and changes nothing.
