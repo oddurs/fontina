@@ -582,6 +582,17 @@ a dense frame, short enough that a reader still there at eighteen seconds has se
 five. Each frame fades in while the last is still fading out, because a gap of even a
 fifth of a second reads as a flicker.
 
+**A chapter can show a frame too.** `<!--frame:NAME "caption"-->` on a line of its own in
+a manual chapter becomes that frame, in a terminal, where the marker was. A comment rather
+than a component and Markdown rather than MDX, because the manual is also read as plain
+text — `docs/fontina.texi` is the same manual — and a marker an editor shows as a comment
+costs a plain-text reader nothing. `src/frames.ts` is the one place that reads a snapshot;
+the front page and the chapters share it.
+
+The browser's chapter uses six of them, one per mode, each captioned with the key that
+opens it. A manual that describes a full-screen mode in a sentence and shows nothing is
+asking the reader to imagine the thing they came to look at.
+
 **Two frames were added to the program for this page, and that is the right direction.**
 The glyph map and the controls pane had behavioural tests and no snapshot; the site wanted
 to show them, so the tests came first and the page reads what they assert. The rule is

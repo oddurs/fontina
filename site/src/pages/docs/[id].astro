@@ -1,6 +1,7 @@
 ---
 import Base from '../../layouts/Base.astro';
 import { getCollection, render } from 'astro:content';
+import { frame } from '../../frames';
 
 export async function getStaticPaths() {
   const docs = (await getCollection('docs')).sort((a, b) => a.data.order - b.data.order);
@@ -11,8 +12,30 @@ export async function getStaticPaths() {
 }
 
 const { entry, prev, next } = Astro.props;
+
+// A chapter can show the browser. `<!--frame:NAME "caption"-->` on a line of its own
+// becomes the frame that the test NAME asserts on, in a terminal, where the marker was.
+//
+// Markdown rather than MDX, and a comment rather than a component, because a chapter is
+// also read as plain text — `docs/fontina.texi` is the same manual — and a marker that
+// an editor and `git diff` show as a comment costs a plain-text reader nothing. The
+// rendered HTML is split on it; nothing is parsed.
+type Piece = { html: string } | { frame: string; caption?: string };
+function pieces(html: string): Piece[] {
+  const out: Piece[] = [];
+  const parts = html.split(/<!--\s*frame:([a-z_0-9]+)(?:\s+"([^"]*)")?\s*-->/);
+  for (let i = 0; i < parts.length; i += 3) {
+    if (parts[i]) out.push({ html: parts[i] });
+    if (parts[i + 1]) out.push({ frame: frame(parts[i + 1]), caption: parts[i + 2] });
+  }
+  return out;
+}
 const chapters = (await getCollection('docs')).sort((a, b) => a.data.order - b.data.order);
 const { Content, headings } = await render(entry);
+// Astro gives the chapter both ways: a component, and the HTML it renders to. The
+// component is the path every chapter without a frame marker takes.
+const rendered = (entry as unknown as { rendered?: { html?: string } }).rendered?.html;
+const framed = rendered?.includes('<!--frame:');
 // Depth-2 only: a chapter's own sections. The command reference runs to eleven of
 // them, and arriving at the top of that with no map is why people give up on a
 // manual and go back to `--help`.
@@ -37,7 +60,18 @@ const u = (p: string) => `${base}${p}`;
       </ul>
     </nav>
   )}
-  <Content />
+  {framed && rendered
+    ? pieces(rendered).map((p) =>
+        'html' in p ? (
+          <Fragment set:html={p.html} />
+        ) : (
+          <div class="terminal">
+            <div class="terminal-bar"><span class="where">fontina ui</span><span>{p.caption ?? 'a frame'}</span></div>
+            <pre class="term">{p.frame}</pre>
+          </div>
+        ),
+      )
+    : <Content />}
   <p class="node-nav">
     {next && <>Next: <a href={u(`/docs/${next.id}/`)}>{next.data.title}</a>, &nbsp;</>}
     {prev && <>Previous: <a href={u(`/docs/${prev.id}/`)}>{prev.data.title}</a>, &nbsp;</>}
