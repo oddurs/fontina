@@ -1,181 +1,333 @@
 # fontina web design system
 
-Derived from the gcc.gnu.org stylesheet, kept where it is good and corrected where it
-is only old. The stylesheet `src/styles/site.css` implements exactly what is here,
-section for section; if you add something, add it to both. `/style/` renders every
-component once.
+The shape of these pages is the GNU one, and deliberately so: a main column, a nav
+column, a notice at the foot, and every page readable in a text browser. The setting
+is not. Where the old stylesheet took gcc.gnu.org's serif, its filled boxes and its
+ad-hoc ems, this one uses the sans the reader's own system already provides, two
+scales instead of arbitrary numbers, and hairlines instead of fill.
 
-Rules that hold on every page: light mode only; the browser's default serif; no web
-fonts; no client-side script; no external requests; one stylesheet; every page must
-read in a text browser. Colour carries hierarchy, never meaning on its own.
+`src/styles/site.css` implements exactly what is here, section for section. If you add
+something, add it to both. `/style/` renders every component once, which is where a
+change gets checked by eye.
 
-## Tokens
+Rules that hold on every page: light mode only; system fonts only; no web fonts; no
+client-side script; no external requests; one stylesheet; every page must read in a
+text browser. Colour carries hierarchy, never meaning on its own.
+
+## Families
+
+| Token | Stack |
+|---|---|
+| `--font-sans` | `ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif` |
+| `--font-mono` | `ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace` |
+
+Nothing is fetched. `ui-sans-serif` and `system-ui` resolve to the interface face the
+machine already draws its own menus in, which is the face its owner reads fastest;
+the rest of the stack is there for the machines that have neither.
+
+## Type scale
+
+Seven steps, ratio about 1.25, all in `rem` so they follow the reader's browser setting
+rather than overriding it.
+
+| Token | Value | At 16px | Used for |
+|---|---|---|---|
+| `--text-2xl` | `clamp(1.75rem, …, 2.25rem)` | 28 → 36px | `h1` |
+| `--text-xl` | `clamp(1.5rem, …, 1.75rem)` | 24 → 28px | a section opener |
+| `--text-lg` | `clamp(1.25rem, …, 1.375rem)` | 20 → 22px | `h2` |
+| `--text-md` | `1.125rem` | 18px | `h3`, `.lead` |
+| `--text-base` | `1rem` | 16px | body |
+| `--text-sm` | `0.875rem` | 14px | nav, meta, tables, code |
+| `--text-xs` | `0.75rem` | 12px | labels, badges |
+
+The top three steps interpolate with the viewport rather than snapping at a
+breakpoint: a 36px `h1` is right at the top of a desktop column and too loud on a
+phone. The scale still names both endpoints, and the four steps below `--text-lg` do
+not move — body text should be the size the reader asked for.
+
+Leading is `--leading` 1.6 for prose, `--leading-snug` 1.45 for nav, dense lists and
+code, `--leading-tight` 1.25 for headings. Sans needs more air than the serif did;
+1.35 was right for Times and is too tight for this.
+
+Weights are `--weight-normal` 400, `--weight-medium` 500 (buttons), `--weight-semi`
+600 (headings, terms, the current nav item). Bold 700 is not used: at these sizes a
+system sans at 600 is emphatic enough, and 700 shouts.
+
+Headings are set in `--ink`, not a colour of their own, with a top margin larger than
+the bottom so they attach to what follows, and negative tracking that grows with the
+size. A heading directly under a heading closes up. `h1` is left-aligned; centring it
+was the most dated thing on the old page. Body figures are tabular so dates and
+versions line up in a column; code overrides that back to normal.
+
+## Spacing scale
+
+One 4px step, doubled and halved. Every margin and padding in the stylesheet is one of
+these eight values, which is the whole reason the page looks set rather than emitted.
+
+| Token | Value | | Token | Value |
+|---|---|---|---|---|
+| `--space-1` | 4px | | `--space-5` | 24px |
+| `--space-2` | 8px | | `--space-6` | 32px |
+| `--space-3` | 12px | | `--space-7` | 48px |
+| `--space-4` | 16px | | `--space-8` | 64px |
+
+## Colour
+
+Three inks, three grounds, two lines, one accent.
 
 | Token | Value | Use |
 |---|---|---|
-| `--bg` | `#ffffff` | page background |
-| `--fg` | `#000000` | body text |
-| `--fg-soft` | `#333333` | secondary text: dates, regress lines, the copyright box, quotations |
-| `--heading` | `darkslategray` (`#2f4f4f`) | h1, h2, h3, `.highlight`, news titles |
-| `--link` | `#0066bb` | links |
-| `--link-visited` | `#003399` | visited links |
-| `--link-hover` | `darkorange` | hovered links |
-| `--accent` | `#0066dd` | nav item header background |
-| `--accent-fg` | `#f2f2f9` | nav item header text |
-| `--rule` | `#3366cc` | 1px borders that mean something: nav header, status column, copyright box, focus ring, quotation bar |
-| `--panel` | `#f2f2f9` | panel backgrounds: nav body, copyright box, examples, node nav, table headers |
-| `--panel-edge` | `#d9d9e6` | 1px edge on panels, so they hold on a white page without a heavy border |
-| `--border` | `gray` | table cell borders |
-| `--measure` | `66em` | width of the frame; the main column comes out near 50em, about 90 characters |
-| `--nav-width` | `11em` | the nav column |
-| `--gap` | `32px` | gap between the main column and the nav column |
-| `--pad` | `4px` | inner padding of small boxes |
-| `--pad-2` | `8px` | inner padding of nav bodies, examples and table cells |
-| `--leading` | `1.35` | body line height; the nav column is 1.5, examples 1.35 |
+| `--ink` | `#14171c` | body text |
+| `--ink-soft` | `#59616e` | secondary: dates, meta, the notice, `dd` |
+| `--ink-faint` | `#6b7480` | tertiary: nav labels, disabled |
+| `--bg` | `#ffffff` | page |
+| `--bg-subtle` | `#f7f8fa` | panels |
+| `--bg-inset` | `#f2f4f7` | code and things set into the page |
+| `--line` | `#e5e8ec` | the default hairline |
+| `--line-strong` | `#ccd2da` | a border that has to hold its own |
+| `--accent` | `#1b58d0` | links, primary action, focus ring |
+| `--accent-hover` | `#1443a5` | hover and active |
+| `--accent-visited` | `#4a3f9e` | visited links |
+| `--accent-subtle` | `#eff4fe` | tinted ground: notes, quiet hover, selection |
+| `--accent-line` | `#c8d8f8` | the edge of a tinted thing |
 
-The colours are gcc.gnu.org's, unchanged. What is new is the measure, the leading,
-the soft foreground and the panel edge: the four things that separate a page that
-was set from a page that was merely emitted.
+Near-black on white rather than `#000` on `#fff`: pure black on pure white is harsher
+than any printed page, and these are meant to be read for a long time. One accent does
+four jobs, so there is never a question of which blue. The old darkorange hover is
+gone; hover deepens the blue and adds the underline, which is the same information
+without the costume change.
 
-## Type
+Radii are `--radius-sm` 3px, `--radius` 5px, `--radius-lg` 8px — small on purpose. The
+thing being documented is a command line. There are no shadow tokens: this design draws
+with hairlines, and a shadow would be the one soft edge on an otherwise sharp page.
 
-`font-family: serif`, base size 100%, `line-height` `--leading`. Two smaller steps:
-`.small` 90% (dates) and `.smaller` 80% (nav bodies, copyright, regress lines).
-Headings are bold in `--heading` with `line-height` 1.2 and a top margin larger than
-the bottom one so they attach to what follows; `h1` is centred at 1.9em. A heading
-directly under a heading closes up. Dates are set with tabular figures.
+## Layout
 
-Links are not underlined at rest; the colour carries them. On hover and active they
-turn `--link-hover` and underline, and keyboard focus draws a 2px `--rule` ring.
-Those two states are the accessibility budget of this design, and they are not
-optional.
+| Token | Value | Use |
+|---|---|---|
+| `--frame` | `70rem` | main column, gutter and nav column together |
+| `--nav-w` | `13rem` | the nav column |
+| `--gutter` | `--space-6` | between the two |
+| `--measure` | `72ch` | prose line length inside the main column |
 
-Tables are set at 95% with `4px 8px` cells; code in a cell does not wrap. Examples
-are set at 88% with `line-height` 1.4 and a `--panel-edge` border. Inline `code`
-gets the panel background except inside a heading, a definition term or a link,
-where it would only add noise.
+The frame is a flex row of `.main` and `.navcol`, centred. Prose inside `.main` is
+capped at `--measure` so a line stays readable even when a table beside it is wide.
+The nav column is sticky, so it stays in reach down a long manual chapter, and scrolls
+inside itself if it is taller than the window.
+
+Three things happen as the page narrows. Under `60rem` the columns stack, the nav takes
+a top hairline and stops being sticky, and — because six groups in a single list is
+three screens of scrolling on a phone — its groups flow into as many columns as fit.
+Under `30rem` the page takes back the margins it was spending: smaller body padding, a
+shorter gap above the frame, tighter heading rhythm. And where the pointer is coarse,
+nav links and buttons grow their vertical padding, because a finger is not a mouse.
+
+Nothing may scroll the page sideways. Tables and `pre` scroll inside themselves; prose
+breaks a long word rather than widening the column, and code is exempt from that so a
+path is never broken mid-token.
+
+Links are not underlined at rest; the colour carries them, and a page dense with links
+is not a page of stripes. Hover deepens the colour and underlines. Keyboard focus draws
+a 2px `--accent` ring at 2px offset. Those two states are the accessibility budget of
+this design and they are not optional. Anchored headings carry `scroll-margin-top` so a
+deep link does not land with the heading against the top of the window.
 
 ## Components
 
-Each one is a class (or element) in the stylesheet, with the markup it expects.
+Each is a class (or an element) in the stylesheet, with the markup it expects.
+`/style/` shows every one.
+
+### Button
+
+```html
+<p class="btn-row">
+  <a class="btn btn--primary" href="...">Download fontina</a>
+  <a class="btn" href="...">Read the manual</a>
+  <a class="btn btn--quiet" href="...">Source on GitHub</a>
+</p>
+```
+
+One button, three intents (`--primary`, default, `--quiet`), two sizes (default and
+`--sm`). An `<a>` and a `<button>` are drawn identically, so a link that acts like a
+button looks like one without pretending to be a form control. `--primary` marks the
+one action a page is for and there is never more than one on a page; `--quiet` is for
+an action that is available but not being suggested. `aria-disabled="true"` greys it
+and removes pointer events. `.btn-row` lays them out with `--space-2` between and wraps
+on a narrow screen.
+
+### Badge
+
+```html
+<span class="badge">badge</span>
+<span class="badge badge--accent">accent</span>
+```
+
+Labels a thing in place — a state, a licence, a version — at `--text-xs` inside a
+hairline. Two variants, neutral and accent.
+
+### Note
+
+```html
+<div class="note">
+  <span class="label">Note</span>
+  <p>...</p>
+</div>
+```
+
+An aside that must not be missed: a 2px `--accent-line` bar, `--accent-subtle` ground,
+and the optional `.label` above it. Takes any content; the last child loses its margin.
+
+### Panel
+
+```html
+<div class="panel">...</div>
+```
+
+Groups something that is not prose — a summary, a set of figures. `--bg-subtle`, one
+hairline, one radius. The last child loses its margin.
 
 ### Frame
 
-```
+```html
 <div class="frame">
   <main class="main">...</main>
   <nav class="navcol">...</nav>
 </div>
-<div class="copyright">...</div>
+<div class="notice">...</div>
 ```
-
-Two columns: main content and a nav column on the right, separated by `--gap`, at
-most `--measure` wide, centred. The nav column is sticky, so on a long manual
-chapter it stays in reach; it scrolls inside itself if it is taller than the window.
-Under 50em the columns stack, stretched to the full width (a column flex with `align-items: flex-start` would shrink them to their content), and the nav column stops being sticky. The
-copyright box spans both columns.
 
 ### Nav item
 
-```
+```html
 <div class="navitem">
   <div class="navhead">Documentation</div>
   <div class="navbody">
-    <a href="...">Manual</a><br>
-    &middot;&nbsp;<a href="...">Command reference</a><br>
+    <a href="...">Manual</a>
+    <a href="..." class="sub">Command reference</a>
+    <a href="..." aria-current="page">The current page</a>
   </div>
 </div>
 ```
 
-A bold header bar in `--accent` on `--accent-fg` with a 1px `--rule` border, and a
-body in `--panel` at `.smaller` with a `--panel-edge` border on three sides so the
-box reads as one piece. One link per line at `line-height` 1.6. A `&middot;&nbsp;`
-prefix marks a sub-item. This is the whole site navigation; there is no top bar.
+A tracked-out uppercase label, then a rail of links. This replaces the blue title bar
+over a filled box: the same three levels of hierarchy — group, member, current — drawn
+with weight, space and one 2px edge instead of two fills and two borders.
+
+Every item carries a transparent 2px left border, so hover can colour it `--line-strong`
+and the current page `--accent` without the text shifting by a pixel. The current page
+stays a real link marked `aria-current="page"`, which the keyboard can still reach and a
+screen reader announces; it is not `<strong>` text. Links are block-level, so the markup
+needs no `<br>`; a sub-item takes `.sub` and is indented rather than prefixed with a
+middot. This is the whole site navigation; there is no top bar.
 
 ### Columns
 
-```
+```html
 <div class="columns">
-  <section class="col news">...</section>
-  <section class="col status">...</section>
+  <section class="col">...</section>
+  <section class="col">...</section>
 </div>
 ```
 
-Two equal columns for the front page, 16px of inner padding each side of a 1px
-`--rule` between them. Each column starts with an `h2` at 1.2em with no top margin;
-later `h2`s in a column get 1.4em above.
+Two equal columns for the front page, separated by `--space-7` of gutter. The vertical
+rule between them is gone: the gutter is enough separation, and the rule was the last
+piece of table-era furniture on the page.
 
 ### News list
 
-```
+```html
 <dl class="news">
-  <dt><a href="...">Title</a> <span class="date">[2026-09-03]</span></dt>
+  <dt><a href="...">Title</a> <span class="date">2026-09-03</span></dt>
   <dd>One line of detail, or nothing.</dd>
 </dl>
 ```
 
-`dt` bold in `--heading`; the date in `.small` `--fg-soft` tabular figures inside
-square brackets; `dd` indented 3ex with tight vertical margins.
+`dt` at `--weight-medium`; the date in `--ink-faint` at `--text-sm`, tabular, with the
+square brackets dropped — the colour and size already say it is a date. An empty `dd`
+collapses.
 
 ### Status list
 
-```
+```html
 <dl class="status">
-  <dt><span class="version"><a href="...">fontina 0.0.1</a></span> (<a href="...">changes</a>)</dt>
-  <dd>Status: <a href="...">2026-09-03</a> (pre-release). <div class="regress">...</div></dd>
+  <dt><span class="version"><a href="...">fontina 0.1.1</a></span> (<a href="...">changes</a>)</dt>
+  <dd>Released 2026-09-04. <div class="regress">...</div></dd>
 </dl>
 ```
 
-`.version` bold; `.regress` at `.smaller` in `--fg-soft`.
+`.version` semibold; `.regress` at `--text-sm` in `--ink-soft`.
 
 ### Node nav
 
-```
-<p class="node-nav">Next: <a>...</a>, Previous: <a>...</a>, Up: <a>Manual</a></p>
+```html
+<p class="node-nav">Next: <a>...</a> · Previous: <a>...</a> · Up: <a>Manual</a></p>
 ```
 
-Texinfo-style navigation line above and below manual chapters, in a `--panel` box
-with a `--panel-edge` border at `.smaller`. The closing one gets 2em of air above it.
+Texinfo-style navigation above and below a manual chapter. A hairline under it at the
+top of the page, a hairline over it at the foot, and no box.
 
-### Copyright box
+### Notice
 
-```
-<div class="copyright">
+```html
+<div class="notice">
   <address>Where to ask for help.</address>
   <p>Copyright and the verbatim-copying notice.</p>
   <p>Who maintains the pages and when they were last modified.</p>
 </div>
 ```
 
-`--panel` background, 1px `--rule` border, `.smaller` in `--fg-soft`, `6px 8px`
-padding, clears both columns, 2.5em above. The `address` is not italic and its
-paragraphs are spaced like the rest.
+The GNU copyright box, unboxed: a rule across the frame and then the small print in
+`--ink-soft`. The `address` is not italic.
 
-### Padded table
+### Table
 
+```html
+<table>...</table>
 ```
-<table>
-```
 
-The table style for reference material: `1px solid --border` on every cell, `4px
-8px` padding, header row in `--panel`, 95% size. Every table in the manual is one
-of these; the stylesheet applies it to all tables so Markdown gets it for free.
+Rules between rows, not around cells — the data is the grid, and a border on every cell
+was drawing the same information twice. The header row is semibold `--ink-soft` over a
+`--line-strong` rule; the last row drops its rule. Code in a cell does not wrap.
 
-### Example
+Every table carries its own horizontal scroll, as `display: block` with
+`width: max-content` and `max-width: 100%`: a narrow table stays its own size, a wide
+one scrolls inside the column. That is not decoration. Markdown emits a bare `<table>`
+and cannot be handed a wrapper, so the nine tables in the manual previously had nothing
+stopping them pushing the whole page sideways on a phone. There is no `.wide` helper
+any more; it existed only to do this by hand, and by hand it was never applied to the
+Markdown that needed it most.
 
-```
+### Code
+
+```html
 <pre>...</pre>
 ```
 
-`--panel` background, `--panel-edge` border, `6px 8px` padding, horizontal scroll,
-88% size, tab width 4. Inline `code` gets the same background.
+`--bg-inset` inside a hairline at `--radius`, `--text-sm`, `--leading-snug`, tab width
+4, its own horizontal scroll. Inline `code` takes the same ground and a small radius,
+except inside a heading, a term or a link, where the tint is only noise. `kbd` is drawn
+as a key.
 
-### Highlight and helpers
+The manual is not syntax-coloured, and that is a finding rather than a preference:
+all 110 of its fenced blocks are terminal transcripts, none carries a language, and
+Shiki's `console` grammar does not separate the prompt from the output under this
+theme. It therefore tokenises nothing and contributes only an inline background,
+which the stylesheet overrides back to the palette.
 
-`.highlight` bold in `--heading`. `.small`, `.smaller`, `.center`, `.right`,
-`.no-margin-top`. Nothing else.
+`pre.term` does the one distinction a transcript actually has: the command in
+`--accent`, marked up as `<span class="cmd">`, against the output in `--ink-soft`.
+It is applied by hand where the markup is ours. Applying it to the manual's 110
+blocks would need either `@astrojs/markdown-remark` as a dependency or a build-time
+pass over the emitted HTML; neither is done here.
+
+### Helpers
+
+`.lead` (an opening paragraph at `--text-md` in `--ink-soft`), `.label` (the uppercase
+micro label), `.small`, `.smaller`, `.soft`, `.faint`, `.highlight`, and
+`.skip`, the skip link, clipped until it is tabbed to. Nothing else.
 
 ## Print
 
-The nav column and node navs are dropped, the frame goes full width, links keep
-their text colour, and external links print their URL after the text.
+The nav column, node navs and button rows are dropped, the frame goes full width,
+links keep their text colour, panels and code lose their ground, and external links
+print their URL after the text.
