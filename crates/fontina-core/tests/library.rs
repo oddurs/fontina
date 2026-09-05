@@ -1907,6 +1907,210 @@ fn schemas_cover_the_new_types() {
     }
 }
 
+/// A sandbox with a canonical path, because scan canonicalises its roots.
+fn watch_dir(name: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("fontina-watch-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::canonicalize(&dir).unwrap()
+}
+
+/// An atomic save leaves the font indexed once, and the temporary file nowhere.
+///
+/// Font tools and editors do not write in place: they write `.Amiri.ttf.tmp` and rename
+/// it over the target, so one save arrives as two paths, one of which no longer exists by
+/// the time the batch is applied. Watching a directory people actually work in means
+/// this is the common case, not an edge one.
+#[test]
+fn watch_handles_an_atomic_save() {
+    use std::collections::BTreeSet;
+    let dir = watch_dir("atomic");
+    let mut index = Index::open_in_memory().unwrap();
+    let roots = vec![dir.clone()];
+    let opts = fontina_core::watch::WatchOptions::default();
+
+    let tmp = dir.join(".Amiri-Regular.ttf.tmp");
+    let target = dir.join("Amiri-Regular.ttf");
+    std::fs::copy(fixtures().join("Amiri-Regular.ttf"), &tmp).unwrap();
+    std::fs::rename(&tmp, &target).unwrap();
+
+    let ev = fontina_core::watch::apply(
+        &mut index,
+        &roots,
+        &opts,
+        BTreeSet::from([tmp.clone(), target.clone()]),
+    )
+    .unwrap();
+    assert_eq!(ev.report.parsed, 1, "{ev:?}");
+    assert_eq!(index.stats().unwrap().faces, 1);
+    let paths: Vec<String> = index
+        .list(&FaceFilter::default())
+        .unwrap()
+        .into_iter()
+        .map(|f| f.path)
+        .collect();
+    assert_eq!(paths, [target.to_string_lossy()], "only the saved name");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Saving over a font that is already indexed replaces what the index holds.
+#[test]
+fn watch_sees_a_font_replaced_in_place() {
+    use std::collections::BTreeSet;
+    let dir = watch_dir("replace");
+    let path = dir.join("face.ttf");
+    std::fs::copy(fixtures().join("Amiri-Regular.ttf"), &path).unwrap();
+    let mut index = Index::open_in_memory().unwrap();
+    fontina_core::scan::scan(
+        &mut index,
+        std::slice::from_ref(&dir),
+        &ScanOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        index.list(&FaceFilter::default()).unwrap()[0].family,
+        "Amiri"
+    );
+
+    // A different font under the same name, as a tool overwriting its output would.
+    std::fs::copy(fixtures().join("SourceSerif4-Regular.otf"), &path).unwrap();
+    let ev = fontina_core::watch::apply(
+        &mut index,
+        std::slice::from_ref(&dir),
+        &fontina_core::watch::WatchOptions::default(),
+        BTreeSet::from([path.clone()]),
+    )
+    .unwrap();
+    assert_eq!(ev.report.parsed, 1, "{ev:?}");
+    let faces = index.list(&FaceFilter::default()).unwrap();
+    assert_eq!(faces.len(), 1, "one file, one face");
+    assert_eq!(
+        faces[0].family, "Source Serif 4",
+        "the index followed the file"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A renamed directory takes its fonts with it and brings them back under the new name.
+#[test]
+fn watch_follows_a_renamed_directory() {
+    use std::collections::BTreeSet;
+    let dir = watch_dir("rename-dir");
+    let before = dir.join("Inter v4.0");
+    std::fs::create_dir_all(&before).unwrap();
+    std::fs::copy(fixtures().join("Amiri-Regular.ttf"), before.join("a.ttf")).unwrap();
+    let mut index = Index::open_in_memory().unwrap();
+    fontina_core::scan::scan(
+        &mut index,
+        std::slice::from_ref(&dir),
+        &ScanOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(index.stats().unwrap().faces, 1);
+
+    let after = dir.join("Inter v4.1");
+    std::fs::rename(&before, &after).unwrap();
+    let ev = fontina_core::watch::apply(
+        &mut index,
+        std::slice::from_ref(&dir),
+        &fontina_core::watch::WatchOptions::default(),
+        BTreeSet::from([before.clone(), after.clone()]),
+    )
+    .unwrap();
+    assert!(ev.report.removed >= 1, "the old name was dropped: {ev:?}");
+    let paths: Vec<String> = index
+        .list(&FaceFilter::default())
+        .unwrap()
+        .into_iter()
+        .map(|f| f.path)
+        .collect();
+    assert_eq!(paths.len(), 1, "one font, under one name: {paths:?}");
+    assert!(paths[0].contains("v4.1"), "under the new name: {paths:?}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A bulk copy arrives as one batch of many paths, and every one of them is indexed.
+#[test]
+fn watch_takes_a_whole_batch_at_once() {
+    use std::collections::BTreeSet;
+    let dir = watch_dir("bulk");
+    let mut touched = BTreeSet::new();
+    for i in 0..200 {
+        let p = dir.join(format!("f{i}.woff2"));
+        std::fs::copy(fixtures().join("inter-latin-400-normal.woff2"), &p).unwrap();
+        touched.insert(p);
+    }
+    let mut index = Index::open_in_memory().unwrap();
+    let ev = fontina_core::watch::apply(
+        &mut index,
+        std::slice::from_ref(&dir),
+        &fontina_core::watch::WatchOptions::default(),
+        touched,
+    )
+    .unwrap();
+    assert_eq!(ev.report.parsed, 200, "{:?}", ev.report);
+    assert_eq!(index.stats().unwrap().faces, 200);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A directory that becomes a file, and a file that becomes a directory.
+///
+/// Nothing about a path's name says which it is, and both happen when someone unpacks an
+/// archive over an existing folder.
+#[test]
+fn watch_survives_a_path_changing_kind() {
+    use std::collections::BTreeSet;
+    let dir = watch_dir("kind");
+    let path = dir.join("thing.ttf");
+    std::fs::copy(fixtures().join("Amiri-Regular.ttf"), &path).unwrap();
+    let mut index = Index::open_in_memory().unwrap();
+    let opts = fontina_core::watch::WatchOptions::default();
+    fontina_core::watch::apply(
+        &mut index,
+        std::slice::from_ref(&dir),
+        &opts,
+        BTreeSet::from([path.clone()]),
+    )
+    .unwrap();
+    assert_eq!(index.stats().unwrap().faces, 1);
+
+    // The font becomes a directory of the same name, holding a font.
+    std::fs::remove_file(&path).unwrap();
+    std::fs::create_dir_all(&path).unwrap();
+    std::fs::copy(
+        fixtures().join("SourceSerif4-Regular.otf"),
+        path.join("inside.otf"),
+    )
+    .unwrap();
+    let ev = fontina_core::watch::apply(
+        &mut index,
+        std::slice::from_ref(&dir),
+        &opts,
+        BTreeSet::from([path.clone()]),
+    )
+    .unwrap();
+    assert_eq!(index.stats().unwrap().faces, 1, "{ev:?}");
+    assert!(
+        index.list(&FaceFilter::default()).unwrap()[0]
+            .path
+            .ends_with("inside.otf"),
+        "the directory's contents replaced the file that was there"
+    );
+
+    // And back again.
+    std::fs::remove_dir_all(&path).unwrap();
+    std::fs::copy(fixtures().join("Amiri-Regular.ttf"), &path).unwrap();
+    let ev = fontina_core::watch::apply(
+        &mut index,
+        std::slice::from_ref(&dir),
+        &opts,
+        BTreeSet::from([path.clone()]),
+    )
+    .unwrap();
+    assert_eq!(index.stats().unwrap().faces, 1, "{ev:?}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn watch_applies_file_and_directory_changes() {
     use std::collections::BTreeSet;

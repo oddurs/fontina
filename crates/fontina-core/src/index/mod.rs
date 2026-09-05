@@ -450,6 +450,18 @@ impl Index {
         )?)
     }
 
+    /// Remove every file *inside* `dir`, leaving a row for `dir` itself alone.
+    ///
+    /// For a path that used to be a directory and is now a font: the fonts that were in
+    /// it are gone, but the row for the path itself is about to be rewritten by a scan,
+    /// and deleting it here would cascade away the tags and collections that carry over.
+    pub fn remove_inside(&mut self, dir: &str) -> Result<usize> {
+        Ok(self.conn.execute(
+            "DELETE FROM files WHERE path LIKE ?1 ESCAPE '\\'",
+            params![like_prefix(dir)],
+        )?)
+    }
+
     fn row_to_summary(r: &rusqlite::Row) -> rusqlite::Result<FaceSummary> {
         /// A span, or `None` where the two ends are the same number and there is nothing
         /// to say.
@@ -1116,11 +1128,18 @@ fn freedom_clause(want: Freedom) -> String {
     }
 }
 
-/// Whether a path is really gone, as opposed to merely unreadable. A dangling symlink
-/// counts as gone: `metadata` follows the link, and the font it named is what matters.
+/// Whether the font this row names is gone, as opposed to merely unreadable.
+///
+/// A dangling symlink counts as gone: `metadata` follows the link, and the font it named
+/// is what matters. So does a path that is no longer a regular file — unpacking an
+/// archive can leave a directory where a font used to be, and the face it held is as gone
+/// as if the file had been deleted. Anything else, including a permission error, is
+/// unreadable rather than absent and the row stays.
 fn is_gone(path: &str) -> bool {
-    matches!(std::fs::metadata(Path::new(path)),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound)
+    match std::fs::metadata(Path::new(path)) {
+        Ok(m) => !m.is_file(),
+        Err(e) => e.kind() == std::io::ErrorKind::NotFound,
+    }
 }
 
 fn like_prefix(root: &str) -> String {

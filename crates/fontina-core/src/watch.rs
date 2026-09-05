@@ -156,6 +156,17 @@ pub fn apply(
         }
         event.paths.push(g.to_string_lossy().into_owned());
     }
+    // A path that is a font now may have been a directory of fonts a moment ago: an
+    // archive unpacked over a folder does exactly that. Those rows name files inside
+    // something that is no longer a directory, and nothing else will ever prune them,
+    // because pruning walks roots and this is not one. The row for the path itself is
+    // left alone: the scan below rewrites it, carrying its tags across.
+    for p in &present {
+        let inside = index.remove_inside(&p.to_string_lossy())?;
+        if inside > 0 {
+            event.report.removed += inside;
+        }
+    }
     if !present.is_empty() {
         let r = crate::scan::scan(
             index,
