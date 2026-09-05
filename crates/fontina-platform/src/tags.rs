@@ -159,6 +159,10 @@ mod xattr {
     /// The attribute's bytes, or `None` if the file does not have it.
     pub fn get(file: &Path, name: &str) -> Result<Option<Vec<u8>>> {
         let path = cpath(file)?;
+        #[expect(
+            clippy::expect_used,
+            reason = "every caller passes a literal xattr name"
+        )]
         let name = CString::new(name).expect("attribute names are literals without NUL");
         // Ask for the size, then for the value. Another process can grow it in between,
         // so this reads until the buffer it asked for was big enough.
@@ -197,6 +201,10 @@ mod xattr {
 
     pub fn set(file: &Path, name: &str, value: &[u8]) -> Result<()> {
         let path = cpath(file)?;
+        #[expect(
+            clippy::expect_used,
+            reason = "every caller passes a literal xattr name"
+        )]
         let name = CString::new(name).expect("attribute names are literals without NUL");
         let rc = unsafe {
             set_raw(
@@ -216,6 +224,10 @@ mod xattr {
     /// Remove the attribute. A file that does not have it is already how we want it.
     pub fn remove(file: &Path, name: &str) -> Result<()> {
         let path = cpath(file)?;
+        #[expect(
+            clippy::expect_used,
+            reason = "every caller passes a literal xattr name"
+        )]
         let name = CString::new(name).expect("attribute names are literals without NUL");
         if unsafe { remove_raw(path.as_ptr(), name.as_ptr()) } == 0 {
             return Ok(());

@@ -68,6 +68,71 @@ the required checks attach to the release PR. Merge it like any other PR. Mergin
 builds the archives (with completions and man pages), `.deb` and `.rpm` packages,
 checksums, provenance attestations and the SBOM. Nothing is published by hand.
 
+## Code
+
+Anything a tool can check is checked by a tool. What follows is the part that is left.
+
+### What the compiler enforces
+
+Each crate root declares the lints that hold it to its own contract, so the rule and the
+code that must obey it are in the same file. `cargo clippy --workspace --all-targets --
+-D warnings` is the gate, and CI runs exactly that.
+
+- **`fontina-core`** forbids `unsafe_code` — it parses hostile input and has never needed
+  a raw pointer to do it — and denies `unwrap_used`, `expect_used`, `panic`, `todo`,
+  `unimplemented` and `dbg_macro`, which are the ways "errors are values" gets broken by
+  accident. It also denies `print_stdout` and `print_stderr`: a library that writes to a
+  terminal cannot be embedded by anything.
+- **`fontina-platform`** allows `unsafe_code`, because it is the FFI boundary and
+  CoreFoundation and the Win32 API are not reachable without it. Every other rule holds.
+- **`fontina-cli`** keeps the panic rules and drops the printing ones, printing being
+  what it is for.
+
+Tests are exempt from the panic lints. A test that cannot `unwrap` is a test written
+around the lint rather than around its subject.
+
+### Exemptions
+
+Use `#[expect(lint, reason = "…")]`, never `#[allow]`. `#[expect]` warns when the lint
+stops firing, so an exemption that is no longer needed shows up as a warning instead of
+sitting there as paperwork nobody rereads.
+
+The reason names the invariant, and the invariant has to be real. Every exemption in the
+tree today points at a guard you can go and read: `split()` returned `Some` only when it
+found more than one part; `io::Write` on a `Vec<u8>` cannot fail; `--protocol png`
+without `--output` already bailed earlier in the function. If you cannot name the guard,
+the code should return an error rather than carry an exemption.
+
+### Comments
+
+Sixteen lines in every hundred are comments, and they earn it by saying why.
+
+- A comment says **why**, not what. The code already says what it does; if that is
+  unclear, the fix is the code.
+- Where a decision had a plausible alternative, name it and say why it lost. A reader
+  who does not know what was rejected will re-propose it.
+- Every module opens with `//!` saying what it is for, and where the module encodes a
+  judgement rather than a fact, it says so — see `typography.rs`, which states outright
+  that all of it is opinion and has to be the same opinion in every client.
+- A doc comment on a public item says where the value comes from, not just what it is:
+  "weight on the CSS 1–1000 scale (from `OS/2.usWeightClass` or the `wght` default)"
+  answers the question the reader is about to ask.
+
+### Naming
+
+- Types are nouns: `FaceMetadata`, `ScriptCoverage`, `EmbeddingRights`. Modules are
+  singular nouns for the subject they cover: `model`, `parse`, `index`, `freedom`.
+- Functions are verbs, or the noun they produce: `collect_candidates`, `parse_paths`,
+  `feature_label`. Predicates begin `is_` or `has_`.
+- Conversions read `from_`: `Container::detect`, `EmbeddingRights::from_fs_type`,
+  `coverage_from_codepoints`.
+- Spell it out in anything public. `codepoints`, not `cps`; `subfamily`, not `subfam`. A
+  short local binding inside a ten-line function is fine, because its whole life is
+  visible at once.
+- Where a name comes from a specification, keep the specification's spelling, even when
+  it is ugly: `fs_type`, `usWeightClass`, `wght`, `GSUB`. Renaming it to something nicer
+  costs every reader the lookup.
+
 ## Testing
 
 Four layers, cheapest first.

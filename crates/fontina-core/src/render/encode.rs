@@ -96,8 +96,12 @@ pub fn png(bitmap: &Bitmap, fg: Rgb, bg: Option<Rgb>) -> Vec<u8> {
         }
     }
     let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
-    z.write_all(&raw).expect("in-memory write");
-    let idat = z.finish().expect("in-memory finish");
+    // The sink is a Vec<u8>; io::Write on one cannot fail.
+    #[expect(clippy::expect_used, reason = "io::Write on a Vec<u8> cannot fail")]
+    let idat = {
+        z.write_all(&raw).expect("in-memory write");
+        z.finish().expect("in-memory finish")
+    };
 
     let mut out = Vec::with_capacity(idat.len() + 64);
     out.extend_from_slice(b"\x89PNG\r\n\x1a\n");

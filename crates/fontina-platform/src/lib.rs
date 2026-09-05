@@ -29,6 +29,21 @@
 //! Deleting fontina leaves everything reversible: links and copies are ordinary files in
 //! the per-user font directory, registrations are the OS's own per-user mechanisms.
 
+// See the note in fontina-core's lib.rs. `unsafe_code` is allowed here and nowhere
+// else: this crate is the FFI boundary, and CoreFoundation and the Win32 API are not
+// reachable without it. Everything else holds.
+#![deny(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::todo,
+    clippy::unimplemented,
+    clippy::dbg_macro,
+    clippy::print_stdout,
+    clippy::print_stderr
+)]
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
+
 pub mod agent;
 pub mod open;
 pub mod tags;
