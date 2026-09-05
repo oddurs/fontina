@@ -2297,4 +2297,207 @@ mod tests {
         app.controls.adjust(-1);
         assert_ne!(app.render_options("Ag".into(), 80), before);
     }
+
+    // ----- frames -----
+    //
+    // ratatui's `TestBackend` draws into a buffer instead of a terminal, so the frames
+    // a reader meets can be looked at. Two things in a frame are not the browser's
+    // doing and would make a snapshot say more about this machine than about the code:
+    // the absolute path of the fixtures, which the details pane prints in full, and the
+    // shaped preview, whose pixels belong to the rasteriser and would move under a
+    // skrifa release. Both are pinned for the snapshots, and the preview has its own
+    // test below.
+
+    /// The browser drawn into an in-memory terminal, as the text a reader would see.
+    fn frame(app: &mut App, width: u16, height: u16) -> String {
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, height)).unwrap();
+        terminal.draw(|f| app.draw(f)).unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        (0..buffer.area.height)
+            .map(|y| {
+                (0..buffer.area.width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>()
+                    .trim_end()
+                    .to_string()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// The same frame, made to depend on nothing but the browser: the sample text is a
+    /// single space, so the preview is blank rather than a picture of whichever
+    /// rasteriser is installed, and the file of the face on show is named relative to
+    /// the crate rather than by the absolute path it was scanned under. The relative
+    /// name still opens — the preview reads the file — because cargo runs a test with
+    /// the package root as its working directory.
+    fn stable_frame(app: &mut App, width: u16, height: u16) -> String {
+        app.preview_text = Some(" ".into());
+        if let Some(face) = app.detail.as_mut() {
+            let name = Path::new(&face.file.path)
+                .file_name()
+                .expect("a face is a file")
+                .to_string_lossy()
+                .into_owned();
+            face.file.path = format!("../../fixtures/{name}");
+        }
+        frame(app, width, height)
+    }
+
+    /// The status line on its own, which is the row that tells a reader what the rest
+    /// of the screen is.
+    fn status_line(app: &App, width: u16) -> String {
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, 1)).unwrap();
+        terminal.draw(|f| app.draw_status(f, f.area())).unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        (0..buffer.area.width)
+            .map(|x| buffer[(x, 0)].symbol())
+            .collect::<String>()
+            .trim_end()
+            .to_string()
+    }
+
+    /// Where a substring starts, counted in columns rather than bytes: the frame is
+    /// full of box drawing, and one of those is three bytes wide and one column.
+    fn column_of(row: &str, needle: &str) -> Option<usize> {
+        row.find(needle).map(|b| row[..b].chars().count())
+    }
+
+    #[test]
+    fn the_browser_opens_on_the_family_list() {
+        let mut app = app();
+        let drawn = stable_frame(&mut app, 120, 36);
+        assert!(drawn.contains("5 families"), "{drawn}");
+        assert!(
+            drawn.lines().next_back().unwrap().starts_with(" / search"),
+            "the key line is the last row on the screen"
+        );
+        insta::assert_snapshot!(drawn);
+    }
+
+    #[test]
+    fn opening_a_family_lists_its_faces_and_says_so_in_the_command() {
+        let mut app = app();
+        select_family(&mut app, "Inter");
+        app.open_family().unwrap();
+        assert_eq!(app.open_family.as_deref(), Some("Inter"));
+        insta::assert_snapshot!(stable_frame(&mut app, 120, 36));
+    }
+
+    #[test]
+    fn the_help_overlay_sits_over_the_browser() {
+        let mut app = app();
+        app.help = true;
+        let drawn = stable_frame(&mut app, 120, 36);
+        assert!(
+            drawn.contains("any key to close"),
+            "the overlay does not say how to leave it"
+        );
+        insta::assert_snapshot!(drawn);
+    }
+
+    #[test]
+    fn the_status_line_says_what_the_screen_is() {
+        let mut app = app();
+        let mut rows = vec![status_line(&app, 100)];
+        assert_eq!(rows[0].trim(), "$ fontina families");
+
+        // A filter is a flag, and the line is a command that can be pasted.
+        app.selected.insert(Facet::Variable, "variable".into());
+        app.selected.insert(Facet::Vendor, "ATLR".into());
+        app.reload().unwrap();
+        rows.push(status_line(&app, 100));
+
+        // While something is being typed, the line is the prompt instead.
+        app.start_input(InputKind::Search, "grot".into());
+        rows.push(status_line(&app, 100));
+
+        // And after an action, what the action did, until the next reload.
+        app.input = None;
+        app.status = "tagged 1 face as favourite".into();
+        rows.push(status_line(&app, 100));
+
+        insta::assert_snapshot!(rows.join("\n"));
+    }
+
+    #[test]
+    fn the_preview_is_shaped_ink_and_it_stays_inside_the_details_pane() {
+        let mut app = app();
+        let drawn = frame(&mut app, 120, 40);
+        let rows: Vec<&str> = drawn.lines().collect();
+        let pane = column_of(rows[0], "┌ Details").expect("the details pane is titled");
+        assert!(
+            drawn.contains('▀'),
+            "the details pane drew no preview at all:\n{drawn}"
+        );
+        for (y, row) in rows.iter().enumerate() {
+            if let Some(x) = column_of(row, "▀") {
+                assert!(
+                    x > pane,
+                    "row {y} has preview ink at column {x}, outside the details pane at {pane}"
+                );
+            }
+        }
+        // And it is the sample text that puts it there, which is what lets the frames
+        // above be snapshotted without a rasteriser in them.
+        app.preview_text = Some(" ".into());
+        assert!(
+            !frame(&mut app, 120, 40).contains('▀'),
+            "a blank sample text still drew ink"
+        );
+    }
+
+    /// A defect this change reports rather than fixes.
+    ///
+    /// The preview is rendered at a fixed size and then clipped to the rows the pane
+    /// has, from the top. A face with many features gives its controls the room, and
+    /// what is left of the details pane is a few rows — into which the preview puts the
+    /// first few pixel rows of the rendering. Those rows are the font's ascent, which
+    /// is empty, so a reader on a 36-row terminal sees a blank space where the type
+    /// should be. Fitting the rendering to the rows it has, or clipping around the
+    /// baseline rather than the top, would fix it; when it is fixed this is the test
+    /// that should change.
+    #[test]
+    fn a_details_pane_squeezed_by_controls_shows_a_blank_preview() {
+        let mut app = app();
+        select_family(&mut app, "Source Serif");
+        assert!(
+            app.controls.len() > 10,
+            "the face was picked because its features crowd the pane"
+        );
+        assert!(
+            !frame(&mut app, 120, 36).contains('▀'),
+            "the preview has started drawing on a short pane, which is the fix"
+        );
+        assert!(
+            frame(&mut app, 120, 44).contains('▀'),
+            "the same face on a taller terminal does draw"
+        );
+    }
+
+    #[test]
+    fn a_standard_eighty_column_terminal_still_shows_every_pane() {
+        let mut app = app();
+        let drawn = stable_frame(&mut app, 80, 24);
+        assert_eq!(drawn.lines().count(), 24, "one row per terminal line");
+        for (n, row) in drawn.lines().enumerate() {
+            assert!(
+                row.chars().count() <= 80,
+                "row {n} is {} columns wide on an 80-column terminal",
+                row.chars().count()
+            );
+        }
+        assert!(
+            drawn.contains("$ fontina families"),
+            "the status line still says what the screen is"
+        );
+        // The snapshot below shows a second defect this change reports rather than
+        // fixes: the details pane sizes its text block by dividing the width of each
+        // line by the width of the pane, which is a row short whenever wrapping breaks
+        // a line at a word instead, and the tail of the file name — `.ttf` — is cut off
+        // the bottom of the block.
+        insta::assert_snapshot!(drawn);
+    }
 }

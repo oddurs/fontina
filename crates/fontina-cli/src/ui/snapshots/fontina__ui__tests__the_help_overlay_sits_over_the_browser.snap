@@ -1,0 +1,40 @@
+---
+source: crates/fontina-cli/src/ui/mod.rs
+expression: drawn
+---
+┌ 6 faces ───────────────┐┌ 5 families ──────────────────────────────────┐┌ Details ───────────────────────────────────┐
+│Weight                  ││Amiri                                   1     ││Amiri Regular                               │
+│  400 Regular         5 ││Bricolage Grotesque                     1 V   ││style     weight 400 · width 100% · normal  │
+│  800 ExtraBold       1 ││Inter                                   2     ││glyphs    6710 · 1699 codepoints · Arab Latn│
+│Width                   ││Nabla                                   1 VC  ││Zyyy Zinh                                   │
+│  100% Normal         6 ││Source Serif 4                          1     ││features  25: ccmp dnom fina init liga locl │
+│Style         ┌────────────────────────────────────────────────────────────────────────────────────────┐              │
+│  upright     │fontina ui                                                                              │              │
+│Variable      │                                                                                        │              │
+│  variable    │ Move        j/k ↑/↓ PgUp/PgDn g/G        Tab cycles facets, list, controls             │              │
+│Color         │ Filter      / type to search  Esc clears   Enter/Space toggles a facet   x clears all  │              │
+│  color       │ Families    Enter opens a family, Backspace/Esc closes it                              │-Regular.ttf  │
+│Script        │ Organise    t tag the selection   c add it to a collection                             │              │
+│  Latn        │ Activate    a for the user, A until logout, i install a copy, d deactivate, u uninstall│              │
+│  Zinh        │ Preview     e sets the sample text   + / - change the size                             │              │
+│  Zyyy        │ Controls    h/l ←/→ move an axis (H/L by ten)   Space toggles a feature                │s             │
+│  Grek        │             n/p step through named instances   0 resets everything                     │              │
+│  Arab        │ Glyphs      m opens the glyph map: h/l pick a block, j/k scroll, / finds a             │              │
+│  Cyrl        │             codepoint (U+0041, 0x41, 41) or a block by name                            │              │
+│License       │ Sheets      w waterfalls the face down the size ladder; C compares every face          │              │
+│  OFL-1.1     │             the selection stands for. j/k scroll, +/- resize a comparison              │              │
+│Freedom       │ Index       R rescans every source (fontina scan --prune)                              │              │
+│  free        │ Quit        q                                                                          │              │
+│Activation    │                                                                                        │              │
+│  none        │ The status line shows the CLI command for what you see. Everything here is a command.  │              │
+│Vendor        │                                                                                        │              │
+│  RSMS        │ any key to close                                                                       │              │
+│  ADBO        │                                                                                        │              │
+│  ALIF        │                                                                                        │              │
+│  ATLR        └────────────────────────────────────────────────────────────────────────────────────────┘              │
+│  TYPT                1 ││                                              ││                                            │
+│Container               ││                                              ││                                            │
+│  ttf                 3 ││                                              ││                                            │
+└────────────────────────┘└──────────────────────────────────────────────┘└────────────────────────────────────────────┘
+ $ fontina families
+ / search  ⇥ facets  ⏎ open  ⌫ back  t tag  c collection  a/A activate  d deactivate  i install  u uninstall  e text  +/

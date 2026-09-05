@@ -1,0 +1,40 @@
+---
+source: crates/fontina-cli/src/ui/mod.rs
+expression: drawn
+---
+┌ 6 faces ───────────────┐┌ 5 families ──────────────────────────────────┐┌ Details ───────────────────────────────────┐
+│Weight                  ││Amiri                                   1     ││Amiri Regular                               │
+│  400 Regular         5 ││Bricolage Grotesque                     1 V   ││style     weight 400 · width 100% · normal  │
+│  800 ExtraBold       1 ││Inter                                   2     ││glyphs    6710 · 1699 codepoints · Arab Latn│
+│Width                   ││Nabla                                   1 VC  ││Zyyy Zinh                                   │
+│  100% Normal         6 ││Source Serif 4                          1     ││features  25: ccmp dnom fina init liga locl │
+│Style                   ││                                              ││mark medi numr pnum rlig rtlm               │
+│  upright             6 ││                                              ││license   OFL-1.1                           │
+│Variable                ││                                              ││freedom   free                              │
+│  variable            2 ││                                              ││designer  Khaled Hosny                      │
+│Color                   ││                                              ││state     not active                        │
+│  color               1 ││                                              ││file      ../../fixtures/Amiri-Regular.ttf  │
+│Script                  ││                                              ││                                            │
+│  Latn                6 ││                                              ││features                                    │
+│  Zinh                6 ││                                              ││  liga [ ] Standard ligatures               │
+│  Zyyy                6 ││                                              ││  pnum [ ] Proportional figures             │
+│  Grek                2 ││                                              ││  ss01 [ ] Stylistic set 1                  │
+│  Arab                1 ││                                              ││  ss02 [ ] Stylistic set 2                  │
+│  Cyrl                1 ││                                              ││  ss03 [ ] Stylistic set 3                  │
+│License                 ││                                              ││  ss04 [ ] Stylistic set 4                  │
+│  OFL-1.1             6 ││                                              ││  ss05 [ ] Stylistic set 5                  │
+│Freedom                 ││                                              ││  ss06 [ ] Stylistic set 6                  │
+│  free                6 ││                                              ││  ss07 [ ] Stylistic set 7                  │
+│Activation              ││                                              ││  ss08 [ ] Stylistic set 8                  │
+│  none                6 ││                                              ││                                            │
+│Vendor                  ││                                              ││                                            │
+│  RSMS                2 ││                                              ││                                            │
+│  ADBO                1 ││                                              ││                                            │
+│  ALIF                1 ││                                              ││                                            │
+│  ATLR                1 ││                                              ││                                            │
+│  TYPT                1 ││                                              ││                                            │
+│Container               ││                                              ││                                            │
+│  ttf                 3 ││                                              ││                                            │
+└────────────────────────┘└──────────────────────────────────────────────┘└────────────────────────────────────────────┘
+ $ fontina families
+ / search  ⇥ facets  ⏎ open  ⌫ back  t tag  c collection  a/A activate  d deactivate  i install  u uninstall  e text  +/
