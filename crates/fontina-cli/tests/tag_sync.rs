@@ -209,7 +209,7 @@ fn the_side_you_name_wins_including_its_deletions() {
 #[cfg(unix)]
 #[test]
 fn a_tag_the_files_cannot_hold_stays_in_the_index_and_is_named() {
-    let (dir, db) = library("refused");
+    let (dir, db) = library("cannot-hold");
     run(&db, &["tag", "add", "fine", "1"]);
     run(&db, &["tag", "add", "not,fine", "1"]);
     let report: Value =
@@ -284,6 +284,129 @@ fn a_font_the_operating_system_ships_is_never_written_to() {
             .iter()
             .any(|s| s["reason"].as_str().unwrap().contains("does not write to")),
         "{report}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ----- what a review of this command found -----------------------------------------
+
+/// A tag that differs only in case is one tag, not an addition and a removal.
+///
+/// The index folds tag names, so `Work` and `work` are the same row there. Comparing the
+/// two sides byte-wise made a difference of case look like both an add and a remove: the
+/// add resolved to the row that already existed and did nothing, the remove then deleted
+/// it, and the run after that put it back. The report said "added" while the tag went
+/// away.
+#[cfg(unix)]
+#[test]
+fn a_difference_of_case_is_not_a_difference() {
+    let (dir, db) = library("case");
+    run(&db, &["tag", "add", "work", "1"]);
+    run(&db, &["tag", "sync", "--to-files", "1"]);
+
+    // Something else rewrites the file's tag with a capital, as Finder would.
+    let font = dir.join("fonts/Amiri-Regular.ttf");
+    fontina_platform::tags::write(&font, &["Work".into()]).unwrap();
+
+    let before = indexed(&db);
+    run(&db, &["tag", "sync", "--from-files", "1"]);
+    let after = indexed(&db);
+    assert_eq!(before, after, "a change of case is not a change");
+
+    // And it stays that way: the defect oscillated, so one more round is the test.
+    run(&db, &["tag", "sync", "--from-files", "1"]);
+    assert_eq!(indexed(&db), after, "and the run after that");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A tag the file store cannot hold survives a sync in both directions.
+///
+/// The index accepts a comma; `user.xdg.tags` separates on one and a Finder tag uses a
+/// newline for its colour. Such a tag is not the file's to hold, and it was being deleted
+/// from the index by `--from-files` with nothing printed, and dropped from the file by
+/// `--to-files` while the report said it had been kept.
+#[cfg(unix)]
+#[test]
+fn a_tag_the_file_cannot_hold_is_kept_rather_than_lost() {
+    let (dir, db) = library("kept-both-ways");
+    run(&db, &["tag", "add", "not,fine", "1"]);
+    run(&db, &["tag", "add", "fine", "1"]);
+
+    let out = run(&db, &["tag", "sync", "--to-files", "1", "--json"]);
+    let report: Value = serde_json::from_str(&out).unwrap();
+    let skips = report["skipped"].as_array().unwrap();
+    assert!(
+        skips
+            .iter()
+            .any(|s| s["reason"].as_str().unwrap().contains("not,fine")),
+        "the tag it cannot write is named: {out}"
+    );
+    let has = |t: &str| {
+        indexed(&db)
+            .iter()
+            .any(|(_, tags)| tags.iter().any(|x| x == t))
+    };
+    assert!(has("not,fine"), "kept in the index, as the skip line says");
+
+    // Reading back does not delete it either.
+    run(&db, &["tag", "sync", "--from-files", "1"]);
+    assert!(
+        has("not,fine"),
+        "--from-files must not delete what it cannot read back"
+    );
+    assert!(has("fine"), "and the ordinary tag is still there");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A selection rewrites only the files it named.
+///
+/// This is the half of the "partial selection" defect that the fixtures can reach. The
+/// other half — a font collection, where several faces share one file and one set of
+/// tags, and syncing a selection of them wrote only *their* tags over the file's — is
+/// fixed in `faces_by_file`, which now widens each file to every face in it. Nothing here
+/// exercises that: `fixtures/` holds no `.ttc`, and fabricating one whose internal
+/// offsets survive concatenation is a fixture's worth of work in a test. It wants a small
+/// collection added to `fixtures/`, which is the note this comment exists to leave.
+#[cfg(unix)]
+#[test]
+fn a_selection_rewrites_only_the_files_it_named() {
+    let (dir, db) = library("partial");
+    // Both faces of the same file, tagged differently. Amiri is one face, so tag the two
+    // fonts and sync only one of them: the same shape, one file at a time.
+    run(&db, &["tag", "add", "mine", "1"]);
+    run(&db, &["tag", "add", "theirs", "2"]);
+    run(&db, &["tag", "sync", "--to-files"]);
+
+    // Now sync face 1 alone. Face 2 lives in another file here, so its file must be
+    // untouched — the regression is that a selection rewrites files it did not name.
+    run(&db, &["tag", "sync", "--to-files", "1"]);
+    let other = dir.join("fonts/SourceSerif4-Regular.otf");
+    let on_other = fontina_platform::tags::read(&other).unwrap();
+    assert!(
+        on_other.iter().any(|t| t == "theirs"),
+        "syncing one face rewrote another file: {on_other:?}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A run in which nothing could be done fails, so a script can tell.
+///
+/// Every write error becomes a skip, by design: one unreadable font should not stop three
+/// hundred others. But a run where every file was skipped by a real failure printed
+/// `0 of n file(s) changed` and exited 0, which a script cannot tell from "nothing to do".
+#[cfg(unix)]
+#[test]
+fn a_run_where_everything_failed_is_a_failure() {
+    let (dir, db) = library("allfailed");
+    run(&db, &["tag", "add", "shortlist", "1", "2"]);
+    // Take the fonts away: reading their tags now fails for every file.
+    std::fs::remove_dir_all(dir.join("fonts")).unwrap();
+
+    let o = out(&db, &["tag", "sync", "--to-files"]);
+    assert!(
+        !o.status.success(),
+        "a run that did nothing at all must not exit 0: {}",
+        String::from_utf8_lossy(&o.stdout)
     );
     let _ = std::fs::remove_dir_all(&dir);
 }

@@ -306,9 +306,12 @@ mod imp {
         let items: Vec<CFString> = tags
             .iter()
             .map(|t| {
+                // Case-insensitively: the index folds tag names, so a Finder tag written
+                // as `Work` comes back as `work`, and an exact match would rewrite it
+                // bare and lose the colour this whole block exists to keep.
                 let stored = coloured
                     .iter()
-                    .find(|(name, _)| name == t)
+                    .find(|(name, _)| name.eq_ignore_ascii_case(t))
                     .map(|(_, raw)| raw.as_str())
                     .unwrap_or(t.as_str());
                 CFString::new(stored)
