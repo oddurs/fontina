@@ -3251,7 +3251,13 @@ fn run_preview(cli: &Cli, args: &PreviewArgs) -> Result<()> {
             face.file.container.as_str(),
             size as u32,
             if bitmap.missing > 0 {
-                format!(", {} glyph(s) missing", bitmap.missing)
+                // Said here rather than left to the reader: a row of empty boxes is what
+                // a font prints for text it does not cover, and it looks like a
+                // rendering fault rather than an answer.
+                format!(
+                    ", {} of {} glyph(s) not in this font",
+                    bitmap.missing, bitmap.glyphs
+                )
             } else {
                 String::new()
             }

@@ -71,7 +71,29 @@ impl Cache {
             return lines;
         }
         let lines = match render_face(face, opts) {
-            Ok(bitmap) => to_lines(&bitmap, px_rows),
+            Ok(bitmap) => {
+                let mut lines = to_lines(
+                    &bitmap,
+                    px_rows.saturating_sub(2 * u32::from(bitmap.missing > 0)),
+                );
+                // A font draws its `.notdef` box for every character it does not cover,
+                // so a preview of text this face cannot show is a row of empty
+                // rectangles and nothing else says why. The command line says it in the
+                // title; here there is no title, so it goes above the drawing.
+                if bitmap.missing > 0 {
+                    lines.insert(
+                        0,
+                        Line::from(Span::styled(
+                            format!(
+                                "{} of {} glyph(s) not in this font",
+                                bitmap.missing, bitmap.glyphs
+                            ),
+                            Style::default().fg(Color::Yellow),
+                        )),
+                    );
+                }
+                lines
+            }
             Err(e) => vec![Line::from(Span::styled(
                 format!("preview unavailable: {e}"),
                 Style::default().fg(Color::Red),
@@ -490,6 +512,35 @@ mod tests {
         assert_eq!(cache.len(), CAPACITY);
         cache.clear();
         assert_eq!(cache.len(), 0);
+    }
+
+    /// Text the font cannot show is said, not drawn as a row of empty boxes.
+    ///
+    /// A font draws `.notdef` for every character it does not cover, and most fonts draw
+    /// `.notdef` as a rectangle. A reader who types Japanese into the browser's sample
+    /// text and gets three rectangles has been told something about the font, and has no
+    /// way to know that is what they were told.
+    #[test]
+    fn a_preview_says_when_the_font_has_no_glyph_for_the_text() {
+        let mut cache = Cache::default();
+        let f = face("SourceSerif4-Regular.otf");
+
+        let missing = cache.lines(&f, &small("日本語"), 20);
+        let said = text_of(&missing);
+        assert!(
+            said.contains("3 of 3 glyph(s) not in this font"),
+            "the pane says what the font cannot show:\n{said}"
+        );
+        assert!(
+            said.lines().count() > 1,
+            "and still draws the font's own answer below it"
+        );
+
+        let covered = cache.lines(&f, &small("Aa"), 20);
+        assert!(
+            !text_of(&covered).contains("not in this font"),
+            "text the font covers gets no note"
+        );
     }
 
     #[test]
