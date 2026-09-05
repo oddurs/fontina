@@ -224,6 +224,16 @@ fn go_to(
     state: ActivationState,
 ) {
     let faces = index.file_faces(id).unwrap();
+    // Leave the state this face is in before entering another, which is what
+    // `leave_current_state` in the CLI does and what both of these tests once proved it
+    // did not. The step and this one call the same `fontina_platform::withdraw`.
+    match index.activation(id).unwrap() {
+        Some(r) if r.state != state => {
+            fontina_platform::withdraw(activator, file, r.installed_path.as_deref().map(Path::new))
+                .unwrap();
+        }
+        _ => {}
+    }
     match state {
         ActivationState::Installed => {
             let installed = activator.install(file).unwrap();
@@ -247,12 +257,8 @@ fn go_to(
 fn go_to_none(index: &mut Index, activator: &dyn FontActivator, file: &Path, id: i64) {
     let faces = index.file_faces(id).unwrap();
     let record = index.activation(id).unwrap();
-    match record.as_ref().and_then(|r| r.installed_path.as_deref()) {
-        Some(p) => activator.uninstall(Path::new(p)).unwrap(),
-        None => {
-            activator.deactivate(file).unwrap();
-        }
-    }
+    let installed = record.as_ref().and_then(|r| r.installed_path.as_deref());
+    fontina_platform::withdraw(activator, file, installed.map(Path::new)).unwrap();
     index.clear_activation(&faces).unwrap();
 }
 
@@ -354,23 +360,23 @@ fn every_transition_in_both_directions_twice_over() {
     }
 }
 
-/// DEFECT: activating a font that is already installed orphans the installed copy.
+/// Activating a font that is already installed removes the copy it replaces.
 ///
-/// `fontina install X` copies X into the per-user font directory and records where it
-/// went. `fontina activate X` then registers X where it lies and calls `set_activation`
-/// with `installed_path: None`, which the upsert writes straight over the recorded path.
-/// The copy is still in the font directory, still visible to every application, and now
-/// there is nothing in the index that knows about it — `fontina uninstall X` refuses,
-/// because the record no longer says anything was installed.
+/// This was a defect, and it is the reason `withdraw` exists. `fontina install X` copies
+/// X into the per-user font directory and records where it went; `fontina activate X`
+/// then registered X where it lies and called `set_activation` with
+/// `installed_path: None`, which the upsert wrote straight over the recorded path. The
+/// copy stayed in the font directory, visible to every application, with nothing in the
+/// index that knew about it — and `fontina uninstall X` then refused, because the record
+/// no longer said anything had been installed.
 ///
-/// The counterpart of the stranding below, from the other direction: a transition takes
-/// the new state without giving up the old one. Here it also destroys the only record of
-/// what would have to be given up.
+/// The counterpart of the stranding below, from the other direction. Both were one
+/// missing step: a transition took the new state without giving up the old one.
 #[test]
-fn activating_a_font_that_is_already_installed_orphans_the_copy() {
+fn activating_a_font_that_is_already_installed_removes_the_copy() {
     if !allowed(
         install_is_hermetic() && activation_is_hermetic(),
-        "activating_a_font_that_is_already_installed_orphans_the_copy",
+        "activating_a_font_that_is_already_installed_removes_the_copy",
     ) {
         return;
     }
@@ -409,44 +415,39 @@ fn activating_a_font_that_is_already_installed_orphans_the_copy() {
             .unwrap()
             .installed_path
             .is_none(),
-        "the record of where the copy went was overwritten"
+        "the face is activated in place now, so no copy is recorded"
     );
     assert!(
-        copy.exists(),
-        "and the copy is still in the per-user font directory"
-    );
-
-    go_to_none(&mut s.index, activator.as_ref(), &file, id);
-    expect_state(&s.index, id, None);
-    assert!(
-        copy.exists(),
-        "so nothing fontina can be asked to do will ever remove {}",
+        !copy.exists(),
+        "and the copy it replaced is gone from the per-user font directory: {}",
         copy.display()
     );
-    let _ = activator.uninstall(&copy);
-    let _ = std::fs::remove_file(&copy);
+
+    // And from there the ordinary way out still works, with nothing left behind.
+    go_to_none(&mut s.index, activator.as_ref(), &file, id);
+    expect_state(&s.index, id, None);
+    assert!(!copy.exists(), "{}", copy.display());
     let _ = activator.deactivate(&file);
 }
 
-/// DEFECT: installing a font that is already activated leaves the activation registered,
-/// and `uninstall` never takes it back.
+/// Installing a font that is already activated takes the activation back first.
 ///
-/// `fontina activate --user X` registers X in place. `fontina install X` then copies it
-/// into the per-user font directory and overwrites the index row with `installed`, but
-/// nothing unregisters the in-place activation — and `fontina uninstall X` only removes
-/// the copy, because `run_deactivate(uninstall: true)` calls `FontActivator::uninstall`
-/// and never `deactivate`.
+/// This was a defect. `fontina activate --user X` registers X in place; `fontina install
+/// X` then copied it into the per-user font directory and overwrote the index row with
+/// `installed`, while nothing unregistered the in-place activation — and `fontina
+/// uninstall X` removed only the copy.
 ///
-/// What is left is a font still visible to every application on the machine, with no row
-/// in the index pointing at it and no fontina command that will find it: the state a
+/// What was left is a font still visible to every application on the machine, with no row
+/// in the index pointing at it and no fontina command that would find it: the state a
 /// person reaches by trying a font, deciding to keep it, and then deciding not to. The
-/// fix belongs in whichever half owns the transition, but the transition has to give the
-/// old state up before it takes the new one.
+/// transition now gives the old state up before it takes the new one, which is what the
+/// last assertion here is for — after the round trip the operating system has nothing
+/// left to take back.
 #[test]
-fn an_install_over_an_activation_strands_the_activation() {
+fn an_install_over_an_activation_takes_the_activation_back() {
     if !allowed(
         install_is_hermetic() && activation_is_hermetic(),
-        "an_install_over_an_activation_strands_the_activation",
+        "an_install_over_an_activation_takes_the_activation_back",
     ) {
         return;
     }
@@ -476,8 +477,8 @@ fn an_install_over_an_activation_strands_the_activation() {
         "the index says nothing is active"
     );
     assert!(
-        activator.deactivate(&file).unwrap(),
-        "but the operating system still had a registration to take back"
+        !activator.deactivate(&file).unwrap(),
+        "and the operating system has nothing left to take back"
     );
 }
 

@@ -2607,6 +2607,58 @@ pub(crate) fn files_for(index: &Index, ids: &[i64]) -> Result<Vec<(PathBuf, Vec<
     Ok(out)
 }
 
+/// Take back the registration this face already has, before it is given another.
+///
+/// Every state registers the font somewhere: session and user register the file where it
+/// lies, installed puts a copy in the per-user font directory. The index records only
+/// where a face has arrived, so a move between two states that skipped the leaving left
+/// the earlier registration behind with nothing pointing at it.
+///
+/// Both directions were wrong, and both in a way a person would notice much later.
+/// `activate` then `install` left the font registered in place: it stayed visible to
+/// every application, `uninstall` removed only the copy, and no command could ever take
+/// the registration back, because the record that would have named it had been
+/// overwritten. `install` then `activate` left the copy in the font directory and
+/// overwrote the path that named it, so `uninstall` then refused on the grounds that
+/// nothing had been installed.
+///
+/// Re-entering the state a face is already in is not a transition and leaves it alone:
+/// `activate` twice over is the same as `activate` once.
+fn leave_current_state(
+    index: &Index,
+    activator: &dyn fontina_platform::FontActivator,
+    id: i64,
+    path: &std::path::Path,
+    next: ActivationState,
+) -> Result<()> {
+    let Some(record) = index.activation(id)? else {
+        return Ok(());
+    };
+    if record.state == next {
+        return Ok(());
+    }
+    let installed = record.installed_path.as_deref().map(std::path::Path::new);
+    fontina_platform::withdraw(activator, path, installed).with_context(|| {
+        match record.installed_path.as_deref() {
+            Some(p) => format!("uninstalling {p}, which {} replaces", verb(next)),
+            None => format!(
+                "deactivating {}, which {} replaces",
+                path.display(),
+                verb(next)
+            ),
+        }
+    })?;
+    Ok(())
+}
+
+/// What a state does, for an error message: "deactivating X, which installing replaces".
+fn verb(state: ActivationState) -> &'static str {
+    match state {
+        ActivationState::Installed => "installing",
+        _ => "activating",
+    }
+}
+
 fn run_activate(
     cli: &Cli,
     targets: &[String],
@@ -2654,6 +2706,7 @@ fn run_activate(
     }
     let mut done = Vec::new();
     for (path, faces) in files_for(&index, &ids)? {
+        leave_current_state(&index, activator.as_ref(), faces[0], &path, state)?;
         match state {
             ActivationState::Installed => {
                 let installed = activator
@@ -2710,13 +2763,23 @@ fn run_deactivate(cli: &Cli, targets: &[String], uninstall: bool, json: bool) ->
     let mut done = Vec::new();
     for (path, faces) in files_for(&index, &ids)? {
         let record = index.activation(faces[0])?;
+        let installed = record.as_ref().and_then(|r| r.installed_path.clone());
         if uninstall {
-            let Some(installed) = record.as_ref().and_then(|r| r.installed_path.clone()) else {
+            let Some(installed) = installed else {
                 bail!("{} was not installed by fontina", path.display());
             };
             activator
                 .uninstall(std::path::Path::new(&installed))
                 .with_context(|| format!("uninstalling {installed}"))?;
+        } else if let Some(installed) = installed {
+            // What is registered is the copy, not this file, so deactivating the file
+            // would take nothing back and clearing the record would leave the copy in
+            // the font directory with nothing naming it. Say which command removes it.
+            bail!(
+                "{} is installed at {installed}; `fontina uninstall` removes it, \
+                 `fontina deactivate` does not",
+                path.display()
+            );
         } else if !activator
             .deactivate(&path)
             .with_context(|| format!("deactivating {}", path.display()))?
@@ -3093,6 +3156,127 @@ mod tests {
             .set_activation(&ids, ActivationState::Installed, None)
             .unwrap();
         (db, index)
+    }
+
+    /// An activator that records what it was asked to do and does nothing else.
+    #[derive(Default)]
+    struct Recorder(std::sync::Mutex<Vec<String>>);
+
+    impl Recorder {
+        fn calls(&self) -> Vec<String> {
+            self.0.lock().unwrap().clone()
+        }
+        fn log(&self, call: String) {
+            self.0.lock().unwrap().push(call);
+        }
+    }
+
+    impl FontActivator for Recorder {
+        fn install(&self, file: &Path) -> fontina_platform::Result<PathBuf> {
+            self.log("install".into());
+            Ok(file.with_extension("installed"))
+        }
+        fn uninstall(&self, installed: &Path) -> fontina_platform::Result<()> {
+            self.log(format!("uninstall {}", installed.display()));
+            Ok(())
+        }
+        fn activate(&self, _file: &Path, _scope: Scope) -> fontina_platform::Result<()> {
+            self.log("activate".into());
+            Ok(())
+        }
+        fn deactivate(&self, file: &Path) -> fontina_platform::Result<bool> {
+            self.log(format!("deactivate {}", file.display()));
+            Ok(true)
+        }
+    }
+
+    /// An index over one fixture, with no activation recorded.
+    fn scanned_index(name: &str) -> (PathBuf, Index, i64, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("fontina-leave-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("index.db");
+        let mut index = Index::open(&db).unwrap();
+        let font = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/Amiri-Regular.ttf");
+        fontina_core::scan::scan(
+            &mut index,
+            std::slice::from_ref(&font),
+            &ScanOptions::default(),
+        )
+        .unwrap();
+        let id = index.list(&FaceFilter::default()).unwrap()[0].id;
+        (db, index, id, font)
+    }
+
+    /// Moving between two activation states takes the first one back.
+    ///
+    /// The defect this holds shut ran both ways. `activate` then `install` left the font
+    /// registered in place and overwrote the only record that named that registration, so
+    /// the font stayed visible to every application and nothing could take it back.
+    /// `install` then `activate` left the copy in the per-user font directory and
+    /// overwrote the path that named it, so `uninstall` refused on the grounds that
+    /// nothing had been installed.
+    #[test]
+    fn a_transition_takes_back_the_registration_it_replaces() {
+        let (_, mut index, id, font) = scanned_index("both-ways");
+        let faces = index.file_faces(id).unwrap();
+
+        // Activated in place, then installed: the in-place registration is taken back.
+        index
+            .set_activation(&faces, ActivationState::User, None)
+            .unwrap();
+        let rec = Recorder::default();
+        leave_current_state(&index, &rec, id, &font, ActivationState::Installed).unwrap();
+        assert_eq!(
+            rec.calls(),
+            vec![format!("deactivate {}", font.display())],
+            "installing over an activation has to deactivate the file first"
+        );
+
+        // Installed, then activated in place: the copy is taken back.
+        index
+            .set_activation(&faces, ActivationState::Installed, Some("/fonts/copy.ttf"))
+            .unwrap();
+        let rec = Recorder::default();
+        leave_current_state(&index, &rec, id, &font, ActivationState::User).unwrap();
+        assert_eq!(
+            rec.calls(),
+            vec!["uninstall /fonts/copy.ttf".to_string()],
+            "activating over an install has to remove the copy first"
+        );
+    }
+
+    /// Two states that both register the file in place still swap properly, and
+    /// re-entering the state a face is already in leaves it alone.
+    #[test]
+    fn session_and_user_swap_but_a_repeat_is_not_a_transition() {
+        let (_, mut index, id, font) = scanned_index("same-state");
+        let faces = index.file_faces(id).unwrap();
+
+        index
+            .set_activation(&faces, ActivationState::Session, None)
+            .unwrap();
+        let rec = Recorder::default();
+        leave_current_state(&index, &rec, id, &font, ActivationState::User).unwrap();
+        assert_eq!(
+            rec.calls(),
+            vec![format!("deactivate {}", font.display())],
+            "a session activation is a registration too, and user scope replaces it"
+        );
+
+        let rec = Recorder::default();
+        leave_current_state(&index, &rec, id, &font, ActivationState::Session).unwrap();
+        assert!(
+            rec.calls().is_empty(),
+            "activating a font that is already activated that way is not a transition: {:?}",
+            rec.calls()
+        );
+
+        // And a face with no record at all has nothing to take back.
+        index.clear_activation(&faces).unwrap();
+        let rec = Recorder::default();
+        leave_current_state(&index, &rec, id, &font, ActivationState::Installed).unwrap();
+        assert!(rec.calls().is_empty(), "{:?}", rec.calls());
     }
 
     #[test]
