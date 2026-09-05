@@ -1087,7 +1087,7 @@ fn run() -> Result<()> {
                 for d in dirs {
                     println!(
                         "{} {}{}",
-                        cell(&d.path.display().to_string(), 60),
+                        pad(&d.path.display().to_string(), 60),
                         d.description,
                         if d.user_writable {
                             " (install target)"
@@ -1744,6 +1744,21 @@ fn freedom_flag(f: Freedom) -> &'static str {
 
 /// Shorten to `n` characters, borrowing when it already fits. Listing a large library
 /// formats two of these per row, and almost every one of them fits.
+/// `s` padded to `w` terminal columns, and never cut short.
+///
+/// For a column whose content is the answer rather than a label: a path, a name someone
+/// typed. `fontina dirs` is how a script asks where an install goes — `scripts/acceptance`
+/// does exactly that — so a path longer than the column is a wider row, not a shorter
+/// path. The columns after it lose their alignment on that row and keep it on every
+/// other, which is the right trade when the alternative is printing something untrue.
+fn pad(s: &str, w: usize) -> String {
+    let mut out = fontina_core::unicode::fit(s, w.max(fontina_core::unicode::columns(s)));
+    for _ in fontina_core::unicode::columns(&out)..w {
+        out.push(' ');
+    }
+    out
+}
+
 /// One table cell: `s` fitted to `w` terminal columns and padded to exactly `w`.
 ///
 /// Rust's own `{:<w$}` pads to a character count, and a character is not a column. A
@@ -2089,7 +2104,7 @@ fn run_tag(cli: &Cli, cmd: &TagCmd) -> Result<()> {
                 println!("no tags");
             } else {
                 for t in tags {
-                    println!("{} {:>6}", cell(&t.name, 30), t.faces);
+                    println!("{} {:>6}", pad(&t.name, 30), t.faces);
                 }
             }
         }
@@ -2429,7 +2444,7 @@ fn run_collection(cli: &Cli, cmd: &CollectionCmd) -> Result<()> {
                 println!("no collections");
             } else {
                 for c in cs {
-                    println!("{} {:>6}", cell(&c.name, 30), c.faces);
+                    println!("{} {:>6}", pad(&c.name, 30), c.faces);
                 }
             }
         }
@@ -2588,7 +2603,7 @@ fn run_source(cli: &Cli, cmd: &SourceCmd) -> Result<()> {
                 for s in sources {
                     println!(
                         "{} {}{}",
-                        cell(&s.path, 60),
+                        pad(&s.path, 60),
                         match s.kind {
                             SourceKind::User => "user",
                             SourceKind::System => "system",
