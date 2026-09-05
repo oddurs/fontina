@@ -2,7 +2,7 @@
 id: 7
 title: Cache a rasterised preview by face, size and axes
 type: perf
-status: backlog
+status: done
 milestone: tui-speed
 created: 2026-09-05
 updated: 2026-09-05

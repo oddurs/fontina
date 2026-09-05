@@ -20,7 +20,7 @@
 use super::theme::{self, Theme};
 use fontina_core::FaceMetadata;
 use fontina_core::render::{Bitmap, RenderOptions, render_face};
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
 /// A face, the exact options its lines were rendered from, and the pixel height they
@@ -38,10 +38,30 @@ type Key = (i64, RenderOptions, u32);
 pub struct Cache {
     entries: Vec<(Key, Vec<Line<'static>>)>,
     theme: Theme,
+    /// Renderings that actually reached the rasteriser.
+    ///
+    /// The point of a cache is the work it does not do, and "did not do it" is not
+    /// something a return value can say. A test can ask.
+    #[cfg(test)]
+    rasterised: usize,
 }
 
-/// Enough for a full waterfall and a wide comparison at once, and small enough that the
-/// linear scan below stays cheaper than a hash.
+/// Renderings kept at once.
+///
+/// Enough for a full waterfall and a wide comparison together, which is the largest
+/// thing the browser asks for: nine sizes down the ladder, and one per face of a family
+/// on the screen at the same time. Below that a scroll would evict what it is about to
+/// ask for again.
+///
+/// The other end is memory. A cached rendering is a `Vec<Line>` and each line holds a
+/// `Vec<Span>` sized to the pane's width, at around forty bytes a span; the widest
+/// thing the browser draws is a comparison across a two-hundred-column terminal, about
+/// fifteen text rows deep, so a worst-case entry is on the order of 120 KB and
+/// thirty-two of them are under 4 MB. PLAN.md §7 budgets 40 MB of idle RSS for the
+/// browser at five thousand faces, so the cache at its very worst is a tenth of it, and
+/// in the shape a details pane actually asks for — forty columns by six rows — closer
+/// to a hundredth. Raising this number is a memory decision, and that is the arithmetic
+/// to redo before raising it.
 const CAPACITY: usize = 32;
 
 /// Sample text for a face: the shared default for Latin, so the pane and the HTML
@@ -54,8 +74,8 @@ impl Cache {
     /// An empty cache that draws in `theme`.
     pub fn new(theme: Theme) -> Self {
         Cache {
-            entries: Vec::new(),
             theme,
+            ..Default::default()
         }
     }
 
@@ -80,6 +100,10 @@ impl Cache {
             self.entries.insert(0, entry);
             return lines;
         }
+        #[cfg(test)]
+        {
+            self.rasterised += 1;
+        }
         let lines = match render_face(face, opts) {
             Ok(bitmap) => {
                 let mut lines = to_lines(
@@ -99,7 +123,7 @@ impl Cache {
                                 "{} of {} glyph(s) not in this font",
                                 bitmap.missing, bitmap.glyphs
                             ),
-                            Style::default().fg(Color::Yellow),
+                            self.theme.warn(),
                         )),
                     );
                 }
@@ -107,7 +131,7 @@ impl Cache {
             }
             Err(e) => vec![Line::from(Span::styled(
                 format!("preview unavailable: {e}"),
-                Style::default().fg(Color::Red),
+                self.theme.bad(),
             ))],
         };
         self.entries.insert(0, (key, lines.clone()));
@@ -120,6 +144,12 @@ impl Cache {
     #[cfg(test)]
     pub fn len(&self) -> usize {
         self.entries.len()
+    }
+
+    /// How many of the requests so far reached the rasteriser.
+    #[cfg(test)]
+    pub fn rasterised(&self) -> usize {
+        self.rasterised
     }
 }
 
@@ -184,6 +214,7 @@ fn to_lines(bm: &Bitmap, px_rows: u32, theme: &Theme) -> Vec<Line<'static>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ratatui::style::Color;
     use std::path::PathBuf;
 
     // ----- bitmaps as pictures -----
@@ -580,6 +611,60 @@ mod tests {
         assert_eq!(cache.len(), 0);
     }
 
+    /// What a cache is for is the work it does not do, and only the count can say so:
+    /// two identical requests are one rasterisation, and the second is the same lines.
+    #[test]
+    fn the_same_request_twice_rasterises_once() {
+        let mut cache = Cache::default();
+        let f = face("SourceSerif4-Regular.otf");
+        let first = cache.lines(&f, &small("Aa"), 20);
+        assert_eq!(cache.rasterised(), 1);
+        for _ in 0..50 {
+            assert_eq!(text_of(&cache.lines(&f, &small("Aa"), 20)), text_of(&first));
+        }
+        assert_eq!(cache.rasterised(), 1, "a hit reached the rasteriser");
+    }
+
+    /// The shape the browser actually makes: moving an axis is a different rendering
+    /// and has to be one, while scrolling back over a face already seen is not.
+    #[test]
+    fn a_slider_move_is_a_miss_and_a_scroll_back_is_a_hit() {
+        let mut cache = Cache::default();
+        let f = face("BricolageGrotesque[opsz,wdth,wght].ttf");
+        let at = |wght: f32| RenderOptions {
+            variations: vec![("wght".into(), wght)],
+            ..small("Aa")
+        };
+
+        // Dragging the weight axis across ten stops: ten renderings, because each one
+        // is a different set of outlines.
+        for w in 0..10u8 {
+            cache.lines(&f, &at(200.0 + f32::from(w) * 50.0), 20);
+        }
+        assert_eq!(cache.rasterised(), 10, "an axis move has to be a miss");
+
+        // Scrolling back over all ten: none, because they are all still held.
+        for w in 0..10u8 {
+            cache.lines(&f, &at(200.0 + f32::from(w) * 50.0), 20);
+        }
+        assert_eq!(cache.rasterised(), 10, "and a scroll back has to be a hit");
+
+        // Least recently used, not first in: touching the oldest entry keeps it, and
+        // what falls out is whatever the reader has stopped looking at.
+        let oldest = at(200.0);
+        for i in 0..CAPACITY {
+            cache.lines(&f, &oldest, 20);
+            cache.lines(&f, &small(&format!("line {i}")), 20);
+        }
+        let before = cache.rasterised();
+        cache.lines(&f, &oldest, 20);
+        assert_eq!(
+            cache.rasterised(),
+            before,
+            "the entry touched on every round was evicted anyway"
+        );
+    }
+
     /// Text the font cannot show is said, not drawn as a row of empty boxes.
     ///
     /// A font draws `.notdef` for every character it does not cover, and most fonts draw
@@ -617,7 +702,7 @@ mod tests {
         let lines = cache.lines(&f, &small("Aa"), 20);
         assert_eq!(lines.len(), 1);
         assert!(text_of(&lines).starts_with("preview unavailable: "));
-        assert_eq!(lines[0].spans[0].style.fg, Some(Color::Red));
+        assert_eq!(lines[0].spans[0].style, Theme::default().bad());
         // The failure is cached too, so a broken face does not retry the read on every
         // frame the pane is drawn.
         assert_eq!(cache.len(), 1);
