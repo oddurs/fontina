@@ -136,6 +136,24 @@ pub fn width_name(bucket: f32) -> &'static str {
         .unwrap_or("Normal")
 }
 
+/// Every CSS weight bucket the range `lo..=hi` touches, inclusive.
+///
+/// A static face has `lo == hi` and gets exactly the one bucket it always got.
+pub fn weight_buckets_in(lo: f32, hi: f32) -> Vec<u16> {
+    let (first, last) = (weight_bucket(lo), weight_bucket(hi.max(lo)));
+    (first..=last).step_by(100).collect()
+}
+
+/// Every `usWidthClass` bucket the range `lo..=hi` touches, inclusive.
+pub fn width_buckets_in(lo: f32, hi: f32) -> Vec<f32> {
+    let (first, last) = (width_bucket(lo), width_bucket(hi.max(lo)));
+    WIDTH_BUCKETS
+        .iter()
+        .map(|b| b.0)
+        .filter(|b| *b >= first && *b <= last)
+        .collect()
+}
+
 fn counts(map: BTreeMap<String, i64>) -> Vec<FacetCount> {
     map.into_iter()
         .map(|(value, count)| FacetCount { value, count })
@@ -160,7 +178,8 @@ impl Index {
     pub fn facets(&self, filter: &FaceFilter) -> Result<Facets> {
         let w = Self::where_for(filter);
         let sql = format!(
-            "SELECT f.family, f.weight, f.width, f.italic, f.is_variable, f.is_color, fi.container,
+            "SELECT f.family, f.weight_min, f.weight_max, f.width_min, f.width_max,
+                    f.italic, f.is_variable, f.is_color, fi.container,
                     f.scripts, f.license_spdx, f.vendor, a.scope, fi.path
              FROM faces f JOIN files fi ON fi.id = f.file_id LEFT JOIN activations a ON a.face_id = f.id{}",
             w.sql()
@@ -197,24 +216,48 @@ impl Index {
                 r.get::<_, String>(0)?,
                 r.get::<_, f32>(1)?,
                 r.get::<_, f32>(2)?,
-                r.get::<_, bool>(3)?,
-                r.get::<_, bool>(4)?,
+                r.get::<_, f32>(3)?,
+                r.get::<_, f32>(4)?,
                 r.get::<_, bool>(5)?,
-                r.get::<_, String>(6)?,
-                r.get::<_, String>(7)?,
-                r.get::<_, Option<String>>(8)?,
-                r.get::<_, Option<String>>(9)?,
+                r.get::<_, bool>(6)?,
+                r.get::<_, bool>(7)?,
+                r.get::<_, String>(8)?,
+                r.get::<_, String>(9)?,
                 r.get::<_, Option<String>>(10)?,
-                r.get::<_, String>(11)?,
+                r.get::<_, Option<String>>(11)?,
+                r.get::<_, Option<String>>(12)?,
+                r.get::<_, String>(13)?,
             ))
         })?;
         for row in rows {
-            let (family, wt, wd, italic, variable, color, cont, scripts, lic, ven, act, path) =
-                row?;
+            let (
+                family,
+                wt_lo,
+                wt_hi,
+                wd_lo,
+                wd_hi,
+                italic,
+                variable,
+                color,
+                cont,
+                scripts,
+                lic,
+                ven,
+                act,
+                path,
+            ) = row?;
             out.faces += 1;
             families.insert(family.to_lowercase());
-            *weight.entry(weight_bucket(wt).to_string()).or_default() += 1;
-            *width.entry(fmt_width(width_bucket(wd))).or_default() += 1;
+            // A face that spans 200 to 800 belongs under every bucket in between, the
+            // same way a face covering four scripts is counted under each of them.
+            // Counting it only under its default instance made the facet disagree with
+            // the filter beside it, which now finds it at all of them.
+            for b in weight_buckets_in(wt_lo, wt_hi) {
+                *weight.entry(b.to_string()).or_default() += 1;
+            }
+            for b in width_buckets_in(wd_lo, wd_hi) {
+                *width.entry(fmt_width(b)).or_default() += 1;
+            }
             *style
                 .entry(if italic { "italic" } else { "upright" }.to_string())
                 .or_default() += 1;
@@ -328,8 +371,14 @@ impl Family {
             variable: false,
             color: false,
             italic: false,
-            weights: [f.weight, f.weight],
-            widths: [f.width, f.width],
+            weights: [
+                f.weight_range.map_or(f.weight, |r| r[0]),
+                f.weight_range.map_or(f.weight, |r| r[1]),
+            ],
+            widths: [
+                f.width_range.map_or(f.width, |r| r[0]),
+                f.width_range.map_or(f.width, |r| r[1]),
+            ],
             scripts: f.scripts.clone(),
             license: f.license.clone(),
             vendor: f.vendor.clone(),
@@ -354,10 +403,14 @@ impl Family {
         self.variable |= f.variable;
         self.color |= f.color;
         self.italic |= f.italic;
-        self.weights[0] = self.weights[0].min(f.weight);
-        self.weights[1] = self.weights[1].max(f.weight);
-        self.widths[0] = self.widths[0].min(f.width);
-        self.widths[1] = self.widths[1].max(f.width);
+        let (wt_lo, wt_hi) = f
+            .weight_range
+            .map_or((f.weight, f.weight), |r| (r[0], r[1]));
+        let (wd_lo, wd_hi) = f.width_range.map_or((f.width, f.width), |r| (r[0], r[1]));
+        self.weights[0] = self.weights[0].min(wt_lo);
+        self.weights[1] = self.weights[1].max(wt_hi);
+        self.widths[0] = self.widths[0].min(wd_lo);
+        self.widths[1] = self.widths[1].max(wd_hi);
         if self.license.is_none() {
             self.license = f.license.clone();
         }

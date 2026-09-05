@@ -4,25 +4,25 @@ expression: drawn
 ---
 ┌ 6 faces ───────────────┐┌ 5 families ──────────┐┌ Details ───────────────────┐
 │Weight                  ││Amiri           1     ││Amiri Regular               │
-│  400 Regular         5 ││Bricolage Gr…   1 V   ││style     weight 400 · width│
-│  800 ExtraBold       1 ││Inter           2     ││100% · normal               │
-│Width                   ││Nabla           1 VC  ││glyphs    6710 · 1699       │
-│  100% Normal         6 ││Source Serif…   1     ││codepoints · Arab Latn Zyyy │
-│Style                   ││                      ││Zinh                        │
-│  upright             6 ││                      ││features  25: ccmp dnom fina│
-│Variable                ││                      ││init liga locl mark medi    │
-│  variable            2 ││                      ││numr pnum rlig rtlm         │
-│Color                   ││                      ││license   OFL-1.1           │
-│  color               1 ││                      ││freedom   free              │
-│Script                  ││                      ││designer  Khaled Hosny      │
-│  Latn                6 ││                      ││state     not active        │
-│  Zinh                6 ││                      ││file                        │
-│  Zyyy                6 ││                      ││../../fixtures/Amiri-Regular│
-│  Grek                2 ││                      ││.ttf                        │
-│  Arab                1 ││                      ││                            │
-│  Cyrl                1 ││                      ││                            │
-│License                 ││                      ││                            │
-│  OFL-1.1             6 ││                      ││                            │
+│  200 ExtraLight      1 ││Bricolage Gr…   1 V   ││style     weight 400 · width│
+│  300 Light           1 ││Inter           2     ││100% · normal               │
+│  400 Regular         6 ││Nabla           1 VC  ││glyphs    6710 · 1699       │
+│  500 Medium          1 ││Source Serif…   1     ││codepoints · Arab Latn Zyyy │
+│  600 SemiBold        1 ││                      ││Zinh                        │
+│  700 Bold            1 ││                      ││features  25: ccmp dnom fina│
+│  800 ExtraBold       1 ││                      ││init liga locl mark medi    │
+│Width                   ││                      ││numr pnum rlig rtlm         │
+│  75% Condensed       1 ││                      ││license   OFL-1.1           │
+│  87.5% SemiCondensed 1 ││                      ││freedom   free              │
+│  100% Normal         6 ││                      ││designer  Khaled Hosny      │
+│Style                   ││                      ││state     not active        │
+│  upright             6 ││                      ││file                        │
+│Variable                ││                      ││../../fixtures/Amiri-Regular│
+│  variable            2 ││                      ││.ttf                        │
+│Color                   ││                      ││                            │
+│  color               1 ││                      ││                            │
+│Script                  ││                      ││                            │
+│  Latn                6 ││                      ││                            │
 └────────────────────────┘└──────────────────────┘└────────────────────────────┘
  $ fontina families
  / search  ⇥ facets  ⏎ open  ⌫ back  t tag  c collection  a/A activate  d deacti

@@ -403,9 +403,35 @@
           "format": "float",
           "type": "number"
         },
+        "weight_range": {
+          "description": "The weights this face can be set to, when a `wght` axis lets it be set at all.\n\nAbsent for a face that is only the one weight `weight` names, so the shape of a\nstatic face's JSON is exactly what it was, and presence is itself the answer to\n\"does this reach further than it says\".",
+          "items": {
+            "format": "float",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "width": {
           "format": "float",
           "type": "number"
+        },
+        "width_range": {
+          "description": "The same, in percent, over `wdth`.",
+          "items": {
+            "format": "float",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": [
+            "array",
+            "null"
+          ]
         }
       },
       "required": [
