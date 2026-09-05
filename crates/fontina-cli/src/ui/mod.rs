@@ -172,6 +172,14 @@ pub struct App {
     /// Terminal lines the sheet had on the last frame, so a PageDown moves by a screen.
     sheet_visible: usize,
     preview: preview::Cache,
+    /// How the browser registers a font with the operating system.
+    ///
+    /// A field rather than a call to `fontina_platform::activator()` at each use, so a
+    /// test can drive `a`, `i`, `d` and `u` without touching the machine it runs on. It
+    /// is not a nicety: the soak below presses every key hundreds of times, and against
+    /// the real backend that meant copying fixtures into the developer's own font
+    /// directory and registering them with the running session.
+    activator: Box<dyn fontina_platform::FontActivator>,
 }
 
 pub fn run(db: &Path) -> Result<()> {
@@ -192,6 +200,13 @@ enum Flow {
 
 impl App {
     fn new(index: Index) -> Result<Self> {
+        Self::with_activator(index, fontina_platform::activator())
+    }
+
+    fn with_activator(
+        index: Index,
+        activator: Box<dyn fontina_platform::FontActivator>,
+    ) -> Result<Self> {
         let mut app = App {
             index,
             query: String::new(),
@@ -218,6 +233,7 @@ impl App {
             sheet: None,
             sheet_visible: 20,
             preview: preview::Cache::default(),
+            activator,
         };
         app.reload()?;
         if app.families.is_empty() && app.selected.is_empty() && app.query.is_empty() {
@@ -966,7 +982,6 @@ impl App {
             );
             return Ok(());
         }
-        let activator = fontina_platform::activator();
         let verb = match state {
             ActivationState::Installed => "install",
             ActivationState::Session => "activate --session",
@@ -975,7 +990,7 @@ impl App {
         let mut n = 0;
         for (path, faces) in crate::files_for(&self.index, &ids)? {
             let result = match state {
-                ActivationState::Installed => activator.install(&path).map(|p| {
+                ActivationState::Installed => self.activator.install(&path).map(|p| {
                     self.index
                         .set_activation(&faces, state, Some(&p.to_string_lossy()))
                         .map(|_| ())
@@ -987,7 +1002,7 @@ impl App {
                     } else {
                         fontina_platform::Scope::User
                     };
-                    activator.activate(&path, scope).map(|_| {
+                    self.activator.activate(&path, scope).map(|_| {
                         self.index
                             .set_activation(&faces, state, None)
                             .map_err(|e| fontina_platform::PlatformError::Os(e.to_string()))
@@ -1013,20 +1028,19 @@ impl App {
             self.status = "nothing selected".into();
             return Ok(());
         }
-        let activator = fontina_platform::activator();
         let mut n = 0;
         for (path, faces) in crate::files_for(&self.index, &ids)? {
             let record = self.index.activation(faces[0])?;
             let result = if uninstall {
                 match record.and_then(|r| r.installed_path) {
-                    Some(p) => activator.uninstall(Path::new(&p)).map(|()| true),
+                    Some(p) => self.activator.uninstall(Path::new(&p)).map(|()| true),
                     None => continue,
                 }
             } else {
                 if record.is_none() {
                     continue;
                 }
-                activator.deactivate(&path)
+                self.activator.deactivate(&path)
             };
             match result {
                 Ok(_) => {
@@ -1945,11 +1959,84 @@ mod tests {
     use super::*;
 
     /// An app over the fixture fonts, with nothing drawn.
+    /// An activator that answers like the real one and touches nothing.
+    ///
+    /// The soak presses every key hundreds of times, and `a`, `A`, `i`, `d` and `u` are
+    /// keys. Against the real backend that copied fixtures into the developer's own font
+    /// directory and registered them with the running login session — on every
+    /// `cargo test`, on every machine, on CI. It was also most of the run time: a
+    /// CoreText registration and a four-hundred-kilobyte copy, ten thousand times over.
+    ///
+    /// It still answers truthfully enough for the index to be exercised: `install`
+    /// returns a path, `deactivate` says something was registered.
+    use std::path::PathBuf;
+
+    struct Harmless;
+
+    impl fontina_platform::FontActivator for Harmless {
+        fn install(&self, file: &Path) -> fontina_platform::Result<PathBuf> {
+            Ok(file.with_extension("installed"))
+        }
+        fn uninstall(&self, _installed: &Path) -> fontina_platform::Result<()> {
+            Ok(())
+        }
+        fn activate(
+            &self,
+            _file: &Path,
+            _scope: fontina_platform::Scope,
+        ) -> fontina_platform::Result<()> {
+            Ok(())
+        }
+        fn deactivate(&self, _file: &Path) -> fontina_platform::Result<bool> {
+            Ok(true)
+        }
+    }
+
+    /// Where this process keeps the scanned fixtures and the copies made from them.
+    ///
+    /// Emptied once, on first use, so a run leaves one run's worth behind rather than
+    /// every run's: the copies cannot be deleted as they are finished with, because the
+    /// browser holding one is still open and Windows will not unlink an open file.
+    fn scratch() -> &'static Path {
+        static DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+        DIR.get_or_init(|| {
+            let dir = std::env::temp_dir().join(format!("fontina-ui-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            dir
+        })
+    }
+
+    /// The fixtures, scanned once for the whole test binary.
+    ///
+    /// Parsing six fonts in a debug build costs seven seconds, and the soak builds a
+    /// fresh browser for every key it holds down: fifty keys, six minutes of parsing to
+    /// exercise key presses that take microseconds each. Scanning once and copying the
+    /// result is the same index, arrived at the same way, without paying for it fifty
+    /// times.
+    fn template() -> &'static Path {
+        static TEMPLATE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+        TEMPLATE.get_or_init(|| {
+            let db = scratch().join("template.db");
+            let _ = std::fs::remove_file(&db);
+            let mut index = Index::open(&db).unwrap();
+            let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures");
+            fontina_core::scan::scan(&mut index, &[fixtures], &Default::default()).unwrap();
+            db
+        })
+    }
+
+    /// A browser over its own copy of the scanned fixtures.
+    ///
+    /// A copy, not a shared file: several of these tests write to the index — a tag, an
+    /// activation record, a removed file — and one test's writes must not be another
+    /// test's starting point.
     fn app() -> App {
-        let mut index = Index::open_in_memory().unwrap();
-        let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures");
-        fontina_core::scan::scan(&mut index, &[fixtures], &Default::default()).unwrap();
-        App::new(index).unwrap()
+        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let db = scratch().join(format!("app-{n}.db"));
+        std::fs::copy(template(), &db).expect("copying the scanned fixtures");
+        App::with_activator(Index::open(&db).unwrap(), Box::new(Harmless)).unwrap()
     }
 
     /// The graphical escape hatch, and the whole of it: a specimen for what is selected,
@@ -2077,8 +2164,6 @@ mod tests {
             app.command_line()
         );
     }
-
-||||||| parent of 9ac1dbb8 (test(cli): drive the browser the way a person does, not the way a script does)
 
     /// A deterministic pseudo-random source. Seeded, so a failure is reproducible from
     /// the seed the message prints, and dependency-free.
