@@ -2128,11 +2128,18 @@ fn run_tag(cli: &Cli, cmd: &TagCmd) -> Result<()> {
                      files, --from-files reads the files' tags into the index"
                 );
             }
-            let report = tag_sync(&mut index, *to_files, targets, *dry_run)?;
+            let (report, failures) = tag_sync(&mut index, *to_files, targets, *dry_run)?;
             if *json {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {
                 print_tag_sync(&report);
+            }
+            // The report is printed either way; the status is what a script reads. One
+            // font that could not be written is a skip in a successful run, but a run in
+            // which everything failed and nothing was done is a failure: a read-only
+            // mount should not print `0 of 300 file(s) changed` and exit 0.
+            if failures > 0 && report.changes.is_empty() {
+                bail!("nothing was synced: {failures} file(s) could not be");
             }
         }
     }
@@ -2156,24 +2163,45 @@ fn faces_by_file(index: &Index, targets: &[String]) -> Result<Vec<FileTags>> {
             ..FaceFilter::default()
         }
     };
-    let mut by_file: BTreeMap<PathBuf, (Vec<i64>, BTreeSet<String>)> = BTreeMap::new();
+    let mut by_file: BTreeMap<PathBuf, Vec<i64>> = BTreeMap::new();
     for f in index.list(&filter)? {
-        let e = by_file.entry(PathBuf::from(&f.path)).or_default();
-        e.0.push(f.id);
-        e.1.extend(f.tags);
+        by_file
+            .entry(PathBuf::from(&f.path))
+            .or_default()
+            .push(f.id);
     }
-    Ok(by_file
-        .into_iter()
-        .map(|(p, (ids, tags))| (p, ids, tags))
-        .collect())
+    // A file's tags are the tags of *every* face in it, not only the selected ones. A
+    // font collection holds several faces in one file and the file has one set of tags,
+    // so syncing a selection of them to disk with only their own tags would strip the
+    // rest. Widening here means the written set is always the whole file's.
+    let mut out = Vec::with_capacity(by_file.len());
+    for (path, selected) in by_file {
+        let ids = match selected.first() {
+            Some(id) => index.file_faces(*id)?,
+            None => selected,
+        };
+        let tags: BTreeSet<String> = index
+            .summaries(&ids)?
+            .into_iter()
+            .flat_map(|s| s.tags)
+            .collect();
+        out.push((path, ids, tags));
+    }
+    Ok(out)
 }
 
+/// Sync tags one way, and say how many files failed.
+///
+/// A skip is not always a failure. Declining to write a font the operating system ships,
+/// or naming a tag the file store cannot hold, is this command working as designed; a
+/// file it could not read, write or record is not. Only the second kind is counted, and
+/// only the count decides the exit status.
 fn tag_sync(
     index: &mut Index,
     to_files: bool,
     targets: &[String],
     dry_run: bool,
-) -> Result<TagSyncReport> {
+) -> Result<(TagSyncReport, usize)> {
     if !fontina_platform::tags::supported() {
         bail!(
             "this system has no file tags: Windows keeps keywords per file format, and a \
@@ -2202,6 +2230,7 @@ fn tag_sync(
         skipped: Vec::new(),
     };
 
+    let mut failures = 0usize;
     for (path, ids, indexed) in files {
         if let Some(dir) = readonly.iter().find(|d| path.starts_with(d)) {
             report.skipped.push(TagSyncSkip {
@@ -2213,6 +2242,7 @@ fn tag_sync(
         let on_file: BTreeSet<String> = match fontina_platform::tags::read(&path) {
             Ok(t) => t.into_iter().collect(),
             Err(e) => {
+                failures += 1;
                 report.skipped.push(TagSyncSkip {
                     path: path.to_string_lossy().into_owned(),
                     reason: e.to_string(),
@@ -2225,12 +2255,21 @@ fn tag_sync(
         } else {
             (&on_file, &indexed)
         };
-        // Tags the file store cannot hold are not a reason to abandon the sync; they are
-        // a reason to say which ones were left behind.
-        let (writable, refused): (Vec<&String>, Vec<&String>) = from
+        // A tag the file store cannot hold is not synced in either direction, and that
+        // has to be symmetric. Writing, it cannot go out. Reading, its absence from the
+        // file is not evidence anyone removed it: the file was never able to carry it, so
+        // treating the difference as a removal would delete from the index the very tag
+        // the other direction says it kept.
+        let refused: Vec<&String> = from
             .iter()
-            .partition(|t| fontina_platform::tags::unstorable(t).is_none());
-        if to_files && !refused.is_empty() {
+            .chain(to.iter())
+            .filter(|t| fontina_platform::tags::unstorable(t).is_some())
+            .collect();
+        let writable: Vec<&String> = from
+            .iter()
+            .filter(|t| fontina_platform::tags::unstorable(t).is_none())
+            .collect();
+        if !refused.is_empty() {
             report.skipped.push(TagSyncSkip {
                 path: path.to_string_lossy().into_owned(),
                 reason: format!(
@@ -2244,16 +2283,48 @@ fn tag_sync(
             });
         }
         let wanted: BTreeSet<String> = writable.into_iter().cloned().collect();
-        let added: Vec<String> = wanted.difference(to).cloned().collect();
-        let removed: Vec<String> = to.difference(&wanted).cloned().collect();
+        // The index holds tag names case-insensitively, so `Work` and `work` are one tag
+        // there and two here. Comparing the sets byte-wise made a difference of case look
+        // like an addition *and* a removal: the add resolved to the row that already
+        // existed and did nothing, the remove then deleted it, and the run after that put
+        // it back. Fold both sides before taking the difference.
+        let fold = |t: &String| t.to_lowercase();
+        let to_folded: BTreeMap<String, &String> = to.iter().map(|t| (fold(t), t)).collect();
+        let wanted_folded: BTreeSet<String> = wanted.iter().map(fold).collect();
+        // A refused tag is one this sync is deliberately not managing on this side. It
+        // must not be counted as removed, or `--to-files` would drop from the file the
+        // very tag the skip line says it kept.
+        let untouched: BTreeSet<String> = refused.iter().map(|t| fold(t)).collect();
+        let added: Vec<String> = wanted
+            .iter()
+            .filter(|t| !to_folded.contains_key(&fold(t)))
+            .cloned()
+            .collect();
+        let removed: Vec<String> = to_folded
+            .iter()
+            .filter(|(k, _)| !wanted_folded.contains(*k) && !untouched.contains(*k))
+            .map(|(_, v)| (*v).clone())
+            .collect();
         if added.is_empty() && removed.is_empty() {
             continue;
         }
         report.changed += 1;
         if !dry_run {
             if to_files {
-                let list: Vec<String> = wanted.iter().cloned().collect();
+                // Whatever the file already carried that this sync refused to manage
+                // stays on it: `write` replaces the attribute wholesale, so a tag left
+                // out of the list is a tag deleted from disk.
+                let mut list: Vec<String> = wanted.iter().cloned().collect();
+                list.extend(
+                    on_file
+                        .iter()
+                        .filter(|t| untouched.contains(&fold(t)))
+                        .cloned(),
+                );
+                list.sort();
+                list.dedup();
                 if let Err(e) = fontina_platform::tags::write(&path, &list) {
+                    failures += 1;
                     report.changed -= 1;
                     report.skipped.push(TagSyncSkip {
                         path: path.to_string_lossy().into_owned(),
@@ -2262,11 +2333,32 @@ fn tag_sync(
                     continue;
                 }
             } else {
+                // One font that cannot be written should not stop the other three
+                // hundred, and that holds for the index as much as for the files: these
+                // used to propagate, abandoning a report of everything already done.
+                let mut failed = None;
                 for t in &added {
-                    index.tag(&ids, t)?;
+                    if let Err(e) = index.tag(&ids, t) {
+                        failed = Some(e);
+                        break;
+                    }
                 }
-                for t in &removed {
-                    index.untag(&ids, t)?;
+                if failed.is_none() {
+                    for t in &removed {
+                        if let Err(e) = index.untag(&ids, t) {
+                            failed = Some(e);
+                            break;
+                        }
+                    }
+                }
+                if let Some(e) = failed {
+                    failures += 1;
+                    report.changed -= 1;
+                    report.skipped.push(TagSyncSkip {
+                        path: path.to_string_lossy().into_owned(),
+                        reason: e.to_string(),
+                    });
+                    continue;
                 }
             }
         }
@@ -2276,7 +2368,7 @@ fn tag_sync(
             removed,
         });
     }
-    Ok(report)
+    Ok((report, failures))
 }
 
 fn print_tag_sync(report: &TagSyncReport) {
