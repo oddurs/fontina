@@ -49,6 +49,8 @@ pub struct Facets {
     /// kind of claim it is, because the two are different questions: `TRK` is a shaping
     /// rule, `tr` is a name record.
     pub language: Vec<FacetCount>,
+    /// `monospace` or `proportional`, from `post.isFixedPitch`.
+    pub spacing: Vec<FacetCount>,
     pub license: Vec<FacetCount>,
     /// `free`, `nonfree`, `unknown` or `unstated`, derived from the license.
     pub freedom: Vec<FacetCount>,
@@ -183,7 +185,7 @@ impl Index {
         let w = Self::where_for(filter);
         let sql = format!(
             "SELECT f.family, f.weight_min, f.weight_max, f.width_min, f.width_max,
-                    f.italic, f.is_variable, f.is_color, fi.container,
+                    f.italic, f.is_variable, f.is_color, f.is_fixed_pitch, fi.container,
                     f.scripts, f.license_spdx, f.vendor, a.scope, fi.path
              FROM faces f JOIN files fi ON fi.id = f.file_id LEFT JOIN activations a ON a.face_id = f.id{}",
             w.sql()
@@ -196,12 +198,14 @@ impl Index {
             mut width,
             mut style,
             mut container,
+            mut spacing,
             mut license,
             mut freedom,
             mut vendor,
             mut activation,
             mut source,
         ) = (
+            BTreeMap::new(),
             BTreeMap::new(),
             BTreeMap::new(),
             BTreeMap::new(),
@@ -223,12 +227,13 @@ impl Index {
                 r.get::<_, bool>(5)?,
                 r.get::<_, bool>(6)?,
                 r.get::<_, bool>(7)?,
-                r.get::<_, String>(8)?,
+                r.get::<_, bool>(8)?,
                 r.get::<_, String>(9)?,
-                r.get::<_, Option<String>>(10)?,
+                r.get::<_, String>(10)?,
                 r.get::<_, Option<String>>(11)?,
                 r.get::<_, Option<String>>(12)?,
-                r.get::<_, String>(13)?,
+                r.get::<_, Option<String>>(13)?,
+                r.get::<_, String>(14)?,
             ))
         })?;
         for row in rows {
@@ -241,6 +246,7 @@ impl Index {
                 italic,
                 variable,
                 color,
+                monospace,
                 cont,
                 scripts,
                 lic,
@@ -270,6 +276,16 @@ impl Index {
                 out.color += 1;
             }
             *container.entry(cont).or_default() += 1;
+            *spacing
+                .entry(
+                    if monospace {
+                        "monospace"
+                    } else {
+                        "proportional"
+                    }
+                    .to_string(),
+                )
+                .or_default() += 1;
             let _ = scripts;
             *freedom
                 .entry(crate::freedom::classify(lic.as_deref()).to_string())
@@ -304,6 +320,7 @@ impl Index {
         out.width = width;
         out.style = counts(style);
         out.container = counts_by_count(container);
+        out.spacing = counts_by_count(spacing);
         out.license = counts_by_count(license);
         out.freedom = counts_by_count(freedom);
         out.vendor = counts_by_count(vendor);

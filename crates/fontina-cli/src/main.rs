@@ -565,6 +565,12 @@ struct FilterArgs {
     /// Which kind of claim `--lang` means: `opentype` or `name`.
     #[arg(long, value_name = "KIND", requires = "lang")]
     lang_source: Option<String>,
+    /// Only faces the font itself calls monospaced (`post.isFixedPitch`).
+    #[arg(long, conflicts_with = "proportional")]
+    mono: bool,
+    /// Only faces it does not.
+    #[arg(long)]
+    proportional: bool,
     /// SPDX license prefix, e.g. OFL, Apache, LicenseRef-Proprietary.
     #[arg(long)]
     license: Option<String>,
@@ -625,6 +631,11 @@ impl FilterArgs {
             script_min: self.script_min,
             lang: self.lang.clone(),
             lang_source: self.lang_source.as_deref().and_then(|s| s.parse().ok()),
+            monospace: match (self.mono, self.proportional) {
+                (true, _) => Some(true),
+                (_, true) => Some(false),
+                _ => None,
+            },
             license: self.license.clone(),
             freedom: self.freedom(),
             weight: self.weight,
@@ -1480,7 +1491,7 @@ fn print_table(faces: &[FaceSummary]) {
     let mut out = std::io::BufWriter::new(stdout.lock());
     let _ = writeln!(
         out,
-        "{:>6}  {:<w_fam$}  {:<w_sub$}  {:>w_wght$}  {:>w_wdth$}  {:<5}  {:<12}  path{}",
+        "{:>6}  {:<w_fam$}  {:<w_sub$}  {:>w_wght$}  {:>w_wdth$}  {:<6}  {:<12}  path{}",
         "id",
         "family",
         "style",
@@ -1491,11 +1502,11 @@ fn print_table(faces: &[FaceSummary]) {
         if any_tags { "  [tags]" } else { "" }
     );
     for (i, f) in faces.iter().enumerate() {
-        // The flags column is exactly five characters, so it goes straight into the row
+        // The flags column is exactly six characters, so it goes straight into the row
         // rather than through a `format!` and an allocation for every face listed.
         let _ = writeln!(
             out,
-            "{:>6}  {:<w_fam$}  {:<w_sub$}  {:>w_wght$}  {:>w_wdth$}  {}{}{}{}{}  {:<12}  {}{}{}",
+            "{:>6}  {:<w_fam$}  {:<w_sub$}  {:>w_wght$}  {:>w_wdth$}  {}{}{}{}{}{}  {:<12}  {}{}{}",
             f.id,
             truncate(&f.family, w_fam),
             truncate(&f.subfamily, w_sub),
@@ -1504,6 +1515,7 @@ fn print_table(faces: &[FaceSummary]) {
             if f.variable { "V" } else { "-" },
             if f.color { "C" } else { "-" },
             if f.italic { "I" } else { "-" },
+            if f.monospace { "M" } else { "-" },
             match f.activation {
                 Some(ActivationState::Session) => "s",
                 Some(ActivationState::User) => "u",
@@ -2410,6 +2422,7 @@ fn print_facets(f: &fontina_core::Facets) {
     row("style", &f.style, &|v| v.to_string());
     println!("{:<11} {}   color {}", "variable", f.variable, f.color);
     row("container", &f.container, &|v| v.to_string());
+    row("spacing", &f.spacing, &|v| v.to_string());
     row("script", &f.script, &|v| v.to_string());
     row("language", &f.language, &|v| v.to_string());
     row("license", &f.license, &|v| v.to_string());

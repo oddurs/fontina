@@ -21,6 +21,8 @@ expression: "stable_frame(&mut app, 120, 36)"
 │  variable            2 ││                                              ││  pnum [ ] Proportional figures             │
 │Color                   ││                                              ││  tnum [ ] Tabular figures                  │
 │  color               1 ││                                              ││                                            │
+│Spacing                 ││                                              ││                                            │
+│  proportional        6 ││                                              ││                                            │
 │Script                  ││                                              ││                                            │
 │  Latn                6 ││                                              ││                                            │
 │  Arab                1 ││                                              ││                                            │
@@ -33,8 +35,6 @@ expression: "stable_frame(&mut app, 120, 36)"
 │  CAT                 3 ││                                              ││                                            │
 │  TRK                 3 ││                                              ││                                            │
 │  AZE                 2 ││                                              ││                                            │
-│  CRT                 2 ││                                              ││                                            │
-│  ARA                 1 ││                                              ││                                            │
 └────────────────────────┘└──────────────────────────────────────────────┘└────────────────────────────────────────────┘
  $ fontina list --family "Inter"
  / search  ⇥ facets  ⏎ open  ⌫ back  t tag  c collection  a/A activate  d deactivate  i install  u uninstall  e text  +/

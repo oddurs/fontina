@@ -48,6 +48,7 @@ enum Facet {
     Style,
     Variable,
     Color,
+    Spacing,
     Script,
     Language,
     License,
@@ -68,6 +69,7 @@ impl Facet {
             Facet::Style => "Style",
             Facet::Variable => "Variable",
             Facet::Color => "Color",
+            Facet::Spacing => "Spacing",
             Facet::Script => "Script",
             Facet::Language => "Language",
             Facet::License => "License",
@@ -87,6 +89,7 @@ impl Facet {
             Facet::Style => "--italic",
             Facet::Variable => "--variable",
             Facet::Color => "--color",
+            Facet::Spacing => "--mono",
             Facet::Script => "--script",
             Facet::Language => "--lang",
             Facet::License => "--license",
@@ -238,6 +241,7 @@ impl App {
                 Facet::Style => f.italic = Some(v == "italic"),
                 Facet::Variable => f.variable = Some(true),
                 Facet::Color => f.color = Some(true),
+                Facet::Spacing => f.monospace = Some(v == "monospace"),
                 Facet::Script => f.scripts = vec![v.clone()],
                 Facet::Language => f.lang = Some(v.clone()),
                 Facet::License => f.license = Some(v.clone()),
@@ -1705,6 +1709,7 @@ fn build_rows(facets: &Facets, selected: &BTreeMap<Facet, String>) -> Vec<FacetR
     if facets.color > 0 {
         section(Facet::Color, &color, 1);
     }
+    section(Facet::Spacing, &facets.spacing, 2);
     section(Facet::Script, &facets.script, 8);
     section(Facet::Language, &facets.language, 8);
     section(Facet::License, &facets.license, 6);

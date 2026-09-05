@@ -21,8 +21,8 @@ expression: drawn
 │  variable            2 ││                      ││.ttf                        │
 │Color                   ││                      ││                            │
 │  color               1 ││                      ││                            │
-│Script                  ││                      ││                            │
-│  Latn                6 ││                      ││                            │
+│Spacing                 ││                      ││                            │
+│  proportional        6 ││                      ││                            │
 └────────────────────────┘└──────────────────────┘└────────────────────────────┘
  $ fontina families
  / search  ⇥ facets  ⏎ open  ⌫ back  t tag  c collection  a/A activate  d deacti

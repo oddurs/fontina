@@ -137,10 +137,17 @@ Merging them would over-report in one direction and under-report in the other, w
 way for you to tell which had happened.  @code{fontina info} prints the two lists
 separately, as @code{shaping for:} and @code{named in:}.
 
+@option{--mono} and @option{--proportional} split the library by @code{post.isFixedPitch},
+and there is a @code{spacing} facet beside them.  What the font says about itself is what
+is reported: a font whose advance widths contradict its own flag is a health check, not a
+filter that quietly disagrees with the file.  The @code{flags} column shows @code{M} for
+a face that claims it.
+
 @noindent
 @code{list}, @code{families}, @code{facets} and @code{covers} share one set of filters:
 @option{--family}, @option{--variable}, @option{--color}, @option{--italic},
 @option{--script}, @option{--script-min}, @option{--lang}, @option{--lang-source},
+@option{--mono}, @option{--proportional},
 @option{--license}, @option{--free}, @option{--nonfree},
 @option{--freedom}, @option{--weight}, @option{--width}, @option{--vendor},
 @option{--tag}, @option{--collection}, @option{--active}, @option{--activation},
