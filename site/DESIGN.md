@@ -25,13 +25,21 @@ Nothing is fetched. `ui-sans-serif` and `system-ui` resolve to the interface fac
 machine already draws its own menus in, which is the face its owner reads fastest;
 the rest of the stack is there for the machines that have neither.
 
+
 ## Type scale
 
-Seven steps, ratio about 1.25, all in `rem` so they follow the reader's browser setting
+Eight steps, ratio about 1.25, all in `rem` so they follow the reader's browser setting
 rather than overriding it.
+
+The root is set to `112.5%`, so `--text-base` lands at 18px where a browser's default is
+16. That is not an override: it is a proportion of whatever the reader chose, so someone
+running at 20px gets 22.5 and the whole scale moves with them. 16px was right for a
+reference manual and small for a page someone is still deciding whether to read.
+Everything on the site is in `rem`, so it is the only line that had to change.
 
 | Token | Value | At 16px | Used for |
 |---|---|---|---|
+| `--text-3xl` | `clamp(2rem, …, 2.75rem)` | 32 → 44px | the hero's opening line |
 | `--text-2xl` | `clamp(1.75rem, …, 2.25rem)` | 28 → 36px | `h1` |
 | `--text-xl` | `clamp(1.5rem, …, 1.75rem)` | 24 → 28px | a section opener |
 | `--text-lg` | `clamp(1.25rem, …, 1.375rem)` | 20 → 22px | `h2` |
@@ -40,7 +48,11 @@ rather than overriding it.
 | `--text-sm` | `0.875rem` | 14px | nav, meta, tables, code |
 | `--text-xs` | `0.75rem` | 12px | labels, badges |
 
-The top three steps interpolate with the viewport rather than snapping at a
+`--text-3xl` is used in one place. A landing page's opening line is the only type on the
+site with a job no other size can do, and borrowing the `h1` step left it looking like a
+chapter heading with buttons underneath.
+
+The top four steps interpolate with the viewport rather than snapping at a
 breakpoint: a 36px `h1` is right at the top of a desktop column and too loud on a
 phone. The scale still names both endpoints, and the four steps below `--text-lg` do
 not move — body text should be the size the reader asked for.
@@ -112,8 +124,30 @@ with hairlines, and a shadow would be the one soft edge on an otherwise sharp pa
 
 The frame is a flex row of `.main` and `.navcol`, centred. Prose inside `.main` is
 capped at `--measure` so a line stays readable even when a table beside it is wide.
-The nav column is sticky, so it stays in reach down a long manual chapter, and scrolls
-inside itself if it is taller than the window.
+Navigation is three tiers, not one list doing three jobs.
+
+1. **The masthead**, above the content on every page: the wordmark and the five
+   destinations most people want. It is the fix for a real defect — with the index living
+   only in a right-hand column, a reader met twenty-four links before the first sentence
+   and, once the page stacked on a phone, met them *after* the last one, so the way to the
+   manual sat at the bottom of the manual.
+2. **The nav column**, only where there is something contextual to put in it. Today that
+   is the manual's own chapter list; every other page is the full frame. It is sticky, so
+   it stays in reach down a long chapter, and scrolls inside itself if it is taller than
+   the window.
+3. **The sitemap**, at the foot: every group, every link, in as many columns as fit.
+
+The masthead wraps rather than collapsing into a menu. Five items do not need a
+disclosure, and a disclosure without script means fighting the user agent stylesheet;
+under `30rem` the wordmark takes its own line and the destinations sit beneath it.
+
+Its row is centred rather than baseline-aligned, and that is the mark's fault: an emoji
+font's descent is enormous, so under `baseline` the cheese set the row's baseline far
+below the text, everything else floated to the top, and the bar grew to fit a descender
+nobody can see. Centring ignores font metrics entirely. The current page is marked with a
+2px rule close under the word rather than one reaching down to the masthead's own
+hairline — that needed a negative margin, which does not survive centring, and an
+underline four pixels under a word belongs to the word anyway.
 
 Three things happen as the page narrows. Under `60rem` the columns stack, the nav takes
 a top hairline and stops being sticky, and — because six groups in a single list is
@@ -185,6 +219,194 @@ and the optional `.label` above it. Takes any content; the last child loses its 
 
 Groups something that is not prose — a summary, a set of figures. `--bg-subtle`, one
 hairline, one radius. The last child loses its margin.
+
+### Hero
+
+```html
+<section class="hero">
+  <h1>Find any font you have. Use it in anything. Install nothing.</h1>
+  <p class="lead">What it is, and how.</p>
+  <p class="btn-row">…</p>
+  <ul class="strip">…refusals…</ul>
+  <pre class="term">…the tool running…</pre>
+</section>
+```
+
+A section, and the only one that opens rather than continues. Not a marketing hero: no
+ornament, no full-bleed anything, nothing that moves. The rule underneath closes it, the
+way every other section is opened by one.
+
+**It does not repeat the name.** The masthead six lines above already says what this is
+called, and a mark and a wordmark twice in one screen is an identity arguing with itself.
+The opening line does the job a landing page's opening line is for instead: what you can
+do, in the plainest words that are true.
+
+Benefits are allowed here; adjectives are not. Every claim in the hero is a verb or a
+refusal — *find*, *use*, *install nothing*, *no network*, *no telemetry* — and each is
+answered further down by the section that proves it. The transcript sits inside the hero
+rather than after it, under the refusals, so the last thing before the page moves on is
+the tool running rather than another sentence about it. That is the concept: the claim
+and its evidence in one screen, with no adjective between them.
+
+The manual's index uses the same hero with a `.tagline` under the heading, because there
+the `h1` is a title rather than a sentence and needs a line to say what the thing is.
+
+### Section
+
+```html
+<section class="section"><h2>…</h2>…</section>
+```
+
+A rule and a wider gap. A long page of undifferentiated blocks is what makes a page of
+this era feel like an archive rather than a document, and this is the cheapest thing that
+says "new subject". No card, no shadow, no background: one hairline.
+
+### Grid and tile
+
+```html
+<div class="grid">
+  <div class="tile"><h3><a href="…">Activates</a></h3><p>… <code>activate</code></p></div>
+</div>
+```
+
+Scannable units — one claim each, each linking to the chapter that proves it, each naming
+the command that does it. `auto-fit` with a `15rem` minimum, so it becomes one column on a
+phone without a breakpoint of its own. This replaces a paragraph that carried fifteen
+inline links, which nobody reads as a list because it is not one.
+
+### Properties
+
+```html
+<dl class="props">
+  <dt>It makes no network connections</dt>
+  <dd>How you would check that.</dd>
+</dl>
+```
+
+For claims that have to be checkable: the term is the property, the definition says how
+you would verify it. Used for the free-software section, where a vague promise would be
+worse than none — "respects your freedom" says nothing, "contains no networking code, and
+a catalogue feature would have to live in a separate package to keep it that way" can be
+confirmed by reading the source.
+
+### On-page contents
+
+```html
+<nav class="toc" aria-label="On this page">
+  <span class="label">On this page</span>
+  <ul><li><a href="#slug">Section</a></li></ul>
+</nav>
+```
+
+Built from the chapter's own depth-2 headings, which Astro hands back from `render()`, so
+it cannot drift from the page. Two columns on a wide screen, one under `40rem`. It appears
+only where there are more than two sections: the command reference runs to eleven, and
+arriving at the top of that with no map is why a reader gives up on a manual and goes back
+to `--help`.
+
+### Chapter row
+
+```html
+<div class="chapter">
+  <div class="num">5</div>
+  <div class="body"><a href="…">Command reference</a><p>The sentence that says whether this is the chapter you want.</p></div>
+</div>
+```
+
+The manual index, which was an `<ol>` of ten links. The number keeps the reading order the
+manual is written in; the description is what lets someone skip to the chapter they need.
+
+### Lockup
+
+```html
+<span class="lockup"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true">…</svg>fontina</span>
+```
+
+The mark and the name, set once and used at two sizes. Everything is in `em`, so one rule
+serves both. fontina is a cheese; the mark is the joke, and it is the only ornament on the
+site.
+
+**The mark is drawn, not set.** It began as the emoji character U+1F9C0 and sat visibly
+high in the masthead through two attempts to centre it. That is not a bug you can fix from
+CSS: where the ink lands inside a glyph's box is decided by the font's ascent and descent,
+those differ between Apple Color Emoji, Noto Color Emoji and Segoe UI Emoji, and no single
+nudge is right for all three. Centring the box is not centring the picture.
+
+Inline SVG at `1em` has geometry we own. It centres exactly, scales with the type, renders
+the same everywhere, and can never arrive as a tofu box on a machine with no emoji font —
+which also retires the whole "what if the emoji is missing" fallback story, because there
+is no longer anything to be missing. It is the same wedge the favicon draws, for the same
+reason, one size up.
+
+It stays `aria-hidden`: the word carries the name, so a screen reader says "fontina"
+rather than "cheese wedge fontina".
+
+### Masthead
+
+```html
+<header class="masthead">
+  <div class="inner">
+    <p class="wordmark"><a href="/">fontina</a></p>
+    <nav aria-label="Main"><a href="…" aria-current="page">Manual</a>…</nav>
+  </div>
+</header>
+```
+
+A masthead in the sense a newspaper has one, not a chrome bar: a rule underneath, no
+shadow, nothing sticky, nothing that follows you down the page. The current destination
+takes `aria-current="page"` and darkens; everything else sits in `--ink-soft` so the bar
+does not compete with the first heading under it.
+
+### Property strip
+
+```html
+<ul class="strip">
+  <li><span class="badge">No network</span></li>
+  <li><span class="badge badge--accent"><a href="/license/">GPL-3.0-or-later</a></span></li>
+</ul>
+```
+
+What the program refuses to do, in the first screen, as badges. The claim gets made where
+a reader is deciding whether to care and argued properly further down in **Properties**;
+a licence named in a badge and never explained is a sticker.
+
+### Footer
+
+```html
+<footer class="footer">
+  <div class="inner">
+    <nav class="sitemap">…nav items…</nav>
+    <div class="footer-note">
+      <div class="colophon">…which licences…</div>
+      <div class="notice">…where to ask, copyright, last modified…</div>
+    </div>
+  </div>
+</footer>
+```
+
+One section, three bands: the index, then the licence, then the small print. They were
+three siblings, each drawing its own rule and setting its own width, which is why the
+foot of the page read as a pile rather than a block. The footer owns the rule and the
+width now; the bands inside own only rhythm, and one hairline separates the index from
+the words.
+
+The **sitemap** is the complete index — where the twenty-four links went once the
+masthead took the five that matter and the nav column became contextual. It reuses the
+nav item's markup but neither its rail nor its indent. The nav column's 2px left border
+says *you are here in this list*, and its indent says *this belongs to the line above*;
+a footer index is a list you are nowhere in, and every entry in it is just a link. Both
+come off. A component carried into a place where its affordance does not apply is worse
+than a new one, because it makes a promise the page cannot keep.
+
+The **colophon** and the **notice** sit side by side while there is room — the claim on
+the left, the housekeeping on the right, so neither reads as a footnote to the other —
+and stack under `19rem` of column.
+
+What a free software project's footer owes a reader is which licence covers the program
+and which covers the words, named rather than linked past, followed by what it refuses to
+do — so the claim on the front page is repeated where someone who scrolled to the bottom
+looking for it will find it. Both are kept short: the foot of a page is not where anyone
+reads a paragraph, and this one lost a third of its words on the way to fitting.
 
 ### Frame
 
@@ -296,6 +518,64 @@ and cannot be handed a wrapper, so the nine tables in the manual previously had 
 stopping them pushing the whole page sideways on a phone. There is no `.wide` helper
 any more; it existed only to do this by hand, and by hand it was never applied to the
 Markdown that needed it most.
+
+### Terminal
+
+```html
+<div class="terminal">
+  <div class="terminal-bar"><span class="where">~/Fonts</span><span>fontina</span></div>
+  <pre class="term">…<span class="cursor" aria-hidden="true"></span></pre>
+</div>
+```
+
+A transcript in a frame that says what it is: the bar carries the working directory the
+way a terminal's own title bar does. No traffic lights — those are one platform's window
+decoration, and on this site they would be costume rather than information.
+
+It is the only place with a radius above 5px and the only filled ground on the page,
+because a terminal is a thing being *quoted* rather than part of the page.
+
+### Animated demos
+
+Two of them, both CSS, neither with a line of script. The site's no-script rule is not
+relaxed for a demo; what follows is what that rule permits, which turns out to be most of
+what a recording would give and none of the weight.
+
+**The session types itself.** Monospace is what makes this possible: every glyph is one
+`ch` wide, so animating a width in `steps(n)` reveals exactly one character per step and
+reads as typing rather than as a box growing. The timeline lives in one comment in the
+stylesheet so it can be reasoned about rather than reverse-engineered — command types,
+output appears, second command types, table appears, prompt returns. Output is *revealed*
+rather than inserted, so the frame is its full height from the first paint and nothing
+below it moves.
+
+It **plays once and settles**. A landing page that loops a demo forever asks the reader to
+watch it instead of reading the page, and the final state is the one worth leaving up.
+
+**The browser plays three real frames.** They are the snapshot files a test in the CLI
+asserts on, stacked in one grid cell and cross-faded: the family list, a family opened,
+the help overlay. What animates is the program's actual output in three states, not an
+impression of one. This loop *does* repeat, because it is a slideshow rather than a
+session and no frame is more true than the others.
+
+Two things this got wrong on the way, both worth knowing before touching it:
+
+The step count and the string length have to agree or the last character never appears.
+They did not, once. Measure the string; do not count it.
+
+Lifetime is `visibility` and the blink is `opacity`, and they must stay on separate
+properties. Doing both with opacity meant two animations writing one property, where the
+later wins only while it is filling — and `reverse` on a keyframe with an implicit `from`
+takes that from-value from whatever the other animation happened to be writing. The first
+cursor never left, so all three were on screen at once. Two properties cannot race.
+
+Everything stops under `prefers-reduced-motion: reduce`: the session shows as already
+typed, the browser shows its first frame and stays there. That is a setting a person
+chose, not a hint.
+
+**What this cannot do.** Asciinema-grade playback — scrubbing, pausing, arbitrary
+timing, a real recording of a real session — needs JavaScript. That is a change to the
+rules rather than a feature, and it should be made deliberately if it is made at all.
 
 ### Code
 
