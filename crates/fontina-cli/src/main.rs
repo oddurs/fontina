@@ -1331,6 +1331,9 @@ fn run() -> Result<()> {
             for t in &expand_targets(targets)? {
                 faces.extend(resolve_faces(&cli, t)?);
             }
+            if !*link {
+                note_what_is_embedded(&faces);
+            }
             let html = fontina_core::specimen::render(
                 &faces,
                 &fontina_core::specimen::SpecimenOptions {
@@ -3285,6 +3288,37 @@ fn dark_background() -> bool {
         .unwrap_or(true)
 }
 
+/// Say how many of the fonts about to be embedded are under a licence that withholds
+/// redistribution.
+///
+/// A specimen with `--link` references the files; without it, it carries them, and the
+/// file that comes out is a font you can send to somebody. That is exactly what a
+/// specimen is for and exactly why it is worth a sentence: a designer's library is
+/// mostly licensed fonts, and the difference between the two forms is not visible in
+/// the output.
+///
+/// Said, not enforced, and not a warning. `freedom.rs` reports what a licence says and
+/// leaves the decision where it belongs; this is the same rule one layer up.
+fn embedded_nonfree(faces: &[fontina_core::FaceMetadata]) -> usize {
+    faces
+        .iter()
+        .filter(|f| fontina_core::freedom::classify(f.license.spdx.as_deref()) != Freedom::Free)
+        .count()
+}
+
+fn note_what_is_embedded(faces: &[fontina_core::FaceMetadata]) {
+    let nonfree = embedded_nonfree(faces);
+    if nonfree == 0 {
+        return;
+    }
+    eprintln!(
+        "note: {nonfree} of {} face(s) are under a licence that does not grant \
+         redistribution, and this specimen embeds the font files; `--link` references \
+         them instead",
+        faces.len()
+    );
+}
+
 fn run_preview(cli: &Cli, args: &PreviewArgs) -> Result<()> {
     use fontina_core::render::{RenderOptions, encode, render_face};
     let cfg = config::load()?.config.preview;
@@ -3622,6 +3656,32 @@ mod tests {
         let rec = Recorder::default();
         leave_current_state(&index, &rec, id, &font, ActivationState::Installed).unwrap();
         assert!(rec.calls().is_empty(), "{:?}", rec.calls());
+    }
+
+    /// A specimen that embeds says how many of the fonts it is carrying are licensed.
+    ///
+    /// Every fixture is free, so the nonfree side is a parsed fixture with its licence
+    /// changed — the same way `tests/checks.rs` triggers `license/nonfree`, and for the
+    /// same reason: we may not redistribute a font that says we may not.
+    #[test]
+    fn a_specimen_counts_the_licensed_fonts_it_would_carry() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/Amiri-Regular.ttf");
+        let (_, faces) = fontina_core::load_file(&path).unwrap();
+        assert_eq!(
+            embedded_nonfree(&faces),
+            0,
+            "the fixtures are free and get no note"
+        );
+
+        let mut licensed = faces.clone();
+        licensed[0].license.spdx = Some("LicenseRef-Proprietary".into());
+        assert_eq!(embedded_nonfree(&licensed), 1);
+
+        // A licence nobody has ruled on is not free either: the reader is the one who
+        // knows, and the count is what tells them there is something to know.
+        let mut unknown = faces.clone();
+        unknown[0].license.spdx = None;
+        assert_eq!(embedded_nonfree(&unknown), 1);
     }
 
     #[test]
