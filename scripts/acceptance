@@ -46,6 +46,10 @@ trap cleanup EXIT INT TERM
 # directory is `$XDG_DATA_HOME/fonts` on GNU/Linux but `$HOME/Library/Fonts` on macOS,
 # so redirecting XDG alone left this script installing fixtures into the developer's own
 # font directory and leaving them there. On GNU/Linux, where CI runs, nothing showed it.
+# The real one, remembered before it is redirected, so the last section can ask whether
+# anything escaped the sandbox. Once HOME points at the sandbox, looking inside it proves
+# nothing.
+real_home=${HOME:-}
 HOME="$root/home"
 XDG_DATA_HOME="$root/data"
 XDG_CONFIG_HOME="$root/config"
@@ -247,13 +251,26 @@ fi
 
 # --- nothing outside the sandbox ----------------------------------------------------
 say "leaves no trace"
-# On GNU/Linux the sandbox is complete, because everything follows XDG. Elsewhere the
-# per-user font directory is fixed by the OS, so the test asserts it emptied up after
-# itself rather than that it never went there.
-if [ "$os" = Linux ] && [ -n "${HOME:-}" ] && [ -d "$HOME/.local/share/fonts/fontina" ]; then
-    no "$HOME/.local/share/fonts/fontina exists: something escaped the sandbox"
+# The real home, not the sandbox: with HOME redirected, everything fontina does lands
+# inside `$root` by construction, and looking there proves nothing. What is worth asking
+# is whether anything reached the directories a person actually keeps fonts in.
+escaped=
+if [ -n "$real_home" ]; then
+    for d in "$real_home/.local/share/fonts/fontina" \
+        "$real_home/.local/share/fonts/fontina-active" \
+        "$real_home/Library/Fonts"; do
+        [ -d "$d" ] || continue
+        # A directory of ours anywhere, or one of our fixtures in the OS's own.
+        case "$d" in
+        */fontina | */fontina-active) escaped="$d" ;;
+        *) find "$d" -name 'Amiri-Regular-*' 2>/dev/null | grep -q . && escaped="$d" ;;
+        esac
+    done
+fi
+if [ -n "$escaped" ]; then
+    no "$escaped holds something of ours: the run escaped its sandbox"
 else
-    ok "nothing of ours is left in the real font directories"
+    ok "nothing of ours is in the real font directories"
 fi
 
 # --- exports ------------------------------------------------------------------------
