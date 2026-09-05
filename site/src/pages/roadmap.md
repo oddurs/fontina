@@ -69,8 +69,21 @@ face whose weight axis spans 200 to 800 is not found by a search for 400; there 
 way to ask for a language at all; and a script filter cannot ask for two scripts at
 once or for how much of one a face covers.
 
-None of it needs a new parse or a rescan. The data is already in the index; only the
+Spacing is the fourth: whether a face is monospaced is read from the font and stored,
+and cannot be filtered or counted, which on a working developer's library is the most
+useful single division there is.
+
+None of that needs a new parse or a rescan. The data is already in the index; only the
 questions are missing.
+
+The fifth gap is a different kind. fontina groups faces by what the font declares — the
+family in its name table — and by what a person asserts, with tags and collections. It
+derives no grouping from what a face actually is, so where a declared family is wrong
+there is nothing to fall back on. A real library of 149 fonts reports twenty families and
+holds about eight typefaces. The answer is not a second kind of family the index invents
+and stores, which would mean encoding somebody else's naming convention as fact; it is a
+question you can ask of one face — what else here covers nearly the same characters — and
+answer from evidence the index already has.
 
 ## Never
 
