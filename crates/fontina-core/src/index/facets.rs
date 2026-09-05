@@ -45,6 +45,10 @@ pub struct Facets {
     pub container: Vec<FacetCount>,
     /// ISO 15924 script codes.
     pub script: Vec<FacetCount>,
+    /// Languages the matched faces claim, most-claimed first. The value carries which
+    /// kind of claim it is, because the two are different questions: `TRK` is a shaping
+    /// rule, `tr` is a name record.
+    pub language: Vec<FacetCount>,
     pub license: Vec<FacetCount>,
     /// `free`, `nonfree`, `unknown` or `unstated`, derived from the license.
     pub freedom: Vec<FacetCount>,
@@ -328,6 +332,21 @@ impl Index {
             })
         })?;
         out.script = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+        // Ordered by how many faces claim each language, which is the useful order for a
+        // list somebody is scanning to narrow a library down. Both kinds of claim are
+        // offered, told apart by the tag namespace rather than merged.
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT fl.tag, COUNT(DISTINCT fl.face_id) FROM face_languages fl
+             WHERE fl.face_id IN ({inner})
+             GROUP BY fl.tag ORDER BY COUNT(DISTINCT fl.face_id) DESC, fl.tag"
+        ))?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(w.params()), |r| {
+            Ok(FacetCount {
+                value: r.get(0)?,
+                count: r.get(1)?,
+            })
+        })?;
+        out.language = rows.collect::<rusqlite::Result<Vec<_>>>()?;
         let mut stmt = self.conn.prepare(&format!(
             "SELECT t.name, COUNT(*) FROM face_tags ft JOIN tags t ON t.id = ft.tag_id WHERE ft.face_id IN ({inner}) GROUP BY t.id ORDER BY t.name COLLATE NOCASE"
         ))?;

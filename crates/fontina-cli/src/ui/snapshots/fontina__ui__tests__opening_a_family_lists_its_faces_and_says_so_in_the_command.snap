@@ -28,13 +28,13 @@ expression: "stable_frame(&mut app, 120, 36)"
 │  Cyrl                1 ││                                              ││                                            │
 │  Zinh                6 ││                                              ││                                            │
 │  Grek                2 ││                                              ││                                            │
-│License                 ││                                              ││                                            │
-│  OFL-1.1             6 ││                                              ││                                            │
-│Freedom                 ││                                              ││                                            │
-│  free                6 ││                                              ││                                            │
-│Activation              ││                                              ││                                            │
-│  none                6 ││                                              ││                                            │
-│Vendor                  ││                                              ││                                            │
+│Language                ││                                              ││                                            │
+│  en                  6 ││                                              ││                                            │
+│  CAT                 3 ││                                              ││                                            │
+│  TRK                 3 ││                                              ││                                            │
+│  AZE                 2 ││                                              ││                                            │
+│  CRT                 2 ││                                              ││                                            │
+│  ARA                 1 ││                                              ││                                            │
 └────────────────────────┘└──────────────────────────────────────────────┘└────────────────────────────────────────────┘
  $ fontina list --family "Inter"
  / search  ⇥ facets  ⏎ open  ⌫ back  t tag  c collection  a/A activate  d deactivate  i install  u uninstall  e text  +/
