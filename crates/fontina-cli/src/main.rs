@@ -604,7 +604,31 @@ fn parse_range(s: &str) -> std::result::Result<(u16, u16), String> {
     Ok((lo.min(hi), lo.max(hi)))
 }
 
+/// Die on a closed pipe, the way every other Unix program does.
+///
+/// Rust sets `SIGPIPE` to ignore before `main`, so writing to a pipe whose reader has
+/// gone returns `EPIPE`, and `println!` turns that into a panic: `fontina list | head`
+/// printed "failed printing to stdout: Broken pipe" and exited 101. Restoring the
+/// default disposition makes the process end quietly on signal 13, which is what a shell
+/// and every tool in a pipeline expect.
+#[cfg(unix)]
+fn die_on_broken_pipe() {
+    const SIGPIPE: i32 = 13;
+    const SIG_DFL: usize = 0;
+    unsafe extern "C" {
+        fn signal(sig: i32, handler: usize) -> usize;
+    }
+    // SAFETY: restoring a signal's default disposition, before any thread is spawned.
+    unsafe {
+        signal(SIGPIPE, SIG_DFL);
+    }
+}
+
+#[cfg(not(unix))]
+fn die_on_broken_pipe() {}
+
 fn main() {
+    die_on_broken_pipe();
     if let Err(e) = run() {
         eprintln!("error: {e:#}");
         std::process::exit(1);
