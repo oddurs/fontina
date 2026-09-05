@@ -535,6 +535,10 @@ decoration, and on this site they would be costume rather than information.
 It is the only place with a radius above 5px and the only filled ground on the page,
 because a terminal is a thing being *quoted* rather than part of the page.
 
+The bar's right-hand label says what the frame holds — `fontina`, `5 frames`, `the status
+line` — so a reader scrolling past knows which of the three demos they are looking at
+without reading the transcript.
+
 ### Animated demos
 
 Two of them, both CSS, neither with a line of script. The site's no-script rule is not
@@ -544,19 +548,50 @@ what a recording would give and none of the weight.
 **The session types itself.** Monospace is what makes this possible: every glyph is one
 `ch` wide, so animating a width in `steps(n)` reveals exactly one character per step and
 reads as typing rather than as a box growing. The timeline lives in one comment in the
-stylesheet so it can be reasoned about rather than reverse-engineered — command types,
-output appears, second command types, table appears, prompt returns. Output is *revealed*
-rather than inserted, so the frame is its full height from the first paint and nothing
-below it moves.
+stylesheet so it can be reasoned about rather than reverse-engineered. Output is
+*revealed* rather than inserted, so the frame is its full height from the first paint and
+nothing below it moves.
 
 It **plays once and settles**. A landing page that loops a demo forever asks the reader to
 watch it instead of reading the page, and the final state is the one worth leaving up.
 
-**The browser plays three real frames.** They are the snapshot files a test in the CLI
-asserts on, stacked in one grid cell and cross-faded: the family list, a family opened,
-the help overlay. What animates is the program's actual output in three states, not an
-impression of one. This loop *does* repeat, because it is a slideshow rather than a
-session and no frame is more true than the others.
+**The session is a story, and the last line is the point.** Four commands: find the fonts,
+ask a question only a font manager can answer, activate one, and then let a *different
+program* answer that it can see it. The first three earn the fourth. A demo that stops at
+"here is a table of your fonts" has shown a database; the one that ends in `fc-match`
+answering has shown the product. The sentence under the frame says which line is
+fontconfig's rather than fontina's, because a terminal has no margin to write in.
+
+**The transcript is captured, not composed.** Every line in it came out of a real binary
+in a Debian container with the fixtures mounted as `~/Fonts`, including the timings and
+the counts. Writing a plausible transcript by hand is easy and is the one thing that would
+make the whole page untrustworthy: a reader who runs the commands must get what the page
+showed.
+
+**The browser plays five real frames, narrated.** They are the snapshot files a test in
+the CLI asserts on, stacked in one grid cell and cross-faded: the family list, a family
+opened, the glyph map, the controls pane of a variable font, the help overlay. That order
+is a session — what you would do, in the order you would do it — and a caption strip on
+the same clock says which key got there, so the strip reads as narration rather than as a
+legend. What animates is the program's actual output in five states, not an impression of
+one.
+
+This loop *does* repeat, because it is a session being replayed rather than one being
+typed and no frame is more true than the others. Five phases of 3.6s: long enough to read
+a dense frame, short enough that a reader still there at eighteen seconds has seen all
+five. Each frame fades in while the last is still fading out, because a gap of even a
+fifth of a second reads as a flicker.
+
+**Two frames were added to the program for this page, and that is the right direction.**
+The glyph map and the controls pane had behavioural tests and no snapshot; the site wanted
+to show them, so the tests came first and the page reads what they assert. The rule is
+that the site never renders a frame the program does not produce — if a page wants to show
+something, the way to get it is a test that pins it.
+
+**What is not animated: the waterfall.** It is the most beautiful thing the browser draws
+and its ink comes from the rasteriser, so pinning it in a snapshot would pin skrifa's
+output and break the page on somebody else's release. The glyph map and the controls pane
+are text and labels, identical on every machine, which is why those two are here.
 
 Two things this got wrong on the way, both worth knowing before touching it:
 
