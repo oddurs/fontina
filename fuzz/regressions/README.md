@@ -44,7 +44,14 @@ decoder's own length guard and comes back as `Truncated` — but with `overflow-
 which is every debug build, every `cargo test` and every fuzz target, it panics instead.
 12 KB; it is a brotli stream, so it neither minimises nor compresses much.
 
-It is here rather than in the table because the defect is not fixed. WOFF 2.0 decoding is
+`woff2-table-directory-underflow.woff2` is the second, found by `scripts/fuzz parse` in a
+ten-minute run and minimised to forty-nine bytes: a WOFF 2.0 header and nothing else.
+`woff2-patched` reads two lengths off the wire in `ttf_header::TableDirectory::new` and
+subtracts one from the other; a file declaring them the wrong way round underflows it.
+Same decoder, different arithmetic, same containment. Two of these in two functions is
+the argument for containing the decoder rather than waiting for the last bug in it.
+
+Both are here rather than in the table because neither defect is fixed. WOFF 2.0 decoding is
 delegated (ADR 0005), 0.4.0 is the newest release, and the arithmetic is not ours to
 correct in this tree. What *is* fixed is the blast radius: `container::decode_woff2` now
 contains the call, so `load_bytes` returns `Err` where it used to unwind, and

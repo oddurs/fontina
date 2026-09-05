@@ -32,6 +32,9 @@ fn open_input(name: &str) -> Vec<u8> {
         .join(name);
     let raw = std::fs::read(&path)
         .unwrap_or_else(|e| panic!("{} must exist and be readable: {e}", path.display()));
+    if !name.ends_with(".gz") {
+        return raw;
+    }
     let mut out = Vec::new();
     GzDecoder::new(&raw[..])
         .read_to_end(&mut out)
@@ -48,6 +51,29 @@ fn a_woff2_that_panics_the_decoder_comes_back_as_an_error() {
     let bytes = open_input("woff2-bbox-stream-underflow.woff2.gz");
     let result = fontina_core::load_bytes(&bytes, "woff2-bbox-stream-underflow");
     let err = result.expect_err("this input cannot produce a face");
+    let message = err.to_string();
+    assert!(
+        message.contains("woff2"),
+        "the error should name the container it came from, got {message:?}"
+    );
+}
+
+/// A second panic in the same decoder, in different arithmetic.
+///
+/// `ttf_header::TableDirectory::new` subtracts one field read off the wire from another,
+/// and a file that declares the first smaller underflows it. Found by
+/// `scripts/fuzz parse` in a ten-minute run, minimised to forty-nine bytes — a WOFF 2.0
+/// header and nothing else, so it costs nothing to keep.
+///
+/// It is here rather than in the fixed table for the same reason as the one above: the
+/// arithmetic is not ours (ADR 0005), 0.4.0 is the newest release, and what fontina can
+/// hold is the blast radius. Two inputs in two different functions is also the argument
+/// for containing the decoder rather than waiting for the last bug in it.
+#[test]
+fn a_second_woff2_panic_is_contained_the_same_way() {
+    let bytes = open_input("woff2-table-directory-underflow.woff2");
+    let err = fontina_core::load_bytes(&bytes, "woff2-table-directory-underflow")
+        .expect_err("this input cannot produce a face");
     let message = err.to_string();
     assert!(
         message.contains("woff2"),
