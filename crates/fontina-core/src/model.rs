@@ -409,6 +409,37 @@ impl FaceMetadata {
     pub fn is_variable(&self) -> bool {
         self.variable.as_ref().is_some_and(|v| !v.axes.is_empty())
     }
+
+    /// The CSS weights this face can be set to: its `wght` axis if it has one, and
+    /// otherwise the single weight it is.
+    ///
+    /// `style.weight` is one number — the default instance — and filtering on it alone
+    /// under-matches every variable font. Bricolage spans 200 to 800 and defaults to
+    /// 800, so asking for 400 misses a font that does 400 perfectly well.
+    pub fn weight_span(&self) -> (f32, f32) {
+        self.axis_span("wght", self.style.weight)
+    }
+
+    /// The same, for width in percent, over the `wdth` axis.
+    pub fn width_span(&self) -> (f32, f32) {
+        self.axis_span("wdth", self.style.width)
+    }
+
+    /// The range of `tag`, widened to include `default` where the two disagree.
+    ///
+    /// A font whose OS/2 weight sits outside its own `wght` range is malformed, but it
+    /// still reports that weight and `list` still prints it. Excluding it from a filter
+    /// for the number it shows would be the wrong kind of correct.
+    fn axis_span(&self, tag: &str, default: f32) -> (f32, f32) {
+        let Some(axis) = self
+            .variable
+            .as_ref()
+            .and_then(|v| v.axes.iter().find(|a| a.tag == tag))
+        else {
+            return (default, default);
+        };
+        (axis.min.min(default), axis.max.max(default))
+    }
     pub fn is_color(&self) -> bool {
         !self.capabilities.color.is_empty()
     }

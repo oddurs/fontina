@@ -245,10 +245,13 @@ impl Index {
         let mut stmt = tx.prepare_cached(
             "INSERT INTO faces (file_id, face_index, postscript_name, family, subfamily, full_name,
                 weight, width, italic, is_variable, is_color, glyph_count, license_spdx, vendor,
-                version, designer, identity_hash, scripts, metadata)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+                version, designer, identity_hash, scripts, metadata,
+                weight_min, weight_max, width_min, width_max)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19,
+                ?20, ?21, ?22, ?23)",
         )?;
         for face in faces {
+            let (weight_span, width_span) = (face.weight_span(), face.width_span());
             let scripts = format!(
                 ",{},",
                 face.coverage
@@ -278,6 +281,10 @@ impl Index {
                 face.identity_hash,
                 scripts,
                 serde_json::to_string(face)?,
+                weight_span.0,
+                weight_span.1,
+                width_span.0,
+                width_span.1,
             ])?;
             insert_ranges(tx, face_id, &face.coverage.ranges)?;
             library::carry_over_apply(tx, face_id, face.index, &carried)?;
@@ -451,15 +458,20 @@ impl Index {
         if let Some(f) = filter.freedom {
             w.clauses.push(freedom_clause(f));
         }
+        // An overlap, not a containment: a face matches when the range it spans and the
+        // range asked for share any point at all. For a static face the two ends are
+        // equal and this is the old `BETWEEN`.
         if let Some((lo, hi)) = filter.weight {
-            w.clauses.push("f.weight BETWEEN ? AND ?".into());
-            w.args.push(Box::new(lo));
+            w.clauses
+                .push("f.weight_min <= ? AND f.weight_max >= ?".into());
             w.args.push(Box::new(hi));
+            w.args.push(Box::new(lo));
         }
         if let Some((lo, hi)) = filter.width {
-            w.clauses.push("f.width BETWEEN ? AND ?".into());
-            w.args.push(Box::new(lo));
+            w.clauses
+                .push("f.width_min <= ? AND f.width_max >= ?".into());
             w.args.push(Box::new(hi));
+            w.args.push(Box::new(lo));
         }
         if let Some(v) = &filter.vendor {
             w.clauses.push("f.vendor = ? COLLATE NOCASE".into());
