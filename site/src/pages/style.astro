@@ -1,86 +1,201 @@
 ---
 import Base from '../layouts/Base.astro';
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const u = (p: string) => `${base}${p}`;
+
+const type = [
+  ['--text-2xl', '2.25rem', '36px', 'h1'],
+  ['--text-xl', '1.75rem', '28px', 'section opener'],
+  ['--text-lg', '1.375rem', '22px', 'h2'],
+  ['--text-md', '1.125rem', '18px', 'h3, lead'],
+  ['--text-base', '1rem', '16px', 'body'],
+  ['--text-sm', '0.875rem', '14px', 'nav, meta, tables, code'],
+  ['--text-xs', '0.75rem', '12px', 'labels, badges'],
+];
+const space = [
+  ['--space-1', '4px'], ['--space-2', '8px'], ['--space-3', '12px'], ['--space-4', '16px'],
+  ['--space-5', '24px'], ['--space-6', '32px'], ['--space-7', '48px'], ['--space-8', '64px'],
+];
+const colour = [
+  ['--ink', '#14171c', 'body text'],
+  ['--ink-soft', '#59616e', 'secondary: dates, meta, the notice'],
+  ['--ink-faint', '#6b7480', 'tertiary: nav labels'],
+  ['--bg', '#ffffff', 'page'],
+  ['--bg-subtle', '#f7f8fa', 'panels'],
+  ['--bg-inset', '#f2f4f7', 'code, inset things'],
+  ['--line', '#e5e8ec', 'the default hairline'],
+  ['--line-strong', '#ccd2da', 'a border that holds its own'],
+  ['--accent', '#1b58d0', 'links, primary action, focus'],
+  ['--accent-hover', '#1443a5', 'hover and active'],
+  ['--accent-visited', '#4a3f9e', 'visited links'],
+  ['--accent-subtle', '#eff4fe', 'tinted ground'],
+];
 ---
-<Base title="Web style" description="The design system these pages are built from: tokens and components, each shown once." source="site/DESIGN.md">
+<Base title="Web style" description="The design system these pages are built from: tokens, scales and components, each shown once." source="site/DESIGN.md">
   <h1>Web style</h1>
+  <p class="lead">
+    These pages are built from one small design system, written down in
+    <a href="https://github.com/oddurs/fontina/blob/main/site/DESIGN.md"><code>site/DESIGN.md</code></a>
+    and implemented section for section by one stylesheet. Every component appears
+    below exactly once, so a change can be checked by eye.
+  </p>
   <p>
-    These pages are built from a small design system derived from the <a href="https://gcc.gnu.org/">GCC web site</a>. It is written down in <a href="https://github.com/oddurs/fontina/blob/main/site/DESIGN.md"><code>site/DESIGN.md</code></a> and implemented, section for section, by one stylesheet. This page shows each
-    piece once so that a change can be checked by eye. Light mode only, the browser's
-    serif, no script, no web fonts, no external requests.
+    The shape is still the GNU one: a main column, a nav column, a notice at the foot,
+    every page readable in a text browser. The setting is not. It uses the sans the
+    reader's own system provides, a type scale and a spacing scale rather than ad-hoc
+    ems, and hairlines rather than filled boxes. No script, no web fonts, no external
+    requests, light mode only.
   </p>
 
-  <h2>Tokens</h2>
+  <h2 id="type">Type scale</h2>
+  <p>Seven steps, ratio about 1.25, all in <code>rem</code> so they follow the reader's browser setting rather than overriding it.</p>
   <table>
-    <tr><th>Token</th><th>Value</th><th>Use</th></tr>
-    <tr><td><code>--heading</code></td><td>darkslategray</td><td>headings, news titles, <span class="highlight">highlight</span></td></tr>
-    <tr><td><code>--link</code></td><td>#0066bb</td><td><a href="#">a link</a>; visited #003399; hover darkorange</td></tr>
-    <tr><td><code>--accent</code></td><td>#0066dd</td><td>nav item header background</td></tr>
-    <tr><td><code>--rule</code></td><td>#3366cc</td><td>thin borders</td></tr>
-    <tr><td><code>--panel</code></td><td>#f2f2f9</td><td>panel backgrounds</td></tr>
-    <tr><td><code>--border</code></td><td>gray</td><td>table borders</td></tr>
+    <tr><th>Token</th><th>Value</th><th>At 16px</th><th>Used for</th><th>Specimen</th></tr>
+    {type.map(([token, value, px, use]) => (
+      <tr>
+        <td><code>{token}</code></td><td>{value}</td><td>{px}</td><td>{use}</td>
+        <td style={`font-size: var(${token}); line-height: 1.2;`}>Grumpy wizards</td>
+      </tr>
+    ))}
   </table>
-
-  <h2>Type</h2>
-  <p>Body text at 100% in the browser's serif. <span class="small">Small is 90%.</span> <span class="smaller">Smaller is 80%.</span> <span class="highlight">Highlight</span> is bold in the heading colour. Links are not underlined at rest; they underline and turn orange on hover, and keyboard focus draws a blue ring.</p>
+  <p>
+    Body text is <code>--text-base</code> at <code>--leading</code> 1.6.
+    <span class="small">Small is <code>--text-sm</code>.</span>
+    <span class="smaller">Smaller is <code>--text-xs</code>.</span>
+    <span class="soft">Soft ink.</span> <span class="faint">Faint ink.</span>
+    <span class="highlight">Highlight</span> is semibold. Figures are tabular, so
+    <span class="soft">2026-09-04</span> and <span class="soft">2026-11-30</span> line up in a column.
+  </p>
   <h3>A third-level heading</h3>
   <h4>A fourth-level heading</h4>
 
-  <h2>Nav item</h2>
-  <div style="max-width: 11em">
+  <h2 id="space">Spacing scale</h2>
+  <p>One 4px step, doubled and halved. Every margin and padding in the stylesheet is one of these eight.</p>
+  <table>
+    <tr><th>Token</th><th>Value</th><th /></tr>
+    {space.map(([token, px]) => (
+      <tr>
+        <td><code>{token}</code></td><td>{px}</td>
+        <td><div style={`width: var(${token}); height: 12px; background: var(--accent);`} /></td>
+      </tr>
+    ))}
+  </table>
+
+  <h2 id="colour">Colour</h2>
+  <p>Three inks, three grounds, two lines and one accent. Colour carries hierarchy; it never carries meaning on its own.</p>
+  <table>
+    <tr><th /><th>Token</th><th>Value</th><th>Use</th></tr>
+    {colour.map(([token, value, use]) => (
+      <tr>
+        <td><div style={`width: 24px; height: 16px; border-radius: 3px; border: 1px solid var(--line-strong); background: var(${token});`} /></td>
+        <td><code>{token}</code></td><td><code>{value}</code></td><td>{use}</td>
+      </tr>
+    ))}
+  </table>
+
+  <h2 id="buttons">Buttons</h2>
+  <p>One button, three intents, two sizes. An <code>&lt;a&gt;</code> and a <code>&lt;button&gt;</code> are drawn identically.</p>
+  <p class="btn-row">
+    <a class="btn btn--primary" href="#buttons">Primary</a>
+    <a class="btn" href="#buttons">Default</a>
+    <a class="btn btn--quiet" href="#buttons">Quiet</a>
+  </p>
+  <p class="btn-row">
+    <a class="btn btn--primary btn--sm" href="#buttons">Primary small</a>
+    <a class="btn btn--sm" href="#buttons">Default small</a>
+    <a class="btn btn--quiet btn--sm" href="#buttons">Quiet small</a>
+    <span class="btn btn--sm" aria-disabled="true">Disabled</span>
+  </p>
+  <p class="small soft">Primary marks the one action a page is for; there is never more than one. Quiet is for an action that is available but not being suggested.</p>
+
+  <h2 id="badge">Badge and note</h2>
+  <p>
+    <span class="badge">badge</span>
+    <span class="badge badge--accent">accent</span>
+    &nbsp;A badge labels a thing in place: a state, a licence, a version.
+  </p>
+  <div class="note">
+    <span class="label">Note</span>
+    <p>An aside that must not be missed. A hairline and a tint, not a coloured shout. It takes any content and the last child loses its margin.</p>
+  </div>
+
+  <h2 id="panel">Panel</h2>
+  <div class="panel">
+    <p>A panel groups something that is not prose: a summary, a set of figures, a callout that is not a warning.</p>
+    <p class="small soft">Subtle ground, one hairline, one radius.</p>
+  </div>
+
+  <h2 id="nav">Nav item</h2>
+  <p>The site navigation, and the only navigation there is: a tracked-out label over a list. The current page is set in <code>&lt;strong&gt;</code>; a sub-item takes <code>.sub</code>.</p>
+  <div style="max-width: 13rem">
     <div class="navitem">
       <div class="navhead">Documentation</div>
       <div class="navbody">
-        <a href={`${base}/docs/`}>Manual</a><br />
-        &middot;&nbsp;<a href={`${base}/docs/cli/`}>Command reference</a><br />
-        <a href={`${base}/faq/`}>FAQ</a><br />
+        <a href={u('/docs/')}>Manual</a>
+        <a href={u('/docs/cli/')} class="sub">Command reference</a>
+        <strong>Web style</strong>
+        <a href={u('/faq/')}>FAQ</a>
       </div>
     </div>
   </div>
 
-  <h2>Columns, news list, status list</h2>
+  <h2 id="columns">Columns, news list, status list</h2>
   <div class="columns">
-    <section class="col news">
+    <section class="col">
       <h2>News</h2>
       <dl class="news">
-        <dt><a href="#">A thing happened</a> <span class="date">[2026-09-03]</span></dt>
+        <dt><a href="#columns">A thing happened</a> <span class="date">2026-09-03</span></dt>
         <dd>One line of detail.</dd>
-        <dt><a href="#">Another thing</a> <span class="date">[2026-09-01]</span></dt>
-        <dd></dd>
+        <dt><a href="#columns">Another thing</a> <span class="date">2026-09-01</span></dt>
+        <dd />
       </dl>
     </section>
-    <section class="col status">
+    <section class="col">
       <h2>Supported releases</h2>
       <dl class="status">
-        <dt><span class="version"><a href="#">fontina 0.0.1</a></span> (<a href="#">changes</a>)</dt>
-        <dd>Status: <a href="#">2026-09-03</a> (pre-release).
-          <div class="regress"><a href="#">Open bugs</a>. <a href="#">Regressions</a>.</div></dd>
+        <dt><span class="version"><a href="#columns">fontina 0.1.1</a></span> (<a href="#columns">changes</a>)</dt>
+        <dd>Released 2026-09-04. Binaries with checksums and provenance.
+          <div class="regress"><a href="#columns">Download</a>. <a href="#columns">Open bugs</a>.</div></dd>
       </dl>
     </section>
   </div>
 
-  <h2>Node nav</h2>
-  <p class="node-nav">Next: <a href="#">Concepts</a>, &nbsp;Previous: <a href="#">Getting started</a>, &nbsp;Up: <a href="#">Manual</a></p>
+  <h2 id="nodenav">Node nav</h2>
+  <p class="node-nav">Next: <a href="#nodenav">Concepts</a> &nbsp;·&nbsp; Previous: <a href="#nodenav">Getting started</a> &nbsp;·&nbsp; Up: <a href="#nodenav">Manual</a></p>
 
-  <h2>Padded table</h2>
+  <h2 id="table">Table</h2>
+  <p>Rules between rows, not around cells: the data is the grid.</p>
   <table>
     <tr><th>Id</th><th>Level</th><th>Finding</th></tr>
     <tr><td><code>name/family</code></td><td>error</td><td>no family name</td></tr>
     <tr><td><code>hinting/none</code></td><td>info</td><td>TrueType outlines without hinting programs</td></tr>
+    <tr><td><code>license/nonfree</code></td><td>warn</td><td>licence is not a free software licence</td></tr>
   </table>
 
-  <h2>Example</h2>
+  <h2 id="code">Code</h2>
   <pre>$ fontina list --script Arab
     id  family   style     wght  wdth  flags  license   path
      1  Amiri    Regular    400   100  ----   OFL-1.1   /home/me/Fonts/Amiri-Regular.ttf</pre>
-  <p>Inline <code>code</code> shares the panel background.</p>
+  <p>Inline <code>code</code> takes the inset ground. Press <kbd>Ctrl</kbd> <kbd>C</kbd> to stop a scan.</p>
+  <p>
+    A terminal transcript takes <code>.term</code>, which colours the command against
+    the output. Syntax colours are not used: every fenced block in the manual is a
+    transcript, and a transcript has no syntax to colour.
+  </p>
+  <pre class="term"><span class="cmd">$ fontina facets --script Arab</span>
+1 face(s) in 1 family(ies)
+weight      400 Regular 1
+license     OFL-1.1 1
+freedom     free 1</pre>
 
-  <h2>Definition list, quotation, rule</h2>
+  <h2 id="text">Definition list, quotation, rule</h2>
   <dl>
     <dt>Face</dt>
     <dd>One font, in one file, at one index.</dd>
+    <dt>Family</dt>
+    <dd>The faces that share a name and differ only in style.</dd>
   </dl>
   <blockquote>Standards over invention.</blockquote>
   <hr />
-  <p>The copyright box at the foot of every page is the last component.</p>
+  <p class="small soft">The notice at the foot of every page is the last component.</p>
 </Base>

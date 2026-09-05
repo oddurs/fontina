@@ -1,5 +1,6 @@
 ---
 title: The core and the command line exist
+description: "fontina 0.0.1 is tagged: the foundation of a free software font manager, before it is a release for users."
 date: 2026-09-03
 ---
 

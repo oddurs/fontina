@@ -1,5 +1,6 @@
 ---
 title: fontina 0.1.0, the first release
+description: "fontina 0.1.0, the first release: binaries for GNU/Linux, macOS and Windows, with checksums and provenance."
 date: 2026-09-04
 ---
 

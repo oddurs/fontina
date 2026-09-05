@@ -2,6 +2,23 @@
 import Base from '../layouts/Base.astro';
 import { getCollection } from 'astro:content';
 import { current } from '../releases';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+// The browser screenshot is not a screenshot. `fontina ui` draws text, so the site
+// shows the text: the same 80-column frame a snapshot test in the CLI asserts on
+// every run, read here at build time. It cannot go stale without a test going red
+// first. site.yml lists this path so moving the file rebuilds the site.
+// Resolved from the working directory, which is site/ for both `npm run build` and
+// the deploy workflow, the same assumption Base.astro makes for `git log`.
+const SNAPSHOT = resolve(process.cwd(), '../crates/fontina-cli/src/ui/snapshots/fontina__ui__tests__a_standard_eighty_column_terminal_still_shows_every_pane.snap');
+let browser: string;
+try {
+  // Strip insta's `---` frontmatter, keep the frame.
+  browser = readFileSync(SNAPSHOT, 'utf8').split(/^---$/m).slice(2).join('---').replace(/^\n/, '').trimEnd();
+} catch {
+  throw new Error(`the front page draws the browser from ${SNAPSHOT}, which is missing. If the snapshot moved, update this path and the one in .github/workflows/site.yml.`);
+}
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const u = (p: string) => `${base}${p}`;
 const repo = 'https://github.com/oddurs/fontina';
@@ -16,33 +33,22 @@ const day = (d: Date) => d.toISOString().slice(0, 10);
 // Prose is written as HTML strings: Astro drops the whitespace between text and a
 // tag at a line break, which runs words into links.
 const intro = `
-<p>fontina is a font manager for the terminal. It finds the fonts on a machine and in
-a user's own folders, reads what they contain through
-<a href="https://github.com/googlefonts/fontations">fontations</a>, and keeps it in a
-searchable <a href="${u('/docs/index-and-paths/')}">index</a>. It
-<a href="${u('/docs/activation/')}">activates</a> a font for every application, per user
-and in place, on Linux, macOS and Windows; <a href="${u('/docs/terminal/#previews')}">previews</a>
-it as real shaped glyphs in the terminal; <a href="${u('/docs/terminal/#watching')}">watches</a>
-your folders; answers which faces cover <a href="${u('/docs/getting-started/#looking')}">a
-script</a>, which are variable, which may be <a href="${u('/docs/cli/#checking')}">embedded</a>,
-which file is a duplicate of which; and exports what it knows as
-<a href="${u('/docs/specimen/')}">CSS and HTML specimens</a> and as JSON with a
-<a href="${u('/docs/json-and-schemas/')}">published schema</a>. The
-<a href="${u('/docs/cli/')}">command line</a> is the product; <code>fontina ui</code> is a
-keyboard-first <a href="${u('/docs/terminal/#the-browser')}">browser</a> over the same core.
-fontina is <a href="${u('/license/')}">free software</a>, free in the sense that it makes
-no network connections, collects nothing, asks for no privileges, and leaves the system
-font directories alone.</p>
+<p class="lead">fontina is a font manager for the terminal. It finds every font on a machine,
+reads what is actually inside it, and makes any of them available to every application
+&mdash; per user, in place, on GNU/Linux, macOS and Windows.</p>
 
-<p>We strive to provide regular, verifiable <a href="${u('/releases/')}">releases</a> that
-work on GNU/Linux, macOS and Windows, and encourage everyone to
-<a href="${u('/contributing/')}">contribute</a> changes or help with
-<a href="${u('/bugs/')}">testing</a>. Our sources are readily and freely available via
-<a href="${repo}">Git</a>.</p>
+<p>What it finds goes into a searchable <a href="${u('/docs/index-and-paths/')}">index</a>:
+which faces cover <a href="${u('/docs/getting-started/#looking')}">a script</a>, which are
+variable, which file duplicates which, what licence each one carries. It
+<a href="${u('/docs/terminal/#previews')}">previews</a> them as real shaped glyphs in the
+terminal, <a href="${u('/docs/terminal/#watching')}">watches</a> your folders, and exports
+what it knows as <a href="${u('/docs/specimen/')}">CSS and HTML specimens</a> or as JSON
+against a <a href="${u('/docs/json-and-schemas/')}">published schema</a>. Parsing goes
+through <a href="https://github.com/googlefonts/fontations">fontations</a>.</p>
 
-<p>Decisions about fontina are recorded as
-<a href="${u('/adr/')}">architecture decision records</a>, guided by the
-<a href="${u('/mission/')}">mission statement</a>.</p>
+<p>It makes no network connections, collects nothing, asks for no privileges, and leaves
+the system font directories alone. <a href="${u('/license/')}">Free software</a>, GPLv3 or
+later.</p>
 `;
 
 const status = `
@@ -80,11 +86,36 @@ source</a> with Rust 1.88 or newer.</p>
 `;
 ---
 <Base title="fontina" description="fontina is a free software font manager: a Rust library, a command line, and soon a desktop application. Open standards end to end." source="site/src/pages/index.astro">
-  <h1 class="no-margin-top">fontina, a font manager</h1>
+  <h1>fontina, a font manager</h1>
   <Fragment set:html={intro} />
+  <p class="btn-row">
+    <a class="btn btn--primary" href={u('/download/')}>Download fontina</a>
+    <a class="btn" href={u('/docs/')}>Read the manual</a>
+    <a class="btn btn--quiet" href={repo}>Source on GitHub</a>
+  </p>
+  <h2 id="what-it-looks-like">What it looks like</h2>
+  <p>Real output, on the fonts the test fixtures ship. Only the paths are shortened.</p>
+  <pre class="term"><span class="cmd">$ fontina scan ~/Fonts</span>
+scanned 5 candidates in 0.00s: 5 parsed (5 faces), 0 unchanged, 0 removed, 0 failed
+
+<span class="cmd">$ fontina list</span>
+    id  family               style           wght  wdth  flags  license   path
+     1  Amiri                Regular          400   100  ----F  OFL-1.1   ~/Fonts/Amiri-Regular.ttf
+     2  Bricolage Grotesque  96pt ExtraBold   800   100  V---F  OFL-1.1   ~/Fonts/BricolageGrotesque[opsz,wdth,wght].ttf
+     5  Inter                Regular          400   100  ----F  OFL-1.1   ~/Fonts/inter-latin-400-normal.woff2
+     3  Nabla                Regular          400   100  VC--F  OFL-1.1   ~/Fonts/Nabla[EDPT,EHLT].ttf
+     4  Source Serif 4       Regular          400   100  ----F  OFL-1.1   ~/Fonts/SourceSerif4-Regular.otf
+5 face(s)</pre>
+  <p>
+    <code>fontina ui</code> is the same index, keyboard first: facets on the left,
+    families in the middle, the face itself on the right. The frame below is not a
+    screenshot — the browser draws text, so this is that text, taken from the
+    snapshot a test in the command line asserts on every run.
+  </p>
+  <pre class="term">{browser}</pre>
   <hr />
   <div class="columns">
-    <section class="col news">
+    <section class="col">
       <h2 id="news"><a href="#news">News</a></h2>
       <dl class="news">
         {news.map((n) => (
@@ -96,7 +127,7 @@ source</a> with Rust 1.88 or newer.</p>
       </dl>
       <div><a href={u('/news/')}>Older news</a> | <span class="smaller">Announcements are also an <a href={u('/feed.xml')}>RSS feed</a>.</span></div>
     </section>
-    <section class="col status">
+    <section class="col">
       <h2>Supported releases</h2>
       <Fragment set:html={status} />
     </section>
