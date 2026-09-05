@@ -224,14 +224,39 @@ const BUSY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 /// a single query. The one that loses only has to wait: whoever won is setting the very
 /// mode it wanted. If it never takes — an index on a filesystem that cannot do WAL —
 /// the rollback journal still works, so this is not a reason to refuse to open.
+/// Whether an error is one that waiting could resolve.
+///
+/// Busy and locked mean another connection holds what this one wants, and a moment later
+/// it may not. Every other code — not a database, read-only, corrupt, out of memory — is
+/// a fact about the file, and asking again only spends time.
+fn worth_retrying(e: &rusqlite::Error) -> bool {
+    matches!(
+        e,
+        rusqlite::Error::SqliteFailure(inner, _)
+            if inner.code == rusqlite::ErrorCode::DatabaseBusy
+                || inner.code == rusqlite::ErrorCode::DatabaseLocked
+    )
+}
+
 fn ensure_wal(conn: &Connection) {
     for _ in 0..50 {
-        let _ = conn.pragma_update(None, "journal_mode", "WAL");
-        let mode: String = conn
-            .pragma_query_value(None, "journal_mode", |r| r.get(0))
-            .unwrap_or_default();
-        if mode.eq_ignore_ascii_case("wal") {
-            return;
+        match conn.pragma_update(None, "journal_mode", "WAL") {
+            Ok(()) => {}
+            // Another process is switching the same fresh index; that is what the retry
+            // is for.
+            Err(e) if worth_retrying(&e) => {}
+            // Anything else will not change by being asked fifty times. Returning hands
+            // the real error to `migrate`, which is the caller that reports it. Spinning
+            // here instead cost eight seconds on every command whenever `--db` or
+            // `FONTINA_DB` pointed at a file that is not a database — a typo, or an
+            // index that has been damaged — before anything said so.
+            Err(_) => return,
+        }
+        match conn.pragma_query_value(None, "journal_mode", |r| r.get::<_, String>(0)) {
+            Ok(mode) if mode.eq_ignore_ascii_case("wal") => return,
+            Ok(_) => {}
+            Err(e) if worth_retrying(&e) => {}
+            Err(_) => return,
         }
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
