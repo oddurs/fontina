@@ -20,6 +20,16 @@ serde.workspace = true
 thiserror.workspace = true
 blake3.workspace = true
 
+# Tests only, and both are crates the workspace already builds. The activation state
+# machine is half here and half in the index — `activate` is not finished until the
+# index says so — and nothing tested the pair against each other: the core's tests drive
+# the index with no activator, and the CLI's drive the binary. `rusqlite` is for the one
+# conflict rule no fixture can produce (two fonts with the same family and style but
+# different PostScript names), the same reason fontina-cli takes it.
+[dev-dependencies]
+fontina-core.workspace = true
+rusqlite.workspace = true
+
 [target.'cfg(unix)'.dependencies]
 # getxattr/setxattr/removexattr for `tags`. Already in the tree through rusqlite and
 # notify, so this adds a direct use of a crate that was being built anyway.
