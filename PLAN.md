@@ -297,15 +297,39 @@ Reviewed as a whole afterwards (#76), which found what seven separate reviews co
 The optional Google Fonts offline index is **not** delivered and is still held out; see
 §10.
 
-### M3 — Ecosystem and shells
-- Team sharing via plain folders (Dropbox/Syncthing/git): collection JSON with relative
-  paths, no proprietary cloud.
-- Finder-tag / xattr sync on macOS; Windows properties.
-- Plugin surface via CLI + JSON only (no in-process plugins).
-- A graphical shell (Tauri 2, ADR 0003) as one more client of the core, only if the TUI
-  leaves a real gap. It must meet the same budgets and design rules: system webview,
-  platform-adjacent design per OS (GNOME HIG on GNU/Linux, macOS HIG, Fluent), GNU/Linux first.
-- Laid out as pull requests in §11.
+### M3 — Ecosystem — delivered 2026-09-05
+Laid out as pull requests in §11 and shipped in that order.
+1. **Let a collection travel** (#83). Relative paths in a collection export, which
+   refuses to half-succeed: a file claiming its paths are relative while some are
+   absolute is worse than one claiming nothing.
+2. **Hand it over** (#85). `collection export --bundle <dir>` writes the JSON beside a
+   copy of every font, nothing in it naming the machine it was made on. Dropbox,
+   Syncthing or git carry it; `collection import <dir>` opens it.
+3. **Prove it** (#87). The round trip across two indexes, through the binary, with the
+   bundle read from somewhere other than where it was written — and a colleague who
+   already owns the fonts keeping their own copy rather than gaining a duplicate.
+4. **Tags the desktop can see** (#88). Finder tags through CoreFoundation on macOS,
+   `user.xdg.tags` on GNU/Linux, and an honest `Unsupported` on Windows, whose keywords
+   are per file format and a font file has none.
+5. **Carry them across** (#89). `fontina tag sync --to-files | --from-files`. Directional
+   because two tag sets with no common ancestor cannot tell a deletion from an addition,
+   and a guess that loses a tag loses it silently. Never writes to an OS font directory.
+6. **See it properly** (#90). `s` in the browser writes a specimen for the selection and
+   opens it in `$BROWSER`. The whole of the graphical escape hatch, in one keystroke.
+7. **Pipe into it** (#91). Targets from standard input, in fontina's own `--json` shape
+   or one per line, so a program can write to fontina as well as read from it.
+8. **Promise it** (#92, ADR 0008). What the CLI surface guarantees — ids, check ids, JSON
+   field names, exit codes — what may be added, and what is not promised. With tests,
+   because an ADR nothing checks is a wish.
+
+Two questions M3 opened with were decided rather than deferred, in §11: **no graphical
+shell yet** (the gap the TUI leaves is fidelity, and item 6 closes it without a second
+interface to maintain), and **no Google Fonts index in this tree** (discovery that cannot
+lead to acquisition is half a feature; items 7 and 8 make a catalogue an external program
+that pipes candidates in).
+
+Explicit non-goals, unchanged: font editing, format conversion/subsetting (point to
+`fonttools`), cloud sync, accounts, telemetry, an Electron shell.
 
 ### M4 — Ask (everything the index knows, askable)
 The metadata model has been complete since M0. The query surface has not caught up with
@@ -352,8 +376,6 @@ M4 does not depend on M3 and M3 does not depend on M4; the numbering is order of
 discovery, not order of work. Item 1 is closer to a bug than a milestone item and should
 be pulled out and shipped whenever someone has an hour.
 
-Explicit non-goals: font editing, format conversion/subsetting (point to `fonttools`),
-cloud sync, accounts, telemetry, an Electron shell.
 
 ---
 
@@ -538,6 +560,8 @@ hard half of sharing, and it is done.
    check ids, JSON field names, exit codes), what may be added (fields, never removed),
    and what a plugin may assume. Without that written down, "the CLI is the plugin API"
    is a description of today rather than a promise about tomorrow.
+
+Items 1-8 are delivered (#83, #85, #87, #88, #89, #90, #91, #92).
 
 ### Two decisions
 
