@@ -8,6 +8,12 @@
 # system with no fontconfig installed at all. The same script, scripts/acceptance, is
 # what a contributor runs on their own desktop, and scripts/test-distros drives it
 # locally against the same images.
+#
+# The second half asks the same question of the .deb and .rpm the release workflow
+# publishes. Those are built from `[package.metadata.deb]` and
+# `[package.metadata.generate-rpm]` in crates/fontina-cli/Cargo.toml, and until now
+# nobody had ever installed one: scripts/test-packages installs them with apt and dnf
+# and runs scripts/acceptance against the fontina those put on PATH.
 name: linux
 
 on:
@@ -19,6 +25,8 @@ on:
       - 'Cargo.lock'
       - 'scripts/acceptance'
       - 'scripts/test-distros'
+      - 'scripts/test-packages'
+      - 'scripts/package-acceptance'
       - '.github/workflows/linux.yml'
   push:
     branches: [main]
@@ -76,3 +84,38 @@ jobs:
       # Docker on the runner rather than a `container:` job, because actions/checkout
       # cannot run inside an Alpine container: its Node is built against glibc.
       - run: FONTINA_BIN=$PWD/fontina scripts/test-distros ${{ matrix.name }}
+
+  # --- the packages, not the binary --------------------------------------------------
+
+  packages-build:
+    name: build (.deb, .rpm)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # The same container the contributor's `scripts/test-packages` uses, so what CI
+      # builds and what a maintainer builds on a laptop are the same package. The build
+      # runs the same two commands release.yml runs, over the same two manifests.
+      - run: scripts/test-packages --build-only
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fontina-packages
+          path: |
+            target/pkg-test/*.deb
+            target/pkg-test/*.rpm
+          if-no-files-found: error
+
+  packages:
+    name: package (${{ matrix.name }})
+    needs: packages-build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        name: [debian, ubuntu, fedora]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v4
+        with:
+          name: fontina-packages
+          path: dist
+      - run: FONTINA_PKG_DIR=$PWD/dist scripts/test-packages ${{ matrix.name }}

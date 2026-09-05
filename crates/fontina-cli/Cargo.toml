@@ -46,6 +46,11 @@ name = "fontina"
 section = "utils"
 priority = "optional"
 extended-description = "A lightweight, terminal-first font manager. Indexes fonts into a searchable SQLite database, previews them with real shaping in the terminal, activates and installs them per user, and organises them with tags and collections. No network, no telemetry."
+# Debian Policy 12.5: a package carries its licence at /usr/share/doc/<pkg>/copyright.
+# Without this, cargo-deb writes a four-line stub that names GPL-3.0-or-later and ships
+# none of it, which is not what the GPL asks of anyone conveying a binary.
+# scripts/test-packages asserts the text is there.
+license-file = ["../../COPYING", "0"]
 assets = [
   ["target/release/fontina", "usr/bin/", "755"],
   ["../../README.md", "usr/share/doc/fontina/README.md", "644"],
@@ -62,6 +67,12 @@ license = "GPL-3.0-or-later"
 assets = [
   { source = "target/release/fontina", dest = "/usr/bin/fontina", mode = "755" },
   { source = "README.md", dest = "/usr/share/doc/fontina/README.md", mode = "644", doc = true },
+  # Fedora keeps a package's licence in /usr/share/licenses/<pkg>; nothing put it there
+  # before, so the .rpm conveyed a GPL binary with no licence text at all. Deliberately
+  # not marked `doc`: a licence has to survive an install with tsflags=nodocs, which is
+  # how every container image installs. (cargo-generate-rpm cannot set rpm's %license
+  # file flag, so `rpm -qL` stays empty until it grows a way to.)
+  { source = "COPYING", dest = "/usr/share/licenses/fontina/COPYING", mode = "644" },
   { source = "target/pkg/completions/fontina.bash", dest = "/usr/share/bash-completion/completions/fontina", mode = "644" },
   { source = "target/pkg/completions/_fontina", dest = "/usr/share/zsh/site-functions/_fontina", mode = "644" },
   { source = "target/pkg/completions/fontina.fish", dest = "/usr/share/fish/vendor_completions.d/fontina.fish", mode = "644" },

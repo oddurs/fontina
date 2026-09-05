@@ -36,6 +36,7 @@ cargo deny check                  # licenses and advisories (needs cargo-deny)
 
 FONTINA=./target/debug/fontina scripts/acceptance    # end-to-end, on this machine
 scripts/test-distros                                 # the same, inside six distributions
+scripts/test-packages                                # the .deb and .rpm, installed for real
 ```
 
 Set `FONTINA_DB` to keep an index out of the platform data directory while developing.
@@ -45,7 +46,11 @@ manager: after `activate`, can another program see the font? On GNU/Linux `fc-li
 `fc-match` are that other program. `scripts/test-distros` runs it in Debian, Ubuntu,
 Fedora, Arch, Alpine and a Debian with no fontconfig installed, using a container
 runtime (OrbStack, Podman or Docker); `.github/workflows/linux.yml` runs the same script
-on every pull request that touches the crates.
+on every pull request that touches the crates. `scripts/test-packages` goes one step
+further and tests the `.deb` and `.rpm` themselves: it builds them from the manifests in
+`crates/fontina-cli/Cargo.toml`, installs them with `apt` and `dnf` in a clean Debian,
+Ubuntu and Fedora, and runs `scripts/acceptance` against the binary the package put on
+`PATH`. Change a packaging asset path and that is the test that will tell you.
 
 ## Rules that are not negotiable
 
