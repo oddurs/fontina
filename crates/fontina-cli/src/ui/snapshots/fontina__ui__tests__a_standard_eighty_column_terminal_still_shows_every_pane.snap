@@ -18,7 +18,7 @@ expression: drawn
 │  Latn                6 ││                      ││state     not active        │
 │  Zinh                6 ││                      ││file                        │
 │  Zyyy                6 ││                      ││../../fixtures/Amiri-Regular│
-│  Grek                2 ││                      ││                            │
+│  Grek                2 ││                      ││.ttf                        │
 │  Arab                1 ││                      ││                            │
 │  Cyrl                1 ││                      ││                            │
 │License                 ││                      ││                            │

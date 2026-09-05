@@ -606,10 +606,10 @@ fn parse_rgb_takes_six_hex_digits_and_little_else() {
         assert_eq!(encode::parse_rgb(bad), None, "{bad:?} should be rejected");
     }
 
-    // Two known warts, reported with this change rather than fixed in it: the six
-    // characters go to `u32::from_str_radix`, which accepts a leading sign, so five hex
-    // digits behind a `+` parse; and `#` is stripped with `trim_start_matches`, so any
-    // number of them is accepted.
-    assert_eq!(encode::parse_rgb("+f8800"), Some([0x0f, 0x88, 0x00]));
-    assert_eq!(encode::parse_rgb("###1a2b3c"), Some([0x1a, 0x2b, 0x3c]));
+    // Two inputs that used to be accepted by accident: the six characters went to
+    // `u32::from_str_radix`, which takes a leading sign, so five hex digits behind a `+`
+    // parsed; and the `#` was removed with `trim_start_matches`, so any number of them
+    // was fine.
+    assert_eq!(encode::parse_rgb("+f8800"), None);
+    assert_eq!(encode::parse_rgb("###1a2b3c"), None);
 }

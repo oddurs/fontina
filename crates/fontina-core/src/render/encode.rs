@@ -27,8 +27,12 @@ pub type Rgb = [u8; 3];
 
 /// Parse `#rrggbb` or `rrggbb`.
 pub fn parse_rgb(s: &str) -> Option<Rgb> {
-    let s = s.trim().trim_start_matches('#');
-    if s.len() != 6 {
+    // One optional `#`, then exactly six hex digits. `from_str_radix` accepts a leading
+    // sign, so `+f8800` used to parse as `#0f8800`, and trimming every leading `#`
+    // accepted `###1a2b3c`.
+    let s = s.trim();
+    let s = s.strip_prefix('#').unwrap_or(s);
+    if s.len() != 6 || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
         return None;
     }
     let v = u32::from_str_radix(s, 16).ok()?;
