@@ -15,6 +15,12 @@
 // program. If not, see <https://www.gnu.org/licenses/>.
 
 //! Things more than one test binary needs, and the fixtures none of them can commit.
+//!
+//! Every test binary that says `mod common;` compiles the whole of this, and each uses
+//! the part it needs, so anything here is dead code somewhere. It is dead on Windows in
+//! particular, where the tag tests that use it do not run at all: CI builds with
+//! `-D warnings`, and without this the build fails there and nowhere else.
+#![allow(dead_code)]
 
 use std::path::Path;
 
