@@ -14,6 +14,18 @@
 // You should have received a copy of the GNU General Public License along with this
 // program. If not, see <https://www.gnu.org/licenses/>.
 
+// See the note in fontina-core's lib.rs. Printing is not denied here, because printing
+// is what this crate is for; the panic rules are the same.
+#![deny(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::todo,
+    clippy::unimplemented,
+    clippy::dbg_macro
+)]
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
+
 mod ui;
 
 use anyhow::{Context, Result, bail};
@@ -2793,6 +2805,10 @@ fn run_preview(cli: &Cli, args: &PreviewArgs) -> Result<()> {
         )
         .with_context(|| format!("rendering {}", face.file.path))?;
         if protocol == "png" {
+            #[expect(
+                clippy::expect_used,
+                reason = "png without --output bails earlier in this fn"
+            )]
             let path = args.output.as_ref().expect("checked");
             std::fs::write(path, encode::png(&bitmap, fg, args.bg.as_ref().map(|_| bg)))
                 .with_context(|| format!("writing {}", path.display()))?;
