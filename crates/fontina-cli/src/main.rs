@@ -1046,8 +1046,8 @@ fn run() -> Result<()> {
             } else {
                 for d in dirs {
                     println!(
-                        "{:<60} {}{}",
-                        d.path.display(),
+                        "{} {}{}",
+                        cell(&d.path.display().to_string(), 60),
                         d.description,
                         if d.user_writable {
                             " (install target)"
@@ -1512,13 +1512,13 @@ fn print_table(faces: &[FaceSummary]) {
     }
     let w_fam = faces
         .iter()
-        .map(|f| f.family.chars().count())
+        .map(|f| fontina_core::unicode::columns(&f.family))
         .max()
         .unwrap_or(6)
         .clamp(6, 40);
     let w_sub = faces
         .iter()
-        .map(|f| f.subfamily.chars().count())
+        .map(|f| fontina_core::unicode::columns(&f.subfamily))
         .max()
         .unwrap_or(5)
         .clamp(5, 28);
@@ -1557,10 +1557,10 @@ fn print_table(faces: &[FaceSummary]) {
         // rather than through a `format!` and an allocation for every face listed.
         let _ = writeln!(
             out,
-            "{:>6}  {:<w_fam$}  {:<w_sub$}  {:>w_wght$}  {:>w_wdth$}  {}{}{}{}{}{}  {:<12}  {}{}{}",
+            "{:>6}  {}  {}  {:>w_wght$}  {:>w_wdth$}  {}{}{}{}{}{}  {}  {}{}{}",
             f.id,
-            truncate(&f.family, w_fam),
-            truncate(&f.subfamily, w_sub),
+            cell(&f.family, w_fam),
+            cell(&f.subfamily, w_sub),
             wght[i],
             wdth[i],
             if f.variable { "V" } else { "-" },
@@ -1574,7 +1574,7 @@ fn print_table(faces: &[FaceSummary]) {
                 None => "-",
             },
             freedom_flag(f.freedom),
-            truncate(f.license.as_deref().unwrap_or("-"), 12),
+            cell(f.license.as_deref().unwrap_or("-"), 12),
             f.path,
             if f.index > 0 || f.container == "ttc" {
                 format!("#{}", f.index)
@@ -1611,7 +1611,11 @@ fn print_variants(index: &Index, target: i64, related: &[fontina_core::Related])
     println!("faces overlapping {name} (#{target}):");
     let w = related
         .iter()
-        .map(|r| r.face.family.chars().count() + r.face.subfamily.chars().count() + 1)
+        .map(|r| {
+            fontina_core::unicode::columns(&r.face.family)
+                + fontina_core::unicode::columns(&r.face.subfamily)
+                + 1
+        })
         .max()
         .unwrap_or(20)
         .clamp(20, 44);
@@ -1621,9 +1625,9 @@ fn print_variants(index: &Index, target: i64, related: &[fontina_core::Related])
     );
     for r in related {
         println!(
-            "  {:>6}  {:<w$}  {:>6.2}%  {:>7}  {:<8}  {}",
+            "  {:>6}  {}  {:>6.2}%  {:>7}  {:<8}  {}",
             r.face.id,
-            truncate(&format!("{} {}", r.face.family, r.face.subfamily), w),
+            cell(&format!("{} {}", r.face.family, r.face.subfamily), w),
             r.overlap * 100.0,
             r.shared,
             if r.metrics_agree { "same" } else { "differ" },
@@ -1660,12 +1664,23 @@ fn freedom_flag(f: Freedom) -> &'static str {
 
 /// Shorten to `n` characters, borrowing when it already fits. Listing a large library
 /// formats two of these per row, and almost every one of them fits.
-fn truncate(s: &str, n: usize) -> std::borrow::Cow<'_, str> {
-    if s.chars().count() <= n {
-        std::borrow::Cow::Borrowed(s)
-    } else {
-        std::borrow::Cow::Owned(s.chars().take(n.saturating_sub(1)).collect::<String>() + "…")
+/// One table cell: `s` fitted to `w` terminal columns and padded to exactly `w`.
+///
+/// Rust's own `{:<w$}` pads to a character count, and a character is not a column. A
+/// family name in Japanese takes two columns per character, a name with a combining mark
+/// takes none for the mark, and either way every column to the right of it lands
+/// somewhere different on that row than on the row above. Fonts are named in every
+/// script there is, so this is the ordinary case for anyone whose fonts are not all
+/// Latin, not an exotic one.
+///
+/// `fontina_core::unicode::fit` also stands a replacement character in for anything that
+/// would move the cursor or reverse the line, which a `name` table is free to contain.
+fn cell(s: &str, w: usize) -> String {
+    let mut out = fontina_core::unicode::fit(s, w);
+    for _ in fontina_core::unicode::columns(&out)..w {
+        out.push(' ');
     }
+    out
 }
 
 fn print_info(f: &fontina_core::FaceMetadata) {
@@ -1993,7 +2008,7 @@ fn run_tag(cli: &Cli, cmd: &TagCmd) -> Result<()> {
                 println!("no tags");
             } else {
                 for t in tags {
-                    println!("{:<30} {:>6}", t.name, t.faces);
+                    println!("{} {:>6}", cell(&t.name, 30), t.faces);
                 }
             }
         }
@@ -2241,7 +2256,7 @@ fn run_collection(cli: &Cli, cmd: &CollectionCmd) -> Result<()> {
                 println!("no collections");
             } else {
                 for c in cs {
-                    println!("{:<30} {:>6}", c.name, c.faces);
+                    println!("{} {:>6}", cell(&c.name, 30), c.faces);
                 }
             }
         }
@@ -2399,8 +2414,8 @@ fn run_source(cli: &Cli, cmd: &SourceCmd) -> Result<()> {
             } else {
                 for s in sources {
                     println!(
-                        "{:<60} {}{}",
-                        s.path,
+                        "{} {}{}",
+                        cell(&s.path, 60),
                         match s.kind {
                             SourceKind::User => "user",
                             SourceKind::System => "system",
@@ -2472,7 +2487,7 @@ fn print_families(families: &[fontina_core::Family]) {
     }
     let w = families
         .iter()
-        .map(|f| f.name.chars().count())
+        .map(|f| fontina_core::unicode::columns(&f.name))
         .max()
         .unwrap_or(6)
         .clamp(6, 40);
@@ -2496,13 +2511,13 @@ fn print_families(families: &[fontina_core::Family]) {
             }
         };
         println!(
-            "{:<w$}  {:>5}  {:<9}  {:<9}  {:<5}  {:<12}  {}",
-            truncate(&f.name, w),
+            "{}  {:>5}  {:<9}  {:<9}  {:<5}  {}  {}",
+            cell(&f.name, w),
             f.faces,
             range(f.weights[0], f.weights[1]),
             range(f.widths[0], f.widths[1]),
             flags,
-            truncate(f.license.as_deref().unwrap_or("-"), 12),
+            cell(f.license.as_deref().unwrap_or("-"), 12),
             f.scripts
                 .iter()
                 .take(4)

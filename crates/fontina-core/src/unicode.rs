@@ -101,6 +101,65 @@ pub fn cell_for(cp: u32) -> Cell {
     }
 }
 
+/// Terminal columns `s` occupies.
+///
+/// Not `chars().count()`. A font's family name is whatever its `name` table says, and
+/// fonts are named in every script there is: `源ノ角ゴシック` is seven characters and
+/// fourteen columns, `Ǫ̃` is two characters and one column. Padding a column to a
+/// character count puts every column after it in a different place on each row, which is
+/// how a table of Japanese fonts stops being a table.
+///
+/// A character with no width of its own — a combining mark, a format character, a
+/// control — is counted as [`cell_for`] would show it, one column, because that is what
+/// [`fit`] prints for it.
+pub fn columns(s: &str) -> usize {
+    s.chars()
+        .map(|c| match unicode_width::UnicodeWidthChar::width(c) {
+            Some(2) => 2,
+            _ => 1,
+        })
+        .sum()
+}
+
+/// `s` as at most `cols` terminal columns, safe to print in a row.
+///
+/// Three things happen here, and all three are about the row staying a row:
+///
+/// - A character that would take no column of its own, or move the cursor, is replaced
+///   by U+FFFD, exactly as [`cell_for`] does for the glyph grid. U+202E RIGHT-TO-LEFT
+///   OVERRIDE in a family name would otherwise reverse every column after it, and a
+///   control character would move the cursor out of the table altogether. A font can be
+///   named anything; the terminal is ours to keep readable.
+/// - Truncation counts columns, and never cuts a wide character in half, which would
+///   leave the terminal a column short for the rest of the line.
+/// - What was cut ends in an ellipsis, which is one column.
+pub fn fit(s: &str, cols: usize) -> String {
+    let mut out = String::with_capacity(s.len().min(cols * 4));
+    let mut used = 0;
+    let mut truncated = false;
+    for c in s.chars() {
+        let cell = cell_for(c as u32);
+        if used + cell.width > cols {
+            truncated = true;
+            break;
+        }
+        out.push(cell.glyph);
+        used += cell.width;
+    }
+    if !truncated {
+        return out;
+    }
+    // Room for the ellipsis: give back whole characters until one column is free.
+    while used + 1 > cols {
+        match out.pop() {
+            Some(c) => used -= cell_for(c as u32).width,
+            None => break,
+        }
+    }
+    out.push('…');
+    out
+}
+
 /// One Unicode block and the codepoints a face covers within it.
 #[derive(Debug, Clone, serde::Serialize, schemars::JsonSchema)]
 pub struct BlockCoverage {
