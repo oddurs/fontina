@@ -39,14 +39,20 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# A whole XDG world of our own, so the real one is never touched and the test is
-# repeatable on a developer's own machine.
+# A whole home of our own, so the real one is never touched and the test is repeatable
+# on a developer's own machine.
+#
+# HOME as well as the XDG variables, and that is not belt and braces: the per-user font
+# directory is `$XDG_DATA_HOME/fonts` on GNU/Linux but `$HOME/Library/Fonts` on macOS,
+# so redirecting XDG alone left this script installing fixtures into the developer's own
+# font directory and leaving them there. On GNU/Linux, where CI runs, nothing showed it.
+HOME="$root/home"
 XDG_DATA_HOME="$root/data"
 XDG_CONFIG_HOME="$root/config"
 XDG_CACHE_HOME="$root/cache"
 FONTINA_DB="$root/index.db"
-export XDG_DATA_HOME XDG_CONFIG_HOME XDG_CACHE_HOME FONTINA_DB
-mkdir -p "$XDG_DATA_HOME" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME"
+export HOME XDG_DATA_HOME XDG_CONFIG_HOME XDG_CACHE_HOME FONTINA_DB
+mkdir -p "$HOME" "$XDG_DATA_HOME" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME"
 
 os=$(uname -s)
 have_fc=no
@@ -143,6 +149,55 @@ if [ "$have_fc" = yes ]; then
     if seen Amiri; then no "fc-list still sees Amiri after deactivation"; else ok "fc-list no longer sees Amiri"; fi
 fi
 if "$fontina" activations | grep -qi amiri; then no "activations still lists it"; else ok "activations no longer lists it"; fi
+
+say "changes its mind"
+# The state a person reaches by trying a font, keeping it, and then changing their mind.
+# Each of these is one command, and each has to give up the state it leaves: an install
+# on top of an activation used to leave the font registered where it lay, visible to
+# every program on the machine, with nothing in the index naming that registration and no
+# command that would ever take it back.
+if "$fontina" activate family:Amiri >"$root/t1.out" 2>&1 &&
+    "$fontina" install family:Amiri >"$root/t2.out" 2>&1; then
+    ok "activate, then install"
+else
+    no "activate, then install"
+    cat "$root/t1.out" "$root/t2.out"
+fi
+if [ "$os" = Linux ]; then
+    # An in-place activation is a symlink in this directory; an install is a copy
+    # elsewhere. After the install there must be nothing left here.
+    active_dir="$XDG_DATA_HOME/fonts/fontina-active"
+    if find "$active_dir" -name '*Amiri*' 2>/dev/null | grep -q .; then
+        no "the in-place registration survived the install ($active_dir)"
+    else
+        ok "installing took the in-place registration back"
+    fi
+fi
+check "uninstall after that leaves nothing" "$fontina" uninstall family:Amiri
+if [ "$have_fc" = yes ]; then
+    if seen Amiri; then no "fc-list still sees Amiri after the round trip"; else ok "fc-list no longer sees Amiri"; fi
+fi
+
+# And the other direction: an activation on top of an install has to remove the copy,
+# which used to be left in the font directory with nothing naming it.
+if "$fontina" install family:Amiri >"$root/t3.out" 2>&1 &&
+    "$fontina" activate family:Amiri >"$root/t4.out" 2>&1; then
+    ok "install, then activate"
+else
+    no "install, then activate"
+    cat "$root/t3.out" "$root/t4.out"
+fi
+copy_dir=$("$fontina" dirs 2>/dev/null | grep 'install target' | head -1 | sed 's/  *[a-z].*$//; s/ *$//')
+[ -n "$copy_dir" ] || copy_dir="$XDG_DATA_HOME/fonts"
+if find "$copy_dir" -name '*Amiri*' 2>/dev/null | grep -q .; then
+    no "the installed copy survived the activation ($copy_dir)"
+else
+    ok "activating took the installed copy back"
+fi
+check "deactivate after that" "$fontina" deactivate family:Amiri
+if [ "$have_fc" = yes ]; then
+    if seen Amiri; then no "fc-list still sees Amiri at the end of the round trip"; else ok "fc-list no longer sees Amiri"; fi
+fi
 
 say "installs"
 if "$fontina" install family:Amiri >"$root/install.out" 2>&1; then
