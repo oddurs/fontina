@@ -211,11 +211,26 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
+    /// A fixture, parsed once for the whole test binary and cloned from there.
+    ///
+    /// Parsing one of these in a debug build is close to a second, and the tests below
+    /// ask for the same handful of faces a hundred times over. Cloning a parsed face is
+    /// a memcpy; parsing it again is not, and the total was four minutes.
     fn face(name: &str) -> FaceMetadata {
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../fixtures")
-            .join(name);
-        fontina_core::load_file(&path).unwrap().1.remove(0)
+        static PARSED: std::sync::OnceLock<
+            std::sync::Mutex<std::collections::HashMap<String, FaceMetadata>>,
+        > = std::sync::OnceLock::new();
+        let cache = PARSED.get_or_init(Default::default);
+        let mut cache = cache.lock().unwrap_or_else(|e| e.into_inner());
+        cache
+            .entry(name.to_string())
+            .or_insert_with(|| {
+                let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../fixtures")
+                    .join(name);
+                fontina_core::load_file(&path).unwrap().1.remove(0)
+            })
+            .clone()
     }
 
     #[test]
@@ -323,7 +338,6 @@ mod tests {
         g.select(1);
         assert_eq!(g.scroll_row(), 0, "a new block starts at its first row");
     }
-<<<<<<< HEAD
 
     /// An extreme delta stops at an end, rather than overflowing on the way to it.
     ///
@@ -392,8 +406,6 @@ mod tests {
             );
         }
     }
-||||||| parent of 75894722 (test(cli): pin the glyph map and the sheet at every terminal size)
-=======
 
     // ----- terminal sizes -----
     //
@@ -567,7 +579,11 @@ mod tests {
         let mut g = Glyphs::for_face(&face("Amiri-Regular.ttf"));
         let mut cols = 16;
         let mut state = 0x2545_F491u32;
-        for _ in 0..5_000 {
+        // Eight hundred, not five thousand: every one of the five actions is reached
+        // hundreds of times, and `find` walks the whole coverage on each visit, which in
+        // a debug build was two minutes of the test suite for the last four thousand
+        // repetitions of a sequence that had already proved its point.
+        for _ in 0..800 {
             state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
             match (state >> 3) % 5 {
                 0 => g.select(1),
@@ -587,49 +603,6 @@ mod tests {
             }
             assert!(g.selected_index() < g.blocks().len());
             assert!(first_row_holds_characters(&g, cols));
-        }
-    }
-
-    /// A defect this change reports rather than fixes.
-    ///
-    /// `select` clamps, but it adds before it clamps: `self.block as i32 + delta`
-    /// overflows for a delta near either end of `i32` on any block but the first. In a
-    /// debug build that is a panic; in a release build the sum wraps and the clamp then
-    /// sends the selection to the opposite end of the list from the one asked for.
-    /// `scroll_by`, six lines below it, is handed `i32::MAX / 2` and `i32::MIN / 2` by
-    /// Home and End for exactly this reason, so the halving is load-bearing and says so
-    /// nowhere. `(self.block as i32).saturating_add(delta)` would remove the trap.
-    /// Nothing on the keyboard reaches it today: Left and Right send ±1.
-    #[test]
-    fn selecting_by_an_extreme_delta_overflows_before_it_clamps() {
-        let f = face("Amiri-Regular.ttf");
-        let last = Glyphs::for_face(&f).blocks().len() - 1;
-        // The documented range works: a delta big enough to reach either end.
-        let mut g = Glyphs::for_face(&f);
-        g.select(1);
-        g.select(i32::MAX / 2);
-        assert_eq!(g.selected_index(), last);
-        g.select(i32::MIN / 2);
-        assert_eq!(g.selected_index(), 0);
-
-        // One step further is not clamped, it is undefined.
-        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let mut g = Glyphs::for_face(&face("Amiri-Regular.ttf"));
-            g.select(1);
-            g.select(i32::MAX);
-            g.selected_index()
-        }));
-        if cfg!(debug_assertions) {
-            assert!(
-                outcome.is_err(),
-                "the addition no longer overflows; delete this test's other half"
-            );
-        } else {
-            assert_eq!(
-                outcome.unwrap(),
-                0,
-                "the wrapped sum clamps to the first block, the opposite of what was asked"
-            );
         }
     }
 
@@ -808,67 +781,6 @@ mod tests {
                 );
             }
         }
-    }
-
-    /// A defect this change reports rather than fixes.
-    ///
-    /// The search scrolls to the row the found codepoint sits on, counted in the
-    /// columns the last frame had. A resize lays the same block out at a different
-    /// width, and `clamp_scroll` — the only thing that runs on the frame after — pulls
-    /// the scroll back from past the end and nothing else. So the codepoint the reader
-    /// searched for, and the cursor on it, moves off the grid: above the first row on
-    /// show when the pane widened, far below it when the pane narrowed. Re-deriving the
-    /// scroll from `found` when the width changes would keep it in sight.
-    #[test]
-    fn a_resize_scrolls_the_found_codepoint_off_the_grid() {
-        let f = face("Amiri-Regular.ttf");
-        let mut g = Glyphs::for_face(&f);
-        // The middle of the widest block this face has, so there is room either way.
-        let (big, _) = Glyphs::for_face(&f)
-            .blocks()
-            .iter()
-            .enumerate()
-            .max_by_key(|(_, b)| b.codepoints.len())
-            .map(|(i, b)| (i, b.codepoints.len()))
-            .unwrap();
-        let cp = {
-            let blocks = Glyphs::for_face(&f);
-            let cps = &blocks.blocks()[big].codepoints;
-            cps[cps.len() / 2]
-        };
-        assert!(g.find(&format!("U+{cp:04X}"), 4));
-        let at = g
-            .selected()
-            .unwrap()
-            .codepoints
-            .iter()
-            .position(|&c| c == cp)
-            .unwrap();
-        assert_eq!(g.scroll_row(), at / 4);
-
-        // The window is maximised. The clamp runs, and moves the grid to a row the
-        // codepoint is not on and cannot be scrolled back to by anything the map knows.
-        g.clamp_scroll(40);
-        assert!(
-            g.scroll_row() > at / 40,
-            "the found codepoint is on row {}, above the first row on show, {}",
-            at / 40,
-            g.scroll_row()
-        );
-        assert_eq!(g.found(), Some(cp), "and the map still says it found it");
-
-        // The other direction: the window is made narrow, the clamp has nothing to do,
-        // and the codepoint is now a screenful or more below the top.
-        let mut g = Glyphs::for_face(&f);
-        assert!(g.find(&format!("U+{cp:04X}"), 40));
-        let wide = g.scroll_row();
-        g.clamp_scroll(4);
-        assert_eq!(g.scroll_row(), wide, "the clamp had nothing to pull back");
-        assert!(
-            at / 4 > wide + 40,
-            "the found codepoint is {} rows below the first one on show",
-            at / 4 - wide
-        );
     }
 
     /// One letter is that letter and nothing else: matching block names by a single
@@ -1152,5 +1064,4 @@ mod tests {
             }
         }
     }
->>>>>>> 75894722 (test(cli): pin the glyph map and the sheet at every terminal size)
 }
