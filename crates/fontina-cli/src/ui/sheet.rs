@@ -184,11 +184,19 @@ impl Sheet {
                 .first()
                 .map(|first| typography::preview_text(&first.face).to_string())
                 .unwrap_or_default(),
+            // A waterfall is one face, so it may use that face's own sample string —
+            // but only if there is something in it. A `name` table is free to hold a
+            // string of spaces, and a waterfall set in spaces is a screen of nothing
+            // with no way to tell it from a rendering that failed. Until now the only
+            // thing standing between a reader and that screen was `parse::english`
+            // dropping a name that trims empty, which is a coupling between two crates
+            // that nothing declared.
             Kind::Waterfall => row
                 .face
                 .names
                 .sample_text
                 .clone()
+                .filter(|s| !s.trim().is_empty())
                 .unwrap_or_else(|| typography::preview_text(&row.face).to_string()),
         }
     }
@@ -502,15 +510,20 @@ mod tests {
         assert_eq!(s.scroll_row(), 160);
     }
 
-    /// A pane one line tall pages by nothing at all: `ui::mod` sends `visible - 1`, so
-    /// PageDown, PageUp and Space are dead keys in it. Nothing a reader can produce is
-    /// one line tall — `draw_sheet` gives up below two, and never records a height it
-    /// gave up on — so the trap is latent, and this is where it is written down.
+    /// A delta of zero moves nothing, which is this type's answer and the right one.
+    ///
+    /// It used to be reachable: `ui::mod` sent `visible - 1` for a page, so in a pane
+    /// one line tall PageDown, PageUp and Space were dead keys. The caller now sends at
+    /// least one line; `a_page_in_a_one_line_pane_still_moves` in `ui::mod` holds that.
     #[test]
-    fn a_pane_one_line_tall_cannot_be_paged() {
+    fn a_delta_of_zero_scrolls_nowhere() {
         let mut s = sheet_of(200);
-        s.scroll_by(1 - 1, 1);
-        assert_eq!(s.scroll_row(), 0, "a page of one line moves by none of it");
+        s.scroll_by(0, 1);
+        assert_eq!(
+            s.scroll_row(),
+            0,
+            "a page of no lines moves by none of them"
+        );
         // The other keys still work there.
         s.scroll_by(1, 1);
         assert_eq!(s.scroll_row(), 1);
@@ -657,17 +670,25 @@ mod tests {
         );
     }
 
-    /// `text_for` hands back the face's embedded sample string as it stands, blank
-    /// included: nothing in the sheet looks at it. What keeps a waterfall from being
-    /// set in nothing at all is `parse::english`, which drops a name that trims empty.
-    /// That is a coupling between two crates and it is written down nowhere, so it is
-    /// written down here, in the test that would fail if it were relaxed.
+    /// A blank embedded sample string is not what a waterfall is set in.
+    ///
+    /// `text_for` used to hand the face's sample string back as it stood, blank
+    /// included, and the only thing between a reader and a screen of nothing was
+    /// `parse::english` dropping a name that trims empty — a coupling between two
+    /// crates that nothing declared. The sheet now decides for itself, and the second
+    /// half of this test still holds the parser to its side of it.
     #[test]
-    fn a_blank_embedded_sample_string_would_set_a_waterfall_in_nothing() {
+    fn a_blank_embedded_sample_string_is_not_what_a_waterfall_is_set_in() {
         let mut f = face("Amiri-Regular.ttf");
         f.names.sample_text = Some("   ".into());
-        let w = Sheet::waterfall(f, Vec::new(), Vec::new());
-        assert_eq!(w.text_for(&w.rows()[0], None), "   ");
+        let w = Sheet::waterfall(f.clone(), Vec::new(), Vec::new());
+        assert_eq!(
+            w.text_for(&w.rows()[0], None),
+            typography::preview_text(&f),
+            "a sample string of spaces falls back to real words"
+        );
+        // What the reader typed still wins, whatever it is.
+        assert_eq!(w.text_for(&w.rows()[0], Some("  ")), "  ");
 
         for name in [
             "Amiri-Regular.ttf",
