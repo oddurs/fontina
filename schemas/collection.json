@@ -4,33 +4,41 @@
       "description": "One face in an exported collection. On import, faces are matched by identity hash,\nthen PostScript name, then path and index, so a collection survives re-encoding the\nfont (TTF to WOFF2) or moving it.",
       "properties": {
         "blake3": {
+          "description": "BLAKE3 of the whole file, which differs across containers.",
           "type": "string"
         },
         "family": {
+          "description": "Typographic family, for a human reading the file.",
           "type": "string"
         },
         "identity_hash": {
+          "description": "BLAKE3 over the name and outline tables: the first thing import matches on.",
           "type": "string"
         },
         "index": {
           "default": 0,
+          "description": "Face index within its file, 0 unless a collection.",
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
         },
         "path": {
+          "description": "Absolute, or relative to this file when `relative_paths` is set.",
           "type": "string"
         },
         "postscript_name": {
+          "description": "Name ID 6; the second thing import matches on.",
           "type": [
             "string",
             "null"
           ]
         },
         "subfamily": {
+          "description": "Typographic subfamily.",
           "type": "string"
         },
         "tags": {
+          "description": "Tags carried across with the face.",
           "items": {
             "type": "string"
           },
@@ -55,12 +63,14 @@
       "type": "string"
     },
     "faces": {
+      "description": "The members, in collection order.",
       "items": {
         "$ref": "#/$defs/CollectionFace"
       },
       "type": "array"
     },
     "name": {
+      "description": "The collection's name in the index it came from.",
       "type": "string"
     },
     "relative_paths": {
@@ -68,6 +78,7 @@
       "type": "boolean"
     },
     "schema_version": {
+      "description": "Bumped when a reader could no longer make sense of the file.",
       "format": "uint32",
       "minimum": 0,
       "type": "integer"

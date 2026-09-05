@@ -51,14 +51,22 @@ pub struct Index {
 /// Compact per-face row used by listings.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct FaceSummary {
+    /// Index id. Stable while the face stays indexed; not a content identity.
     pub id: i64,
+    /// Absolute path of the file.
     pub path: String,
+    /// Face index within the file, 0 unless a collection.
     pub index: u32,
+    /// Typographic family.
     pub family: String,
+    /// Typographic subfamily.
     pub subfamily: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Name ID 6.
     pub postscript_name: Option<String>,
+    /// CSS weight, 1-1000. For a variable face this is the default instance.
     pub weight: f32,
+    /// CSS width as a percentage, 100 being normal.
     pub width: f32,
     /// The weights this face can be set to, when a `wght` axis lets it be set at all.
     ///
@@ -70,25 +78,34 @@ pub struct FaceSummary {
     /// The same, in percent, over `wdth`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub width_range: Option<[f32; 2]>,
+    /// Italic or oblique.
     pub italic: bool,
+    /// The face has variation axes.
     pub variable: bool,
+    /// The face carries at least one colour format.
     pub color: bool,
     /// What `post.isFixedPitch` says. Reported, never second-guessed: a font whose
     /// advance widths contradict its own flag is a health check, not a filter that
     /// quietly disagrees with the file.
     #[serde(default)]
     pub monospace: bool,
+    /// `maxp.numGlyphs`.
     pub glyph_count: u16,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// SPDX identifier where one was recognised.
     pub license: Option<String>,
     /// Whether `license` grants the four freedoms. Derived on read, never stored.
     #[serde(default)]
     pub freedom: Freedom,
+    /// ISO 15924 codes the face covers, most-covered first.
     pub scripts: Vec<String>,
+    /// Container format: ttf, otf, ttc, woff, woff2.
     pub container: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// `OS/2.achVendID`.
     pub vendor: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Name ID 9.
     pub designer: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
@@ -179,16 +196,27 @@ pub struct DuplicateGroup {
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct Stats {
+    /// Files in the index.
     pub files: i64,
+    /// Faces across those files.
     pub faces: i64,
+    /// Distinct typographic families.
     pub families: i64,
+    /// Faces with variation axes.
     pub variable_faces: i64,
+    /// Faces carrying a colour format.
     pub color_faces: i64,
+    /// Files that failed to parse, with the reason recorded.
     pub failed_files: i64,
+    /// Distinct tags.
     pub tags: i64,
+    /// Collections.
     pub collections: i64,
+    /// Directories the index was built from.
     pub sources: i64,
+    /// Faces currently activated.
     pub activations: i64,
+    /// Where this index lives on disk.
     pub db_path: String,
 }
 

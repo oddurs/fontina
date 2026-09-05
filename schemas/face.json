@@ -1,19 +1,24 @@
 {
   "$defs": {
     "AxisInfo": {
+      "description": "One variation axis from `fvar`.",
       "properties": {
         "default": {
+          "description": "The value this face takes when no axis is set.",
           "format": "float",
           "type": "number"
         },
         "hidden": {
+          "description": "`fvar` flag: the axis is not meant to be shown in a user interface.",
           "type": "boolean"
         },
         "max": {
+          "description": "Maximum in user coordinates.",
           "format": "float",
           "type": "number"
         },
         "min": {
+          "description": "Minimum in user coordinates.",
           "format": "float",
           "type": "number"
         },
@@ -38,11 +43,14 @@
       "type": "object"
     },
     "Capabilities": {
+      "description": "What the face can do, read from which tables are present.",
       "properties": {
         "bitmap_strikes": {
+          "description": "An `EBDT`/`EBLC` or `bloc`/`bdat` strike is present.",
           "type": "boolean"
         },
         "color": {
+          "description": "Colour formats present, empty for a monochrome face.",
           "items": {
             "$ref": "#/$defs/ColorFormat"
           },
@@ -53,13 +61,16 @@
           "type": "boolean"
         },
         "kern_table": {
+          "description": "A legacy `kern` table is present, independent of GPOS kerning.",
           "type": "boolean"
         },
         "math": {
+          "description": "A `MATH` table is present.",
           "type": "boolean"
         },
         "outlines": {
-          "$ref": "#/$defs/OutlineFormat"
+          "$ref": "#/$defs/OutlineFormat",
+          "description": "Where the outlines are."
         }
       },
       "required": [
@@ -73,14 +84,34 @@
       "type": "object"
     },
     "ColorFormat": {
-      "enum": [
-        "colrv0",
-        "colrv1",
-        "svg",
-        "sbix",
-        "cbdt"
-      ],
-      "type": "string"
+      "description": "A colour glyph format the face carries. A face may carry several.",
+      "oneOf": [
+        {
+          "const": "colrv0",
+          "description": "`COLR` version 0: layered solid colours.",
+          "type": "string"
+        },
+        {
+          "const": "colrv1",
+          "description": "`COLR` version 1: gradients and compositing.",
+          "type": "string"
+        },
+        {
+          "const": "svg",
+          "description": "An `SVG ` table.",
+          "type": "string"
+        },
+        {
+          "const": "sbix",
+          "description": "An `sbix` table of colour bitmaps.",
+          "type": "string"
+        },
+        {
+          "const": "cbdt",
+          "description": "`CBDT`/`CBLC` colour bitmaps.",
+          "type": "string"
+        }
+      ]
     },
     "Container": {
       "description": "Font container format, detected from the file's magic bytes.",
@@ -113,8 +144,10 @@
       ]
     },
     "Coverage": {
+      "description": "What the face can actually set, derived from `cmap` rather than claimed.",
       "properties": {
         "codepoints": {
+          "description": "Total codepoints in `cmap`.",
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
@@ -155,6 +188,7 @@
           "type": "string"
         },
         "format": {
+          "description": "The `format()` hint for `@font-face src`, e.g. `woff2`.",
           "type": "string"
         },
         "stretch": {
@@ -180,24 +214,43 @@
       "type": "object"
     },
     "EmbeddingLevel": {
-      "enum": [
-        "installable",
-        "restricted_license",
-        "preview_and_print",
-        "editable"
-      ],
-      "type": "string"
+      "description": "The `OS/2.fsType` embedding level. Reported, never enforced; see `freedom`.",
+      "oneOf": [
+        {
+          "const": "installable",
+          "description": "No embedding restriction stated.",
+          "type": "string"
+        },
+        {
+          "const": "restricted_license",
+          "description": "The font claims it may not be embedded without a separate licence.",
+          "type": "string"
+        },
+        {
+          "const": "preview_and_print",
+          "description": "The font claims embedding is for viewing and printing only.",
+          "type": "string"
+        },
+        {
+          "const": "editable",
+          "description": "The font claims embedded documents may be edited.",
+          "type": "string"
+        }
+      ]
     },
     "EmbeddingRights": {
       "description": "Decoded `OS/2.fsType` embedding permissions.",
       "properties": {
         "bitmap_only": {
+          "description": "`fsType` bit 9.",
           "type": "boolean"
         },
         "level": {
-          "$ref": "#/$defs/EmbeddingLevel"
+          "$ref": "#/$defs/EmbeddingLevel",
+          "description": "The least restrictive level the bits allow."
         },
         "no_subsetting": {
+          "description": "`fsType` bit 8.",
           "type": "boolean"
         }
       },
@@ -209,6 +262,7 @@
       "type": "object"
     },
     "Features": {
+      "description": "What the shaping tables declare, as opposed to what the font covers.",
       "properties": {
         "gpos": {
           "description": "Distinct GPOS feature tags, sorted.",
@@ -239,13 +293,15 @@
       "type": "object"
     },
     "FileInfo": {
+      "description": "The file a face was read from.",
       "properties": {
         "blake3": {
           "description": "BLAKE3 hash of the file bytes, hex.",
           "type": "string"
         },
         "container": {
-          "$ref": "#/$defs/Container"
+          "$ref": "#/$defs/Container",
+          "description": "Container format, from the magic bytes rather than the extension."
         },
         "face_count": {
           "description": "Number of faces in the file (1 unless a collection).",
@@ -263,6 +319,7 @@
           "type": "string"
         },
         "size": {
+          "description": "File size in bytes.",
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -304,6 +361,7 @@
       ]
     },
     "InstanceInfo": {
+      "description": "A named instance from `fvar`.",
       "properties": {
         "coordinates": {
           "description": "User-space coordinates, in axis order.",
@@ -320,6 +378,7 @@
           ]
         },
         "postscript_name": {
+          "description": "Name ID 6. Unique per face, and what `dupes` matches on first.",
           "type": [
             "string",
             "null"
@@ -332,8 +391,10 @@
       "type": "object"
     },
     "LicenseInfo": {
+      "description": "What the font says about its own licence.",
       "properties": {
         "description": {
+          "description": "Name ID 10.",
           "type": [
             "string",
             "null"
@@ -368,14 +429,17 @@
       "type": "object"
     },
     "Metrics": {
+      "description": "Vertical metrics and the dates, from `head`, `hhea` and `OS/2`.",
       "properties": {
         "ascender": {
+          "description": "`hhea.ascender`.",
           "format": "int16",
           "maximum": 32767,
           "minimum": -32768,
           "type": "integer"
         },
         "cap_height": {
+          "description": "`OS/2.sCapHeight`, present from version 2.",
           "format": "int16",
           "maximum": 32767,
           "minimum": -32768,
@@ -392,25 +456,30 @@
           ]
         },
         "descender": {
+          "description": "`hhea.descender`, negative below the baseline.",
           "format": "int16",
           "maximum": 32767,
           "minimum": -32768,
           "type": "integer"
         },
         "is_fixed_pitch": {
+          "description": "`post.isFixedPitch`. What the font claims; advance widths are not re-measured.",
           "type": "boolean"
         },
         "italic_angle": {
+          "description": "`post.italicAngle`, degrees counter-clockwise from vertical.",
           "format": "float",
           "type": "number"
         },
         "line_gap": {
+          "description": "`hhea.lineGap`.",
           "format": "int16",
           "maximum": 32767,
           "minimum": -32768,
           "type": "integer"
         },
         "modified": {
+          "description": "`head.modified` as RFC 3339, when set.",
           "type": [
             "string",
             "null"
@@ -422,12 +491,14 @@
           "type": "number"
         },
         "units_per_em": {
+          "description": "`head.unitsPerEm`. Every other value here is in these units.",
           "format": "uint16",
           "maximum": 65535,
           "minimum": 0,
           "type": "integer"
         },
         "x_height": {
+          "description": "`OS/2.sxHeight`, present from version 2.",
           "format": "int16",
           "maximum": 32767,
           "minimum": -32768,
@@ -452,6 +523,7 @@
       "description": "One record from the `name` table.",
       "properties": {
         "encoding_id": {
+          "description": "Encoding ID, interpreted against `platform_id`.",
           "format": "uint16",
           "maximum": 65535,
           "minimum": 0,
@@ -465,24 +537,28 @@
           ]
         },
         "language_id": {
+          "description": "Language ID, interpreted against `platform_id`; `language` is its BCP 47 form.",
           "format": "uint16",
           "maximum": 65535,
           "minimum": 0,
           "type": "integer"
         },
         "name_id": {
+          "description": "`name` table name ID: 1 family, 2 subfamily, 4 full name, 6 PostScript, 16/17 typographic.",
           "format": "uint16",
           "maximum": 65535,
           "minimum": 0,
           "type": "integer"
         },
         "platform_id": {
+          "description": "Platform ID: 0 Unicode, 1 Macintosh, 3 Windows.",
           "format": "uint16",
           "maximum": 65535,
           "minimum": 0,
           "type": "integer"
         },
         "value": {
+          "description": "The decoded string.",
           "type": "string"
         }
       },
@@ -499,6 +575,7 @@
       "description": "Resolved names. `family`/`subfamily` prefer the typographic names (IDs 16/17) over\nthe legacy ones (IDs 1/2), which is what groups a family correctly.",
       "properties": {
         "copyright": {
+          "description": "Name ID 0. Scanned for a licence and for OFL reserved font names.",
           "type": [
             "string",
             "null"
@@ -511,12 +588,14 @@
           ]
         },
         "designer": {
+          "description": "Name ID 9.",
           "type": [
             "string",
             "null"
           ]
         },
         "designer_url": {
+          "description": "Name ID 12.",
           "type": [
             "string",
             "null"
@@ -526,24 +605,28 @@
           "type": "string"
         },
         "full_name": {
+          "description": "Name ID 4.",
           "type": [
             "string",
             "null"
           ]
         },
         "legacy_family": {
+          "description": "Name ID 1, kept when ID 16 exists and differs from it.",
           "type": [
             "string",
             "null"
           ]
         },
         "legacy_subfamily": {
+          "description": "Name ID 2, kept when ID 17 exists and differs from it.",
           "type": [
             "string",
             "null"
           ]
         },
         "manufacturer": {
+          "description": "Name ID 8.",
           "type": [
             "string",
             "null"
@@ -556,6 +639,7 @@
           ]
         },
         "sample_text": {
+          "description": "Name ID 19. Preferred over the built-in pangram when previewing.",
           "type": [
             "string",
             "null"
@@ -565,36 +649,42 @@
           "type": "string"
         },
         "trademark": {
+          "description": "Name ID 7.",
           "type": [
             "string",
             "null"
           ]
         },
         "unique_id": {
+          "description": "Name ID 3.",
           "type": [
             "string",
             "null"
           ]
         },
         "vendor_url": {
+          "description": "Name ID 11.",
           "type": [
             "string",
             "null"
           ]
         },
         "version": {
+          "description": "Name ID 5, the version string as the font states it.",
           "type": [
             "string",
             "null"
           ]
         },
         "wws_family": {
+          "description": "Name ID 21. Weight/width/slope family, where the font declares one.",
           "type": [
             "string",
             "null"
           ]
         },
         "wws_subfamily": {
+          "description": "Name ID 22.",
           "type": [
             "string",
             "null"
@@ -608,8 +698,10 @@
       "type": "object"
     },
     "Os2Info": {
+      "description": "The `OS/2` table, kept whole because callers disagree about which fields matter.",
       "properties": {
         "codepage_ranges": {
+          "description": "`OS/2.ulCodePageRange1..2`, present from version 1.",
           "items": {
             "format": "uint32",
             "minimum": 0,
@@ -623,21 +715,25 @@
           ]
         },
         "embedding": {
-          "$ref": "#/$defs/EmbeddingRights"
+          "$ref": "#/$defs/EmbeddingRights",
+          "description": "`fs_type`, decoded."
         },
         "fs_selection": {
+          "description": "`OS/2.fsSelection` bits.",
           "format": "uint16",
           "maximum": 65535,
           "minimum": 0,
           "type": "integer"
         },
         "fs_type": {
+          "description": "Raw `fsType` bits; `embedding` is the decoded form.",
           "format": "uint16",
           "maximum": 65535,
           "minimum": 0,
           "type": "integer"
         },
         "typo_ascender": {
+          "description": "`OS/2.sTypoAscender`.",
           "format": "int16",
           "maximum": 32767,
           "minimum": -32768,
@@ -647,6 +743,7 @@
           ]
         },
         "typo_descender": {
+          "description": "`OS/2.sTypoDescender`.",
           "format": "int16",
           "maximum": 32767,
           "minimum": -32768,
@@ -656,6 +753,7 @@
           ]
         },
         "unicode_ranges": {
+          "description": "`OS/2.ulUnicodeRange1..4`. What the font claims; `coverage` is what it has.",
           "items": {
             "format": "uint32",
             "minimum": 0,
@@ -666,24 +764,29 @@
           "type": "array"
         },
         "use_typo_metrics": {
+          "description": "`fsSelection` bit 7: prefer the typo metrics over the hhea ones.",
           "type": "boolean"
         },
         "vendor_id": {
+          "description": "`OS/2.achVendID`, four characters.",
           "type": "string"
         },
         "version": {
+          "description": "`OS/2.version`; later versions carry more fields.",
           "format": "uint16",
           "maximum": 65535,
           "minimum": 0,
           "type": "integer"
         },
         "weight_class": {
+          "description": "`OS/2.usWeightClass`, 1–1000.",
           "format": "uint16",
           "maximum": 65535,
           "minimum": 0,
           "type": "integer"
         },
         "width_class": {
+          "description": "`OS/2.usWidthClass`, 1–9.",
           "format": "uint16",
           "maximum": 65535,
           "minimum": 0,
@@ -704,15 +807,32 @@
       "type": "object"
     },
     "OutlineFormat": {
-      "enum": [
-        "glyf",
-        "cff",
-        "cff2",
-        "none"
-      ],
-      "type": "string"
+      "description": "Which outline table the glyphs live in.",
+      "oneOf": [
+        {
+          "const": "glyf",
+          "description": "TrueType outlines.",
+          "type": "string"
+        },
+        {
+          "const": "cff",
+          "description": "CFF outlines.",
+          "type": "string"
+        },
+        {
+          "const": "cff2",
+          "description": "CFF2 outlines, which are variable.",
+          "type": "string"
+        },
+        {
+          "const": "none",
+          "description": "No outline table: a bitmap-only font.",
+          "type": "string"
+        }
+      ]
     },
     "ScriptCoverage": {
+      "description": "How much of one Unicode script the face covers.",
       "properties": {
         "codepoints": {
           "format": "uint32",
@@ -731,6 +851,7 @@
       "type": "object"
     },
     "ScriptInfo": {
+      "description": "One OpenType script and the language systems declared under it.",
       "properties": {
         "languages": {
           "description": "OpenType language system tags declared under the script.",
@@ -751,8 +872,10 @@
       "type": "object"
     },
     "Slope": {
+      "description": "How the face slopes, in the CSS Fonts Level 4 sense.",
       "oneOf": [
         {
+          "description": "Upright.",
           "properties": {
             "kind": {
               "const": "normal",
@@ -765,6 +888,7 @@
           "type": "object"
         },
         {
+          "description": "True italic letterforms: `OS/2.fsSelection` ITALIC or `head.macStyle`.",
           "properties": {
             "kind": {
               "const": "italic",
@@ -779,6 +903,7 @@
         {
           "properties": {
             "angle": {
+              "description": "Degrees, from the `slnt` axis or `post.italicAngle`, where the font gives one.",
               "format": "float",
               "type": [
                 "number",
@@ -798,12 +923,15 @@
       ]
     },
     "Style": {
+      "description": "Where the face sits on the three CSS style axes.",
       "properties": {
         "css": {
-          "$ref": "#/$defs/CssDescriptor"
+          "$ref": "#/$defs/CssDescriptor",
+          "description": "The same face as CSS descriptors, carrying ranges where it is variable."
         },
         "slope": {
-          "$ref": "#/$defs/Slope"
+          "$ref": "#/$defs/Slope",
+          "description": "Upright, italic or oblique."
         },
         "weight": {
           "description": "Weight on the CSS 1–1000 scale (from `OS/2.usWeightClass` or the `wght` default).",
@@ -825,20 +953,25 @@
       "type": "object"
     },
     "VariableInfo": {
+      "description": "The variable-font tables, absent for a static face.",
       "properties": {
         "axes": {
+          "description": "Axes in `fvar` order; `coordinates` on an instance follows the same order.",
           "items": {
             "$ref": "#/$defs/AxisInfo"
           },
           "type": "array"
         },
         "has_avar": {
+          "description": "An `avar` table is present, so user and normalised coordinates differ.",
           "type": "boolean"
         },
         "has_stat": {
+          "description": "A `STAT` table is present.",
           "type": "boolean"
         },
         "instances": {
+          "description": "Named instances, in `fvar` order.",
           "items": {
             "$ref": "#/$defs/InstanceInfo"
           },
@@ -858,18 +991,23 @@
   "description": "Everything fontina knows about one face.",
   "properties": {
     "capabilities": {
-      "$ref": "#/$defs/Capabilities"
+      "$ref": "#/$defs/Capabilities",
+      "description": "Outline format, colour, hinting, bitmaps, MATH, kern."
     },
     "coverage": {
-      "$ref": "#/$defs/Coverage"
+      "$ref": "#/$defs/Coverage",
+      "description": "Codepoints, scripts and ranges, from `cmap`."
     },
     "features": {
-      "$ref": "#/$defs/Features"
+      "$ref": "#/$defs/Features",
+      "description": "GSUB and GPOS feature tags and the scripts that declare them."
     },
     "file": {
-      "$ref": "#/$defs/FileInfo"
+      "$ref": "#/$defs/FileInfo",
+      "description": "The file this face was read from."
     },
     "glyph_count": {
+      "description": "`maxp.numGlyphs`.",
       "format": "uint16",
       "maximum": 65535,
       "minimum": 0,
@@ -886,19 +1024,23 @@
       "type": "integer"
     },
     "license": {
-      "$ref": "#/$defs/LicenseInfo"
+      "$ref": "#/$defs/LicenseInfo",
+      "description": "SPDX identifier where recognised, and whether it is free."
     },
     "metrics": {
-      "$ref": "#/$defs/Metrics"
+      "$ref": "#/$defs/Metrics",
+      "description": "Vertical metrics and dates."
     },
     "name_records": {
+      "description": "The whole `name` table, so nothing is lost to resolution.",
       "items": {
         "$ref": "#/$defs/NameRecord"
       },
       "type": "array"
     },
     "names": {
-      "$ref": "#/$defs/Names"
+      "$ref": "#/$defs/Names",
+      "description": "Resolved names, typographic where the font provides them."
     },
     "os2": {
       "anyOf": [
@@ -908,15 +1050,18 @@
         {
           "type": "null"
         }
-      ]
+      ],
+      "description": "The `OS/2` table, absent only if the font has none."
     },
     "schema_version": {
+      "description": "Bumped when this model changes in a way a reader cannot ignore.",
       "format": "uint32",
       "minimum": 0,
       "type": "integer"
     },
     "style": {
-      "$ref": "#/$defs/Style"
+      "$ref": "#/$defs/Style",
+      "description": "Weight, width and slope, on the CSS scales."
     },
     "variable": {
       "anyOf": [
@@ -926,7 +1071,8 @@
         {
           "type": "null"
         }
-      ]
+      ],
+      "description": "Axes and named instances, absent for a static face."
     }
   },
   "required": [

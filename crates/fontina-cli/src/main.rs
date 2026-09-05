@@ -26,6 +26,14 @@
 )]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
+//! The `fontina` binary: every command, and the argument parsing that reaches them.
+//!
+//! The command line is the product, so this is the surface the manual documents and
+//! `schemas/cli-output.json` pins. Human-readable output by default, `--json` for
+//! machines, exit code 1 on error and 2 where a command has a second failure worth
+//! telling apart. The terminal browser lives in [`ui`] and is one more client of
+//! `fontina-core`, not a layer over this one.
+
 mod ui;
 
 use anyhow::{Context, Result, bail};
