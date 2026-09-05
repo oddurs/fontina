@@ -79,8 +79,14 @@ pub struct Bitmap {
 
 impl Bitmap {
     pub fn get(&self, x: u32, y: u32) -> u8 {
+        // Total, for any pair of numbers. `x` was not checked against the width, so
+        // `get(width, 0)` returned the first pixel of row one, and the multiply was done
+        // in `u32`, so a large row overflowed rather than reading nothing.
+        if x >= self.width || y >= self.height {
+            return 0;
+        }
         self.coverage
-            .get((y * self.width + x) as usize)
+            .get(y as usize * self.width as usize + x as usize)
             .copied()
             .unwrap_or(0)
     }
@@ -98,10 +104,13 @@ struct ShapedLine {
 }
 
 fn tag(s: &str) -> Result<skrifa::Tag> {
+    // An OpenType tag is four bytes of printable ASCII. Measuring `s.len()` alone
+    // accepted "𝕒", which is one character and four bytes, and rejected "ligä", which is
+    // four characters and five, with a message saying it was not four characters.
     let b = s.as_bytes();
-    if b.len() != 4 {
+    if b.len() != 4 || !s.is_ascii() {
         return Err(Error::Other(format!(
-            "{s:?} is not a four-character OpenType tag"
+            "{s:?} is not a four-character ASCII OpenType tag"
         )));
     }
     Ok(skrifa::Tag::new(&[b[0], b[1], b[2], b[3]]))
@@ -186,12 +195,26 @@ impl OutlinePen for Pen<'_> {
 pub fn render_sfnt(bytes: &[u8], index: u32, opts: &RenderOptions) -> Result<Bitmap> {
     let font = FontRef::from_index(bytes, index)?;
     let upm = font.head()?.units_per_em().max(16) as f32;
+    // Only NaN: an infinity clamps to an end of the range like any other large number,
+    // and a person dragging a size control means the end.
+    if opts.size.is_nan() {
+        return Err(Error::Other("preview size is not a number".into()));
+    }
+    // Clamped, not rejected: a person dragging a size control past either end means the
+    // end, and the ends are the sizes a rasteriser can do anything useful with.
     let size = opts.size.clamp(4.0, 4096.0);
     let scale = size / upm;
 
     let mut settings = Vec::with_capacity(opts.variations.len());
     for (t, v) in &opts.variations {
-        settings.push((tag(t)?, *v));
+        // `Location` clamps a coordinate into the axis range, and NaN clamps to the
+        // minimum, so one stray value snapped every axis to its thinnest end. A
+        // coordinate that is not a number leaves its axis at the default instead.
+        let axis = tag(t)?;
+        if v.is_nan() {
+            continue;
+        }
+        settings.push((axis, *v));
     }
     let location = font.axes().location(settings.iter().map(|(t, v)| (*t, *v)));
     let data = harfrust::ShaperData::new(&font);
@@ -217,17 +240,28 @@ pub fn render_sfnt(bytes: &[u8], index: u32, opts: &RenderOptions) -> Result<Bit
     if let Some(max) = opts.max_width {
         width = width.min(max.max(1));
     }
+    // The rasteriser bounds a scanline against its whole buffer rather than against the
+    // row it is on, so ink drawn past the right edge reappears at the start of the next
+    // row, and ink drawn left of column zero underflows the index arithmetic. Both are
+    // reachable from the browser, which renders every preview clipped to a pane and asks
+    // Arabic and Devanagari faces for marks that sit left of the pen. So the drawing
+    // happens in a buffer with a margin on both sides, and the bitmap is copied out of
+    // the middle of it: what falls outside is dropped, which is what clipping means.
+    let margin = (size * 2.0).ceil().clamp(1.0, 4096.0) as u32;
+    let raster_w = width.saturating_add(2 * margin);
     let height = ((lines.len().max(1) as f32 - 1.0) * line_height + ascent + descent + 2.0 * pad)
         .ceil()
         .max(1.0) as u32;
-    if (width as u64) * (height as u64) > 64 * 1024 * 1024 {
+    // The guard covers the buffer that is actually allocated, not just the picture that
+    // comes out of it: the margins are part of what a hostile size and text can ask for.
+    if (raster_w as u64) * (height as u64) > 64 * 1024 * 1024 {
         return Err(Error::Other(format!(
             "preview would be {width}x{height} pixels; use a smaller size or shorter text"
         )));
     }
 
     let outlines = font.outline_glyphs();
-    let mut raster = Rasterizer::new(width as usize, height as usize);
+    let mut raster = Rasterizer::new(raster_w as usize, height as usize);
     let mut glyphs = 0;
     let mut missing = 0;
     let baseline0 = pad + ascent;
@@ -235,13 +269,18 @@ pub fn render_sfnt(bytes: &[u8], index: u32, opts: &RenderOptions) -> Result<Bit
         let baseline = baseline0 + i as f32 * line_height;
         for (gid, x, y) in &line.glyphs {
             glyphs += 1;
+            // A glyph whose pen has already passed the clip cannot put ink inside it.
+            // Skipping it keeps the buffer bounded by the clip rather than by the text.
+            if pad + x >= width as f32 {
+                continue;
+            }
             let Some(outline) = outlines.get(*gid) else {
                 missing += 1;
                 continue;
             };
             let mut pen = Pen {
                 r: &mut raster,
-                ox: pad + x,
+                ox: margin as f32 + pad + x,
                 oy: baseline - y,
                 last: Point { x: 0.0, y: 0.0 },
                 start: Point { x: 0.0, y: 0.0 },
@@ -256,10 +295,15 @@ pub fn render_sfnt(bytes: &[u8], index: u32, opts: &RenderOptions) -> Result<Bit
     }
     let mut coverage = vec![0u8; (width * height) as usize];
     raster.for_each_pixel_2d(|x, y, a| {
+        // Only the middle of the buffer is the picture; the margins hold the ink that
+        // clipping drops.
+        let Some(col) = x.checked_sub(margin).filter(|c| *c < width) else {
+            return;
+        };
         // The accumulation rasteriser leaves float dust far from any outline; below
         // one percent is not ink.
         let a = if a < 0.01 { 0.0 } else { a.clamp(0.0, 1.0) };
-        coverage[(y * width + x) as usize] = (a * 255.0).round() as u8;
+        coverage[(y * width + col) as usize] = (a * 255.0).round() as u8;
     });
     Ok(Bitmap {
         width,

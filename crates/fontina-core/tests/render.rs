@@ -265,21 +265,24 @@ fn a_size_outside_the_rasterisers_range_is_clamped_to_it() {
 /// The fix is one `if !size.is_finite()` before the clamp; this test says what happens
 /// today so that fix is visible as a diff here.
 #[test]
-fn a_size_of_nan_renders_nothing_at_all() {
-    let bm = render(
-        "BricolageGrotesque[opsz,wdth,wght].ttf",
+fn a_size_of_nan_is_an_error_and_says_so() {
+    // NaN passes straight through `f32::clamp`, so every metric downstream became zero
+    // and the result was a padding-sized rectangle of nothing, reported as a success.
+    let err = render_sfnt(
+        &bytes("BricolageGrotesque[opsz,wdth,wght].ttf"),
+        0,
         &RenderOptions {
             text: "Hamburg".into(),
             size: f32::NAN,
             padding: 4,
             ..Default::default()
         },
-        "NaN size",
+    )
+    .expect_err("a size that is not a number cannot be drawn");
+    assert!(
+        err.to_string().contains("not a number"),
+        "the error should name the problem: {err}"
     );
-    assert!(bm.is_blank(), "if this now draws, the defect is fixed");
-    assert_eq!((bm.width, bm.height), (8, 8), "padding, and nothing else");
-    // The invariants still hold, which is why this is a wrong picture and not a crash.
-    assert_eq!(bm.coverage.len(), 64);
 }
 
 // ----- text a person can type -----
@@ -459,12 +462,14 @@ fn a_rendering_larger_than_the_budget_is_an_error_not_an_allocation() {
 /// The fix is fontina's, not the rasteriser's: size the bitmap from the glyphs' bounding
 /// boxes, or refuse to draw at a negative origin.
 #[test]
-fn a_lone_combining_mark_overflows_the_rasteriser() {
-    let hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(|_| {}));
-    let outcome = |name: &'static str, padding: u32| {
-        std::panic::catch_unwind(move || {
-            render_sfnt(
+fn a_lone_combining_mark_draws_instead_of_overflowing() {
+    // A mark carries no advance and sits left of the pen, so it reached the rasteriser at
+    // a negative column: `linestart + x1i as usize` underflowed, which panicked in debug
+    // and silently dropped the scanline in release. The core is not allowed to panic on
+    // font input, and there is no `catch_unwind` on this path.
+    for name in SFNT {
+        for padding in [0, 1, 4, 16] {
+            let bm = render_sfnt(
                 &bytes(name),
                 0,
                 &RenderOptions {
@@ -474,41 +479,9 @@ fn a_lone_combining_mark_overflows_the_rasteriser() {
                     ..Default::default()
                 },
             )
-        })
-    };
-    let mut overflowed = Vec::new();
-    for name in SFNT {
-        for padding in [0, 1, 4] {
-            match outcome(name, padding) {
-                Ok(Ok(bm)) => check_invariants(&bm, name),
-                Ok(Err(e)) => panic!("{name}: unexpected error {e}"),
-                Err(_) => overflowed.push((*name, padding)),
-            }
+            .unwrap_or_else(|e| panic!("{name} at padding {padding}: {e}"));
+            check_invariants(&bm, name);
         }
-    }
-    // Enough padding to hold the accent, and there is nothing wrong with the drawing.
-    for name in SFNT {
-        match outcome(name, 32) {
-            Ok(Ok(bm)) => {
-                check_invariants(&bm, name);
-                assert!(!bm.is_blank(), "{name}: an accent is ink");
-            }
-            other => panic!("{name}: 32 px of padding should be enough, got {other:?}"),
-        }
-    }
-    std::panic::set_hook(hook);
-
-    if cfg!(debug_assertions) {
-        assert!(
-            overflowed.contains(&("Amiri-Regular.ttf", 4)),
-            "the reported overflow is gone from Amiri — delete this test and say so \
-             in the changelog. Overflowed: {overflowed:?}",
-        );
-    } else {
-        assert!(
-            overflowed.is_empty(),
-            "with overflow checks off the addition wraps instead: {overflowed:?}",
-        );
     }
 }
 
@@ -608,15 +581,18 @@ fn an_axis_coordinate_is_clamped_to_the_fvar_range() {
 /// to the thinnest, narrowest, smallest end of every axis at once. A slider that divides
 /// by a zero-width track produces exactly this.
 #[test]
-fn an_axis_set_to_nan_falls_to_the_minimum() {
+fn an_axis_set_to_nan_leaves_that_axis_alone() {
+    // A `Location` clamps a coordinate into the axis range, and NaN clamps to the
+    // minimum, so one stray value used to snap an axis to its thinnest end. It is
+    // ignored now, which leaves the axis at its default.
     for name in VARIABLE {
         for axis in axes_of(name) {
-            let at = |v: f32| {
+            let at = |v: Option<f32>| {
                 let bm = render(
                     name,
                     &RenderOptions {
                         text: "Hamburg".into(),
-                        variations: vec![(axis.tag.clone(), v)],
+                        variations: v.map(|v| vec![(axis.tag.clone(), v)]).unwrap_or_default(),
                         ..Default::default()
                     },
                     "nan axis",
@@ -624,21 +600,11 @@ fn an_axis_set_to_nan_falls_to_the_minimum() {
                 (bm.width, bm.height, ink(&bm))
             };
             assert_eq!(
-                at(f32::NAN),
-                at(axis.min),
-                "{name} {}: NaN is the minimum today",
+                at(Some(f32::NAN)),
+                at(None),
+                "{name} {}: NaN must leave the axis at its default",
                 axis.tag,
             );
-            // Only worth saying for an axis whose ends draw differently at all: Nabla's
-            // `EHLT` moves colour layers the coverage rasteriser never sees.
-            if at(axis.min) != at(axis.default) {
-                assert_ne!(
-                    at(f32::NAN),
-                    at(axis.default),
-                    "{name} {}: NaN should hold the default, and does not",
-                    axis.tag,
-                );
-            }
         }
     }
 }
@@ -701,7 +667,7 @@ fn axis_settings_that_name_nothing_are_ignored_and_malformed_ones_are_errors() {
         .unwrap_err()
         .to_string();
         assert!(
-            err.contains("four-character OpenType tag"),
+            err.contains("four-character ASCII OpenType tag"),
             "{bad:?}: {err}"
         );
         assert!(err.contains(&format!("{bad:?}")), "{bad:?} named: {err}");
@@ -846,7 +812,7 @@ fn features_that_name_nothing_are_ignored_and_malformed_ones_are_errors() {
         .unwrap_err()
         .to_string();
         assert!(
-            err.contains("four-character OpenType tag"),
+            err.contains("four-character ASCII OpenType tag"),
             "{bad:?}: {err}"
         );
     }
@@ -886,7 +852,10 @@ fn a_thousand_feature_settings_at_once_still_render() {
 /// in five bytes and is refused with a message that says it is not four characters,
 /// which it is. Both are reachable from a text field.
 #[test]
-fn a_feature_tag_is_measured_in_bytes_not_characters() {
+fn a_tag_is_four_bytes_of_ascii() {
+    // Length alone was checked, so "𝕒" — one character, four bytes — was accepted as a
+    // tag, and "ligä" — four characters, five bytes — was refused with a message saying
+    // it was not four characters.
     let name = "SourceSerif4-Regular.otf";
     let with = |tag: &str| {
         render_sfnt(
@@ -899,22 +868,16 @@ fn a_feature_tag_is_measured_in_bytes_not_characters() {
             },
         )
     };
-    // Four bytes of one character: accepted, and shapes as a tag of bytes outside the
-    // range the spec allows.
-    assert!(with("\u{1D552}").is_ok(), "four bytes, one character");
-    // Four characters in five bytes: refused, and told it is not four characters.
-    let err = with("ligä").unwrap_err().to_string();
-    assert!(
-        err.contains("is not a four-character OpenType tag"),
-        "{err}"
-    );
-    assert!(
-        "ligä".chars().count() == 4,
-        "the message is false: it is four characters",
-    );
-    // Bytes a tag may not hold, taken anyway. Only their length is checked.
-    for tag in ["li a", "li\ta", "\u{0}\u{0}\u{0}\u{0}", "LIGA"] {
-        assert!(with(tag).is_ok(), "{tag:?} accepted as a tag");
+    for tag in ["\u{1D552}", "ligä", "lig", "ligax", ""] {
+        let err = with(tag).unwrap_err().to_string();
+        assert!(
+            err.contains("four-character ASCII"),
+            "{tag:?} should be refused as a tag: {err}"
+        );
+    }
+    // Four ASCII bytes are a tag, whatever they spell.
+    for tag in ["liga", "LIGA", "li a"] {
+        assert!(with(tag).is_ok(), "{tag:?} is four ASCII bytes");
     }
 }
 
@@ -967,7 +930,12 @@ fn padding_and_the_width_clip_do_what_they_say() {
 /// all drawing this. The fix is to rasterise at the full width and copy the left
 /// `max_width` columns out, or to drop glyphs whose origin is already past the clip.
 #[test]
-fn a_clipped_rendering_wraps_the_ink_it_should_have_dropped() {
+fn a_clipped_rendering_is_the_same_picture_with_less_of_it() {
+    // The rasteriser bounds a scanline against its whole buffer rather than the row it
+    // is on, so ink drawn past the right edge used to reappear at the start of the next
+    // row: half the clipped bitmap disagreed with the full one, and there was *more* ink
+    // in the clipped columns than the same columns of the unclipped rendering. The
+    // browser draws every preview this way.
     let name = "SourceSerif4-Regular.otf";
     let opts = |max_width: Option<u32>| RenderOptions {
         text: "Hamburgefonstiv".into(),
@@ -981,41 +949,25 @@ fn a_clipped_rendering_wraps_the_ink_it_should_have_dropped() {
     assert_eq!(clipped.width, 30);
     assert_eq!(clipped.height, full.height, "the clip is horizontal only");
 
-    // What clipping should give: the same picture, thirty columns of it.
     let differing = (0..clipped.height)
         .flat_map(|y| (0..clipped.width).map(move |x| (x, y)))
-        .filter(|&(x, y)| {
-            clipped.coverage[(y * clipped.width + x) as usize]
-                != full.coverage[(y * full.width + x) as usize]
-        })
+        .filter(|&(x, y)| clipped.get(x, y) != full.get(x, y))
         .count();
-    assert!(
-        differing > 0,
-        "the clip is a clip now — delete this test and say so in the changelog",
+    assert_eq!(
+        differing, 0,
+        "a clipped rendering must be the left {} columns of the full one",
+        clipped.width
     );
-    // What it gives instead: half the bitmap disagrees, and there is more ink in the
-    // thirty clipped columns than in the same thirty columns of the full rendering,
-    // because the rest of the word landed on top of them.
-    let kept: u64 = (0..full.height)
-        .flat_map(|y| (0..clipped.width).map(move |x| (x, y)))
-        .map(|(x, y)| full.coverage[(y * full.width + x) as usize] as u64)
-        .sum();
-    assert!(
-        ink(&clipped) > kept,
-        "clipped ink {} should have been at most the {kept} in those columns",
-        ink(&clipped),
-    );
-    // Rows that are empty in the real rendering are inked in the clipped one: this is
-    // the smear, and it is what a reader sees.
-    let blank_rows_wrongly_inked = (0..full.height)
-        .filter(|&y| {
-            (0..full.width).all(|x| full.coverage[(y * full.width + x) as usize] == 0)
-                && (0..clipped.width).any(|x| clipped.coverage[(y * 30 + x) as usize] != 0)
-        })
-        .count();
-    assert!(
-        blank_rows_wrongly_inked > 0,
-        "ink appeared on rows the font never drew on",
+    let ink_of = |bm: &Bitmap, w: u32| -> u64 {
+        (0..bm.height)
+            .flat_map(|y| (0..w).map(move |x| (x, y)))
+            .map(|(x, y)| bm.get(x, y) as u64)
+            .sum()
+    };
+    assert_eq!(
+        ink_of(&clipped, 30),
+        ink_of(&full, 30),
+        "clipping must drop ink, never add it"
     );
 }
 
@@ -1029,7 +981,10 @@ fn a_clipped_rendering_wraps_the_ink_it_should_have_dropped() {
 /// from anything in the tree today, because nothing but a test calls `get`, which is
 /// exactly why it is worth pinning before something does.
 #[test]
-fn reading_a_pixel_outside_the_bitmap_is_not_background() {
+fn reading_a_pixel_outside_the_bitmap_is_background() {
+    // `x` was not bounded against the width, so one column past the right edge returned
+    // the first pixel of the next row, and the index was computed in `u32`, so a large
+    // row overflowed rather than reading nothing.
     let bm = render(
         "SourceSerif4-Regular.otf",
         &RenderOptions {
@@ -1040,26 +995,18 @@ fn reading_a_pixel_outside_the_bitmap_is_not_background() {
         },
         "get",
     );
-    // One column past the right-hand edge is the first column of the next row.
+    assert_eq!(bm.get(bm.width, 0), 0, "one column past the right edge");
+    assert_eq!(bm.get(0, bm.height), 0, "one row below the bottom");
     assert_eq!(
-        bm.get(bm.width, 0),
-        bm.get(0, 1),
-        "x is not bounded against the width",
+        bm.get(u32::MAX, u32::MAX),
+        0,
+        "far outside, in both directions"
     );
-    // Far enough down and the index arithmetic leaves u32 altogether.
-    let hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(|_| {}));
-    let far = std::panic::catch_unwind(|| bm.get(0, u32::MAX / bm.width + 1));
-    std::panic::set_hook(hook);
-    if cfg!(debug_assertions) {
-        assert!(far.is_err(), "the multiply no longer overflows");
-    } else {
-        assert_eq!(
-            far.unwrap_or(0),
-            0,
-            "with the checks off it wraps to a miss"
-        );
-    }
+    assert_eq!(
+        bm.get(0, u32::MAX / bm.width + 1),
+        0,
+        "a row index whose product leaves u32"
+    );
 }
 
 #[test]
