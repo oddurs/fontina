@@ -24,6 +24,7 @@ use rusqlite::{OptionalExtension, Transaction, params};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::Path;
 
 /// How a face was made available to the OS through fontina.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
@@ -120,7 +121,98 @@ pub struct CollectionExport {
     pub name: String,
     /// RFC 3339.
     pub exported_at: String,
+    /// True when every `CollectionFace::path` is relative to the directory holding this
+    /// file, which is how a bundle is written. Absent means absolute, as every export
+    /// before bundles was.
+    ///
+    /// The flag is additive and `SCHEMA_VERSION` does not move for it. An older fontina
+    /// reading a bundle ignores it and treats the relative paths as absolute, which
+    /// costs nothing in practice: the path is the *last* thing `match_collection_face`
+    /// tries, after the identity hash and the PostScript name, and those do not depend
+    /// on where the file lives.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub relative_paths: bool,
     pub faces: Vec<CollectionFace>,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
+impl CollectionExport {
+    /// Rewrite the paths relative to `base`, for an export that travels with its fonts.
+    ///
+    /// An absolute path names a directory that exists on one machine, so it is dead
+    /// weight in a file meant to be shared — and it carries a home directory into
+    /// whatever the collection is shared through.
+    ///
+    /// Fails rather than half-succeeding. `base` has to exist to be canonicalised, and
+    /// scanned paths are canonical, so a base carrying `..` or a symlink would match
+    /// nothing; and every face has to end up under it, because a file that says its
+    /// paths are relative while some are absolute is worse than one that says nothing —
+    /// a reader joining the base onto an absolute path gets nonsense.
+    pub fn relative_to(&mut self, base: &Path) -> Result<()> {
+        let base = base
+            .canonicalize()
+            .map_err(|e| Error::Io(base.to_path_buf(), e))?;
+        let mut rewritten = Vec::with_capacity(self.faces.len());
+        for f in &self.faces {
+            let rel = Path::new(&f.path).strip_prefix(&base).map_err(|_| {
+                Error::Other(format!(
+                    "{} is outside {}, so the collection cannot travel with its fonts",
+                    f.path,
+                    base.display()
+                ))
+            })?;
+            // `/` on the wire whatever wrote it. A bundle is made to be carried to
+            // another machine, and a Windows separator resolves to one filename with a
+            // backslash in it there; `/` is read correctly by every platform.
+            rewritten.push(
+                rel.components()
+                    .map(|c| c.as_os_str().to_string_lossy())
+                    .collect::<Vec<_>>()
+                    .join("/"),
+            );
+        }
+        for (f, rel) in self.faces.iter_mut().zip(rewritten) {
+            f.path = rel;
+        }
+        self.relative_paths = true;
+        Ok(())
+    }
+
+    /// Put the paths back together against the directory this file came from.
+    ///
+    /// A no-op for an export that was never made relative, so a caller can apply it to
+    /// anything it reads without asking which kind it has.
+    ///
+    /// Entries that climb out of the bundle are left alone. A collection file is written
+    /// by someone else, `../../../etc/hosts` is a path a hostile one can contain, and
+    /// nothing downstream should be handed it as though the bundle vouched for it.
+    pub fn resolve_paths(&mut self, base: &Path) -> usize {
+        if !self.relative_paths {
+            return 0;
+        }
+        // The index stores canonical absolute paths, so a relative base would resolve to
+        // something that can never match one.
+        let base = base.canonicalize().unwrap_or_else(|_| base.to_path_buf());
+        let mut escaped = 0;
+        for f in &mut self.faces {
+            let p = Path::new(&f.path);
+            if !p.is_relative() {
+                continue;
+            }
+            if p.components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
+            {
+                escaped += 1;
+                continue;
+            }
+            f.path = base.join(p).to_string_lossy().into_owned();
+        }
+        self.relative_paths = false;
+        escaped
+    }
 }
 
 /// One face in an exported collection. On import, faces are matched by identity hash,
@@ -377,6 +469,7 @@ impl Index {
         Ok(CollectionExport {
             schema_version: crate::SCHEMA_VERSION,
             name: stored_name,
+            relative_paths: false,
             exported_at: time::OffsetDateTime::now_utc()
                 .format(&time::format_description::well_known::Rfc3339)
                 .unwrap_or_default(),

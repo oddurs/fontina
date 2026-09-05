@@ -20,7 +20,7 @@
 use fontina_core::{
     ActivationState, CollectionExport, FaceFilter, Freedom, Index, ScanOptions, SourceKind,
 };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn fixtures() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures")
@@ -79,6 +79,132 @@ fn tags_round_trip_and_filter() {
     assert!(index.delete_tag("arabic").unwrap());
     assert!(!index.delete_tag("nope").unwrap());
     assert_eq!(index.summaries(&[amiri]).unwrap()[0].tags, ["Serif Fonts"]);
+}
+
+/// A shared collection travels with its fonts, so its paths have to mean something on
+/// the machine that receives it — and an absolute path both means nothing there and
+/// carries a home directory along with it.
+#[test]
+fn a_relative_export_survives_being_moved() {
+    let here = fixtures().canonicalize().unwrap();
+    let mut export = collection_over_every_fixture("Shared");
+    assert!(!export.relative_paths);
+    assert!(
+        export
+            .faces
+            .iter()
+            .all(|f| Path::new(&f.path).is_absolute()),
+        "an ordinary export is absolute"
+    );
+
+    export.relative_to(&here).unwrap();
+    assert!(export.relative_paths);
+    assert!(
+        export
+            .faces
+            .iter()
+            .all(|f| Path::new(&f.path).is_relative()),
+        "every fixture is under the base, so every path became relative"
+    );
+    assert!(
+        !serde_json::to_string(&export)
+            .unwrap()
+            .contains(here.to_string_lossy().as_ref()),
+        "the exported file no longer names the directory it came from"
+    );
+    assert!(
+        export.faces.iter().all(|f| !f.path.contains('\\')),
+        "paths go on the wire with `/`, so a bundle written on Windows opens elsewhere"
+    );
+
+    // The same bundle, opened from somewhere else, points at the fonts beside it.
+    let mut moved = export.clone();
+    let escaped = moved.resolve_paths(&here);
+    assert_eq!(escaped, 0);
+    assert!(!moved.relative_paths);
+    assert!(
+        moved
+            .faces
+            .iter()
+            .all(|f| Path::new(&f.path).starts_with(&here)),
+        "{:?}",
+        moved.faces.first().map(|f| &f.path)
+    );
+
+    // Resolving an export that was never relative leaves it alone.
+    let mut absolute = collection_over_every_fixture("Absolute");
+    let before: Vec<String> = absolute.faces.iter().map(|f| f.path.clone()).collect();
+    assert_eq!(absolute.resolve_paths(&here), 0);
+    let after: Vec<String> = absolute.faces.iter().map(|f| f.path.clone()).collect();
+    assert_eq!(after, before);
+}
+
+/// A collection over every fixture, exported with absolute paths.
+fn collection_over_every_fixture(name: &str) -> CollectionExport {
+    let mut index = indexed();
+    let ids: Vec<i64> = index
+        .list(&FaceFilter::default())
+        .unwrap()
+        .iter()
+        .map(|f| f.id)
+        .collect();
+    index.create_collection(name).unwrap();
+    index.add_to_collection(name, &ids).unwrap();
+    index.export_collection(name).unwrap()
+}
+
+/// Half-relative is worse than absolute: a reader that trusts the flag and joins the
+/// base onto a path that never became relative gets nonsense. So it refuses.
+#[test]
+fn an_export_that_cannot_be_made_relative_refuses_rather_than_lying() {
+    let mut export = collection_over_every_fixture("Outside");
+    let before: Vec<String> = export.faces.iter().map(|f| f.path.clone()).collect();
+
+    // A real directory that holds none of the fonts.
+    let elsewhere = std::env::temp_dir().canonicalize().unwrap();
+    let err = export.relative_to(&elsewhere).unwrap_err();
+    assert!(format!("{err}").contains("outside"), "{err}");
+    assert!(
+        !export.relative_paths,
+        "a refused export is not marked relative"
+    );
+    assert_eq!(
+        export
+            .faces
+            .iter()
+            .map(|f| f.path.clone())
+            .collect::<Vec<_>>(),
+        before,
+        "and nothing was rewritten on the way to refusing"
+    );
+
+    // A base that cannot be canonicalised at all is an error, not a silent no-op.
+    // `strip_prefix("")` succeeds for every path, so falling back to an empty base would
+    // have marked the export relative while leaving every path absolute — a file that
+    // still names someone's home directory and resolves to nothing anywhere else.
+    let mut export = collection_over_every_fixture("Missing");
+    assert!(export.relative_to(Path::new("/no/such/bundle")).is_err());
+    assert!(!export.relative_paths);
+    assert!(
+        export
+            .faces
+            .iter()
+            .all(|f| Path::new(&f.path).is_absolute())
+    );
+}
+
+/// A collection file is written by somebody else.
+#[test]
+fn a_path_that_climbs_out_of_the_bundle_is_not_resolved() {
+    let mut export = collection_over_every_fixture("Hostile");
+    export.relative_paths = true;
+    export.faces[0].path = "../../../../etc/hosts".into();
+    let escaped = export.resolve_paths(Path::new("/srv/bundle"));
+    assert_eq!(escaped, 1);
+    assert_eq!(
+        export.faces[0].path, "../../../../etc/hosts",
+        "it is left as it was, so nothing downstream is handed it as a real path"
+    );
 }
 
 #[test]
