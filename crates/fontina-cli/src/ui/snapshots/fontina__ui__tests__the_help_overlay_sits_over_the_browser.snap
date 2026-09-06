@@ -1,6 +1,6 @@
 ---
 source: crates/fontina-cli/src/ui/mod.rs
-assertion_line: 4156
+assertion_line: 4294
 expression: drawn
 ---
 ┌ 6 faces ───────────────┐┌ 5 families ─────────────────────────────┐┌ Details ────────────────────────────────────────┐
@@ -27,10 +27,10 @@ expression: drawn
 │Script        │ Panes       Three side by side at 112 columns and up; under that the facets            │              │
 │  Latn        │             move over the list and Tab opens them; under 76, one pane at a             │              │
 │  Arab        │             time, the others still a Tab away                                          │              │
-│  Zyyy        │ Undo        U takes back the last thing that changed the index, Ctrl-R does it         │              │
-│  Cyrl        │             again. A whole selection is one undo. What cannot be put back              │              │
-│  Zinh        │             exactly is not offered: a rescan is what the disk says, so there is        │              │
-│  Grek        │             nothing to restore                                                         │              │
+│  Zyyy        │ Commands    : lists every command the program has, with the same description           │              │
+│  Cyrl        │             fontina --help gives it, filtered as you type. The ones the browser        │              │
+│  Zinh        │             implements it runs; the ones that print, it writes out for you with        │              │
+│  Grek        │             the selection already in them                                              │              │
 │Language      │ Index       R rescans every source (fontina scan --prune)                              │              │
 │  en          │ Quit        q                                                                          │              │
 │  CAT         │                                                                                        │              │

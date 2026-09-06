@@ -25,6 +25,7 @@ mod controls;
 mod glyphs;
 mod history;
 mod layout;
+mod palette;
 mod preview;
 mod search;
 mod sheet;
@@ -228,6 +229,8 @@ pub struct App {
     /// else in here changes: a search is asked for the same way either way, and only
     /// the waiting is different.
     search: Option<search::Search>,
+    /// The command palette, while it is open.
+    palette: Option<palette::Palette>,
 }
 
 pub fn run(db: &Path) -> Result<()> {
@@ -292,6 +295,7 @@ impl App {
             activator,
             history: history::History::default(),
             search: None,
+            palette: None,
         };
         app.search = search::Search::open(&app.index);
         app.reload()?;
@@ -748,6 +752,10 @@ impl App {
             }
             return Ok(Flow::Continue);
         }
+        if self.palette.is_some() && !ctrl_c(&key) {
+            self.handle_palette_key(key.code)?;
+            return Ok(Flow::Continue);
+        }
         // Ctrl-C still quits from anywhere; a full-screen mode takes every other key,
         // so nothing underneath can move while it covers the panes.
         if !ctrl_c(&key) {
@@ -785,6 +793,7 @@ impl App {
                 self.help = true;
                 self.help_scroll = 0;
             }
+            KeyCode::Char(':') => self.palette = Some(palette::Palette::new()),
             // Space marks, everywhere but the facet pane, where it is how a facet is
             // toggled. Enter still opens a family, so nothing that Space used to do is
             // lost — it did the same as Enter — and Space is what marks a row in every
@@ -1510,9 +1519,87 @@ impl App {
         if self.glyphs.is_some() {
             self.draw_glyphs(f, vertical[0]);
         }
+        if self.palette.is_some() {
+            self.draw_palette(f, area);
+        }
         if self.help {
             self.draw_help(f, area);
         }
+    }
+
+    /// The command palette: what has been typed, and what still matches.
+    ///
+    /// Over the middle of the screen rather than beside anything, because it is about
+    /// the whole program rather than about the pane underneath it.
+    fn draw_palette(&mut self, f: &mut ratatui::Frame, area: Rect) {
+        let Some(palette) = self.palette.as_ref() else {
+            return;
+        };
+        let w = 76.min(area.width);
+        let h = 20.min(area.height);
+        if w < 24 || h < 5 {
+            return;
+        }
+        let rect = Rect::new(
+            area.x + (area.width - w) / 2,
+            area.y + (area.height - h) / 2,
+            w,
+            h,
+        );
+        let matches = palette.matches();
+        let title = match &palette.confirming {
+            Some(cmd) => format!(" {cmd} writes to the disk — y to go ahead "),
+            None => format!(
+                " : {} — {} of {} ",
+                palette.query,
+                matches.len(),
+                palette.total()
+            ),
+        };
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(self.theme.accent())
+            .title(title);
+        let inner = block.inner(rect);
+        f.render_widget(Clear, rect);
+        f.render_widget(block, rect);
+
+        // The command it would run, in full, above the list: the palette teaches the
+        // command line, and a name on its own teaches nothing.
+        let mut rows = inner;
+        if let Some(chosen) = palette.selected() {
+            let head = Rect { height: 1, ..inner };
+            rows = Rect {
+                y: inner.y + 1,
+                height: inner.height.saturating_sub(1),
+                ..inner
+            };
+            f.render_widget(
+                Paragraph::new(Line::from(vec![Span::styled(
+                    truncate(&self.command_for(&chosen.path), inner.width as usize),
+                    self.theme.accent(),
+                )])),
+                head,
+            );
+        }
+
+        let visible = rows.height as usize;
+        let win = layout::window(matches.len(), palette.cursor(), visible, 0);
+        let items: Vec<ListItem> = matches[win.clone()]
+            .iter()
+            .map(|e| {
+                let name = format!("{:<22}", truncate(&e.path, 22));
+                let room = (rows.width as usize).saturating_sub(22 + e.hint().len() + 2);
+                ListItem::new(Line::from(vec![
+                    Span::styled(name, Style::default().add_modifier(Modifier::BOLD)),
+                    Span::raw(format!("{:<room$}", truncate(&e.about, room), room = room)),
+                    Span::styled(format!("  {}", e.hint()), self.theme.dim()),
+                ]))
+            })
+            .collect();
+        let list =
+            List::new(items).highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+        f.render_stateful_widget(list, rows, &mut windowed(Some(palette.cursor()), &win));
     }
 
     /// The waterfall or the comparison: each row rendered, labelled, and stacked, with
@@ -1768,6 +1855,116 @@ impl App {
             0 => "selection cleared".into(),
             n => format!("{n} face(s) selected — Esc clears, any action applies to all"),
         };
+    }
+
+    /// Keys while the palette is up.
+    ///
+    /// It takes all of them, because it is a prompt: a reader typing `install` is
+    /// typing, not pressing `i` for install and then `n` for nothing.
+    fn handle_palette_key(&mut self, code: KeyCode) -> Result<()> {
+        // A command that writes to the disk waits for a yes first, and anything that is
+        // not a yes is a no. There is no third answer worth having.
+        if let Some(pending) = self.palette.as_ref().and_then(|p| p.confirming.clone()) {
+            let go = matches!(code, KeyCode::Char('y') | KeyCode::Char('Y'));
+            self.palette = None;
+            if go {
+                return self.run_command(&pending);
+            }
+            self.status = format!("{pending}: not run");
+            return Ok(());
+        }
+        match code {
+            KeyCode::Esc => self.palette = None,
+            KeyCode::Down => {
+                if let Some(p) = self.palette.as_mut() {
+                    p.move_cursor(1)
+                }
+            }
+            KeyCode::Up => {
+                if let Some(p) = self.palette.as_mut() {
+                    p.move_cursor(-1)
+                }
+            }
+            KeyCode::Backspace => {
+                if let Some(p) = self.palette.as_mut() {
+                    p.backspace()
+                }
+            }
+            KeyCode::Enter => {
+                let chosen = self.palette.as_ref().and_then(|p| p.selected()).cloned();
+                let Some(chosen) = chosen else {
+                    self.palette = None;
+                    return Ok(());
+                };
+                if matches!(chosen.reach, palette::Reach::Ask(_)) {
+                    if let Some(p) = self.palette.as_mut() {
+                        p.confirming = Some(chosen.path.clone());
+                    }
+                } else {
+                    self.palette = None;
+                    return self.run_command(&chosen.path);
+                }
+            }
+            KeyCode::Char(c) => {
+                if let Some(p) = self.palette.as_mut() {
+                    p.type_char(c)
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Do what the palette chose.
+    ///
+    /// The browser presses its own key for the commands it implements, so there is one
+    /// implementation of activating a font rather than two. For the rest it writes the
+    /// command line out, with the filter and the selection already in it, because a
+    /// command that prints wants a screen the browser is currently using.
+    fn run_command(&mut self, path: &str) -> Result<()> {
+        let Some(entry) = palette::entries().into_iter().find(|e| e.path == path) else {
+            return Ok(());
+        };
+        match palette::key_for(entry.reach) {
+            Some(key) => {
+                self.on_key(event::KeyEvent::new(key, KeyModifiers::NONE))?;
+                Ok(())
+            }
+            None => {
+                self.status = format!(
+                    "{}   (prints, so run it in another window)",
+                    self.command_for(path)
+                );
+                Ok(())
+            }
+        }
+    }
+
+    /// The command line for `path`, carrying what is on the screen.
+    ///
+    /// The status line already shows the command for the listing; this shows it for any
+    /// command in the palette, with the ids of whatever the reader has chosen, so it
+    /// can be pasted into another window and give exactly what they are looking at.
+    fn command_for(&self, path: &str) -> String {
+        let ids = self.current_face_ids();
+        match path {
+            // The listing commands describe the whole screen, which the status line
+            // already knows how to say.
+            "list" | "families" | "facets" => self.command_line().replacen(
+                if self.open_family.is_some() {
+                    "fontina list"
+                } else {
+                    "fontina families"
+                },
+                &format!("fontina {path}"),
+                1,
+            ),
+            _ if ids.is_empty() => format!("fontina {path}"),
+            _ => format!(
+                "fontina {path} {}",
+                ids.iter().map(i64::to_string).collect::<Vec<_>>().join(" ")
+            ),
+        }
     }
 
     fn border(&self, focused: bool) -> Style {
@@ -2216,6 +2413,10 @@ impl App {
              again. A whole selection is one undo. What cannot be put back
              exactly is not offered: a rescan is what the disk says, so there is
              nothing to restore
+ Commands    : lists every command the program has, with the same description
+             fontina --help gives it, filtered as you type. The ones the browser
+             implements it runs; the ones that print, it writes out for you with
+             the selection already in them
  Index       R rescans every source (fontina scan --prune)
  Quit        q
 
@@ -4254,6 +4455,118 @@ mod tests {
             app.status, "nothing to undo",
             "a rescan offered an undo it cannot honour"
         );
+    }
+
+    /// `:` puts every command the program has in front of the reader, filtered as
+    /// they type, and Enter does the one the browser knows how to do.
+    #[test]
+    fn the_palette_lists_every_command_and_runs_the_ones_the_browser_has() {
+        let press = |app: &mut App, code: KeyCode| {
+            app.on_key(event::KeyEvent::new(code, KeyModifiers::NONE))
+                .unwrap();
+        };
+        let mut app = app();
+        press(&mut app, KeyCode::Char(':'));
+        let drawn = stable_frame(&mut app, 120, 36);
+        assert!(drawn.contains("activate"), "{drawn}");
+        assert!(drawn.contains("tag add"), "including the nested ones");
+        assert!(
+            drawn.contains("⏎ writes the command"),
+            "and what each one will do"
+        );
+
+        // Typing is typing: `a` filters rather than activating anything.
+        press(&mut app, KeyCode::Char('a'));
+        press(&mut app, KeyCode::Char('c'));
+        press(&mut app, KeyCode::Char('t'));
+        assert_eq!(
+            app.palette.as_ref().map(|p| p.query.as_str()),
+            Some("act"),
+            "a key while the palette is up went to the browser"
+        );
+        assert!(
+            app.index.activation(1).unwrap().is_none(),
+            "and it activated something"
+        );
+
+        // Enter on a command the browser implements presses its key.
+        let ids = app.current_face_ids();
+        press(&mut app, KeyCode::Enter);
+        assert!(app.palette.is_none(), "the palette closed behind it");
+        assert_eq!(
+            app.index.activation(ids[0]).unwrap().map(|r| r.state),
+            Some(ActivationState::User),
+            "activate ran: {}",
+            app.status
+        );
+    }
+
+    /// A command that only prints is written out with the selection in it rather than
+    /// run, because the browser is using the screen it would print to.
+    #[test]
+    fn a_command_that_prints_is_written_out_rather_than_run() {
+        let mut app = app();
+        app.on_key(event::KeyEvent::new(KeyCode::Char(':'), KeyModifiers::NONE))
+            .unwrap();
+        for c in "info".chars() {
+            app.on_key(event::KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE))
+                .unwrap();
+        }
+        let ids = app.current_face_ids();
+        app.on_key(event::KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+        assert!(
+            app.status.starts_with(&format!("fontina info {}", ids[0])),
+            "the command carries what is on the screen: {}",
+            app.status
+        );
+        assert!(app.status.contains("prints"), "{}", app.status);
+    }
+
+    /// The listing commands describe the whole screen, so they carry the filter rather
+    /// than a list of ids.
+    #[test]
+    fn a_listing_command_carries_the_filter_and_not_the_ids() {
+        let mut app = app();
+        app.selected.insert(Facet::Variable, "variable".into());
+        app.reload().unwrap();
+        let line = app.command_for("facets");
+        assert!(line.starts_with("fontina facets"), "{line}");
+        assert!(line.contains("--variable"), "{line}");
+    }
+
+    /// Anything that writes to the disk asks first, and anything but a yes is a no.
+    #[test]
+    fn a_command_that_writes_to_the_disk_asks_before_it_runs() {
+        let press = |app: &mut App, code: KeyCode| {
+            app.on_key(event::KeyEvent::new(code, KeyModifiers::NONE))
+                .unwrap();
+        };
+        for (answer, want_installed) in [(KeyCode::Char('n'), false), (KeyCode::Char('y'), true)] {
+            let mut app = app();
+            let ids = app.current_face_ids();
+            press(&mut app, KeyCode::Char(':'));
+            for c in "install".chars() {
+                press(&mut app, KeyCode::Char(c));
+            }
+            press(&mut app, KeyCode::Enter);
+            assert_eq!(
+                app.palette.as_ref().and_then(|p| p.confirming.as_deref()),
+                Some("install"),
+                "it went ahead without asking"
+            );
+            let asking = stable_frame(&mut app, 120, 36);
+            assert!(asking.contains("writes to the disk"), "{asking}");
+
+            press(&mut app, answer);
+            assert!(app.palette.is_none());
+            assert_eq!(
+                app.index.activation(ids[0]).unwrap().is_some(),
+                want_installed,
+                "answering {answer:?} did the wrong thing: {}",
+                app.status
+            );
+        }
     }
 
     #[test]

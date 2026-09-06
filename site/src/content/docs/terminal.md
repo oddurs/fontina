@@ -178,6 +178,26 @@ says there is nothing to undo. The history is in memory, for the session: one th
 outlived the process would be a claim about a filesystem several other programs can
 also write to.
 
+### Every command, from inside the browser
+
+`:` lists every command `fontina --help` lists — the nested ones too, `tag add` and
+`collection export` and the rest — with the same one-line description, filtered as you
+type. Above the list is the command line it would run, carrying the filter or the
+selection you already have, so the palette teaches the command line rather than
+replacing it.
+
+The names come out of the program's own argument parser rather than a list somebody
+maintains, so a new subcommand appears here the day it is added. What is written down
+is the other half — whether the browser can *do* each one — and a test fails the build
+when a command exists that nobody has decided about. That is what stops the two
+surfaces drifting.
+
+Enter runs the ones the browser implements, by pressing the browser's own key, so
+there is one implementation of activating a font and not two. The ones that print get
+written into the status line instead, ready to paste into another window: the browser
+is using the screen they would print to. Anything that writes to the disk asks first,
+and anything but `y` is a no.
+
 ### The keys
 
 `?` puts this list over whatever you are looking at.
@@ -207,6 +227,7 @@ also write to.
 | `w` / `C` | waterfall / compare |
 | `s` | write an HTML specimen and open it |
 | `U` / Ctrl-R | undo the last change to the index / do it again |
+| `:` | every command, filtered as you type |
 | `R` | rescan every source (`fontina scan --prune`) |
 | `?` | this list |
 | `q`, Ctrl-C | quit |
