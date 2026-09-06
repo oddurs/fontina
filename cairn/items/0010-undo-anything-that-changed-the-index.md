@@ -2,10 +2,10 @@
 id: 10
 title: Undo anything that changed the index
 type: feat
-status: backlog
+status: done
 milestone: tui-depth
 created: 2026-09-05
-updated: 2026-09-05
+updated: 2026-09-06
 priority: p0
 effort: l
 crate: ui

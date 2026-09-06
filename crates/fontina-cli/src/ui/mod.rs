@@ -23,6 +23,7 @@
 
 mod controls;
 mod glyphs;
+mod history;
 mod layout;
 mod preview;
 mod search;
@@ -218,6 +219,8 @@ pub struct App {
     /// the real backend that meant copying fixtures into the developer's own font
     /// directory and registering them with the running session.
     activator: Box<dyn fontina_platform::FontActivator>,
+    /// What the browser has done this session, and what it has taken back.
+    history: history::History,
     /// The listing queries, on their own thread and their own connection.
     ///
     /// `None` when the index has no file behind it and there is nothing to reopen, in
@@ -287,6 +290,7 @@ impl App {
             shape: layout::Shape::Three,
             preview: preview::Cache::default(),
             activator,
+            history: history::History::default(),
             search: None,
         };
         app.search = search::Search::open(&app.index);
@@ -487,6 +491,45 @@ impl App {
     }
 
     /// Every face the current selection stands for (all faces of a family).
+    /// Which of `ids` already carry `tag`.
+    ///
+    /// An undo has to put back what was there, not what a fresh action would leave
+    /// behind: tagging a hundred faces of which forty already carried the tag has to
+    /// undo to the same forty, or it takes something away that nobody added.
+    fn already_tagged(&self, ids: &[i64], tag: &str) -> Result<BTreeSet<i64>> {
+        let have: BTreeSet<i64> = self
+            .index
+            .list(&FaceFilter {
+                tag: Some(tag.to_string()),
+                ..Default::default()
+            })?
+            .into_iter()
+            .map(|f| f.id)
+            .collect();
+        Ok(ids.iter().copied().filter(|id| have.contains(id)).collect())
+    }
+
+    /// The same question for a collection.
+    fn already_collected(&self, ids: &[i64], name: &str) -> Result<BTreeSet<i64>> {
+        let have: BTreeSet<i64> = self
+            .index
+            .list(&FaceFilter {
+                collection: Some(name.to_string()),
+                ..Default::default()
+            })?
+            .into_iter()
+            .map(|f| f.id)
+            .collect();
+        Ok(ids.iter().copied().filter(|id| have.contains(id)).collect())
+    }
+
+    /// The activation each of `ids` has right now, which is what an undo restores.
+    fn activation_before(&self, ids: &[i64]) -> Result<Vec<history::Prior>> {
+        ids.iter()
+            .map(|&id| Ok((id, self.index.activation(id)?.map(|r| r.state))))
+            .collect()
+    }
+
     /// The faces the next action touches: the marked set if there is one, otherwise
     /// the row under the cursor.
     ///
@@ -807,6 +850,10 @@ impl App {
             KeyCode::Char('d') => self.deactivate(false)?,
             KeyCode::Char('u') => self.deactivate(true)?,
             KeyCode::Char('R') => self.rescan()?,
+            // `U` rather than `u`, which has meant uninstall since before there was
+            // anything to undo, and Ctrl-R for redo the way an editor does it.
+            KeyCode::Char('U') => self.undo()?,
+            KeyCode::Char('r') if ctrl => self.redo()?,
             KeyCode::Down | KeyCode::Char('j') => self.step(1)?,
             KeyCode::Up | KeyCode::Char('k') => self.step(-1)?,
             KeyCode::PageDown | KeyCode::Char('f') if ctrl || key.code == KeyCode::PageDown => {
@@ -1106,7 +1153,18 @@ impl App {
                     InputKind::Tag => {
                         if !value.is_empty() {
                             let ids = self.current_face_ids();
+                            // Only the faces that gain the tag, so undo takes it off
+                            // the ones that gained it and leaves the rest carrying
+                            // what they came with.
+                            let had = self.already_tagged(&ids, &value)?;
+                            let moved: Vec<i64> =
+                                ids.iter().copied().filter(|i| !had.contains(i)).collect();
                             let n = self.index.tag(&ids, &value)?;
+                            self.history.record(history::Change::Tag {
+                                ids: moved,
+                                name: value.clone(),
+                                added: true,
+                            });
                             self.status = format!(
                                 "tagged {n} face(s) with {value:?}   (fontina tag add {} <targets>)",
                                 shell_quote(&value)
@@ -1117,7 +1175,15 @@ impl App {
                     InputKind::Collection => {
                         if !value.is_empty() {
                             let ids = self.current_face_ids();
+                            let had = self.already_collected(&ids, &value)?;
+                            let moved: Vec<i64> =
+                                ids.iter().copied().filter(|i| !had.contains(i)).collect();
                             let n = self.index.add_to_collection(&value, &ids)?;
+                            self.history.record(history::Change::Collection {
+                                ids: moved,
+                                name: value.clone(),
+                                added: true,
+                            });
                             self.status = format!(
                                 "added {n} face(s) to {value:?}   (fontina collection add {} <targets>)",
                                 shell_quote(&value)
@@ -1268,6 +1334,15 @@ impl App {
             self.status = "nothing selected".into();
             return Ok(());
         }
+        // Read before writing, so the history holds the state each face was in rather
+        // than one state for the batch. A selection can hold faces in three.
+        let prior = self.activation_before(&ids)?;
+        self.history.record(history::Change::Activation { prior });
+        self.activate_ids(&ids, state)
+    }
+
+    fn activate_ids(&mut self, ids: &[i64], state: ActivationState) -> Result<()> {
+        let ids = ids.to_vec();
         let conflicts = crate::collect_conflicts(&self.index, &ids)?;
         if !conflicts.is_empty() {
             let c = &conflicts[0];
@@ -1327,6 +1402,13 @@ impl App {
             self.status = "nothing selected".into();
             return Ok(());
         }
+        let prior = self.activation_before(&ids)?;
+        self.history.record(history::Change::Activation { prior });
+        self.deactivate_ids(&ids, uninstall)
+    }
+
+    fn deactivate_ids(&mut self, ids: &[i64], uninstall: bool) -> Result<()> {
+        let ids = ids.to_vec();
         let mut n = 0;
         let mut failed: Vec<String> = Vec::new();
         for (path, faces) in crate::files_for(&self.index, &ids)? {
@@ -1589,6 +1671,94 @@ impl App {
             lines.push(Line::from(spans));
         }
         f.render_widget(Paragraph::new(lines), grid);
+    }
+
+    /// Take back the last thing that changed the index.
+    ///
+    /// The status line names what it did rather than saying "undone", because a reader
+    /// pressing `U` twice needs to know which of two changes came back.
+    fn undo(&mut self) -> Result<()> {
+        let Some(change) = self.history.undo() else {
+            self.status = "nothing to undo".into();
+            return Ok(());
+        };
+        let inverse = self.invert(&change)?;
+        self.status = format!("undone: {}", change.describe());
+        self.history.undone(inverse);
+        self.reload()
+    }
+
+    /// Do again what was just undone.
+    fn redo(&mut self) -> Result<()> {
+        let Some(change) = self.history.redo() else {
+            self.status = "nothing to redo".into();
+            return Ok(());
+        };
+        let inverse = self.invert(&change)?;
+        self.status = format!("redone: {}", change.describe());
+        self.history.redone(inverse);
+        self.reload()
+    }
+
+    /// Apply a change's inverse, and return the inverse of *that*, so undo and redo
+    /// are the same walk in opposite directions and neither needs its own code.
+    fn invert(&mut self, change: &history::Change) -> Result<history::Change> {
+        match change {
+            history::Change::Tag { ids, name, added } => {
+                if *added {
+                    self.index.untag(ids, name)?;
+                } else {
+                    self.index.tag(ids, name)?;
+                }
+                Ok(history::Change::Tag {
+                    ids: ids.clone(),
+                    name: name.clone(),
+                    added: !added,
+                })
+            }
+            history::Change::Collection { ids, name, added } => {
+                if *added {
+                    self.index.remove_from_collection(name, ids)?;
+                } else {
+                    self.index.add_to_collection(name, ids)?;
+                }
+                Ok(history::Change::Collection {
+                    ids: ids.clone(),
+                    name: name.clone(),
+                    added: !added,
+                })
+            }
+            history::Change::Activation { prior } => {
+                let now =
+                    self.activation_before(&prior.iter().map(|(id, _)| *id).collect::<Vec<_>>())?;
+                // Grouped by the state each face is going back to, so a selection that
+                // held three states goes back to three states rather than to one.
+                let mut off: Vec<i64> = Vec::new();
+                // A list rather than a map: there are three activation states, so
+                // finding one is a glance, and `ActivationState` is a value in the
+                // schema rather than a key type that has to be ordered for this.
+                let mut on: Vec<(ActivationState, Vec<i64>)> = Vec::new();
+                for (id, state) in prior {
+                    match state {
+                        None => off.push(*id),
+                        Some(state) => match on.iter_mut().find(|(s, _)| s == state) {
+                            Some((_, ids)) => ids.push(*id),
+                            None => on.push((*state, vec![*id])),
+                        },
+                    }
+                }
+                if !off.is_empty() {
+                    // `false`: putting a face back to "not activated" undoes an
+                    // activation, and deleting a file the reader did not ask to delete
+                    // is not an undo of anything.
+                    self.deactivate_ids(&off, false)?;
+                }
+                for (state, ids) in on {
+                    self.activate_ids(&ids, state)?;
+                }
+                Ok(history::Change::Activation { prior: now })
+            }
+        }
     }
 
     /// Say how many faces the next action would touch, in the words the browser uses
@@ -2042,6 +2212,10 @@ impl App {
  Panes       Three side by side at {three} columns and up; under that the facets
              move over the list and Tab opens them; under {two}, one pane at a
              time, the others still a Tab away
+ Undo        U takes back the last thing that changed the index, Ctrl-R does it
+             again. A whole selection is one undo. What cannot be put back
+             exactly is not offered: a rescan is what the disk says, so there is
+             nothing to restore
  Index       R rescans every source (fontina scan --prune)
  Quit        q
 
@@ -3946,6 +4120,140 @@ mod tests {
                 .join("\n")
         };
         assert_eq!(panes(&cleared), panes(&plain), "a column was left behind");
+    }
+
+    /// Type a tag or a collection name into the prompt the key opened.
+    fn type_into(app: &mut App, open: char, text: &str) {
+        press(app, KeyCode::Char(open));
+        for c in text.chars() {
+            press(app, KeyCode::Char(c));
+        }
+        press(app, KeyCode::Enter);
+    }
+
+    /// Undo puts back what was there, which is not the same as undoing what was asked
+    /// for: a face that already carried the tag has to keep it.
+    #[test]
+    fn undoing_a_tag_takes_it_off_only_the_faces_that_gained_it() {
+        let mut app = app();
+        // Amiri gets the tag on its own first.
+        type_into(&mut app, 't', "display");
+        let amiri = app.current_face_ids();
+
+        // Then everything gets it, Amiri included.
+        press(&mut app, KeyCode::Char('*'));
+        type_into(&mut app, 't', "display");
+        let tagged = |app: &App| {
+            app.index
+                .list(&FaceFilter {
+                    tag: Some("display".into()),
+                    ..Default::default()
+                })
+                .unwrap()
+                .len()
+        };
+        assert_eq!(tagged(&app), 6, "every face carries it now");
+
+        press(&mut app, KeyCode::Char('U'));
+        assert_eq!(
+            tagged(&app),
+            amiri.len(),
+            "undo took the tag off the face that had it before anybody pressed anything"
+        );
+        assert!(app.status.starts_with("undone: removed"), "{}", app.status);
+    }
+
+    /// A selection holding three activation states goes back to three states, not to
+    /// whichever one the batch happened to leave.
+    #[test]
+    fn undoing_an_activation_puts_every_face_back_in_its_own_state() {
+        let mut app = app();
+        // Amiri activated for the user, Bricolage until logout, the rest untouched.
+        press(&mut app, KeyCode::Char('a'));
+        let amiri = app.current_face_ids();
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Char('A'));
+        let bricolage = app.current_face_ids();
+
+        let state = |app: &App, ids: &[i64]| app.index.activation(ids[0]).unwrap().map(|r| r.state);
+        assert_eq!(state(&app, &amiri), Some(ActivationState::User));
+        assert_eq!(state(&app, &bricolage), Some(ActivationState::Session));
+
+        // Now install everything in one action, over three different prior states.
+        press(&mut app, KeyCode::Char('*'));
+        press(&mut app, KeyCode::Char('i'));
+        assert_eq!(state(&app, &amiri), Some(ActivationState::Installed));
+
+        press(&mut app, KeyCode::Char('U'));
+        assert_eq!(
+            state(&app, &amiri),
+            Some(ActivationState::User),
+            "the face that was activated for the user is again"
+        );
+        assert_eq!(
+            state(&app, &bricolage),
+            Some(ActivationState::Session),
+            "and the one that was activated until logout"
+        );
+        let untouched = app
+            .index
+            .list(&FaceFilter {
+                family: Some("Nabla".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(
+            state(&app, &[untouched[0].id]),
+            None,
+            "and the ones that were not activated at all are not activated at all"
+        );
+    }
+
+    /// A whole selection is one undo, and Ctrl-R is the way back.
+    #[test]
+    fn a_selection_is_one_undo_and_ctrl_r_is_the_way_forward_again() {
+        let mut app = app();
+        press(&mut app, KeyCode::Char('*'));
+        type_into(&mut app, 'c', "print");
+        let in_collection = |app: &App| {
+            app.index
+                .list(&FaceFilter {
+                    collection: Some("print".into()),
+                    ..Default::default()
+                })
+                .unwrap()
+                .len()
+        };
+        assert_eq!(in_collection(&app), 6);
+
+        press(&mut app, KeyCode::Char('U'));
+        assert_eq!(in_collection(&app), 0, "one keystroke, not six");
+        assert!(app.status.starts_with("undone: took"), "{}", app.status);
+
+        app.on_key(event::KeyEvent::new(
+            KeyCode::Char('r'),
+            KeyModifiers::CONTROL,
+        ))
+        .unwrap();
+        assert_eq!(in_collection(&app), 6, "and Ctrl-R puts it back");
+        assert!(app.status.starts_with("redone:"), "{}", app.status);
+    }
+
+    /// Nothing to undo is a sentence, not a surprise. And a rescan records nothing,
+    /// because what a rescan changed is what the disk says and there is no earlier
+    /// state to restore.
+    #[test]
+    fn what_cannot_be_put_back_is_not_offered() {
+        let mut app = app();
+        press(&mut app, KeyCode::Char('U'));
+        assert_eq!(app.status, "nothing to undo");
+
+        app.rescan().unwrap();
+        press(&mut app, KeyCode::Char('U'));
+        assert_eq!(
+            app.status, "nothing to undo",
+            "a rescan offered an undo it cannot honour"
+        );
     }
 
     #[test]
