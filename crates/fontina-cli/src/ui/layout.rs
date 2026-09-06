@@ -214,6 +214,7 @@ const KEYS: &[(&str, &str)] = &[
     ("e", "text"),
     ("+/-", "size"),
     ("s", "specimen"),
+    ("U", "undo"),
     ("R", "rescan"),
     ("q", "quit"),
 ];

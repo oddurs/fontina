@@ -158,6 +158,26 @@ reports which and leaves the rest applied. Esc clears the marks.
 A family row stands for its faces, so marking a family marks all of them — the mark
 survives opening that family and looking at the faces one at a time.
 
+### Taking it back
+
+`U` undoes the last thing that changed the index and `Ctrl-R` does it again. A whole
+selection is one undo: marking two hundred faces and pressing `a` is one entry, so one
+`U` puts all two hundred back. The status line names what came back rather than saying
+"undone", because pressing `U` twice should tell you which of two changes you just
+reversed.
+
+What comes back is what was *there*, which is not always the opposite of what you
+asked for. Tagging a hundred faces of which forty already carried the tag records the
+sixty that gained it, so undo takes the tag off those sixty and leaves the forty
+carrying what they came with. An activation records the state each face was in, one by
+one, so a selection that held three states goes back to three states.
+
+What cannot be put back exactly is not offered. A rescan changes what the index knows
+about the disk, and there is no earlier state to restore, so it records nothing and `U`
+says there is nothing to undo. The history is in memory, for the session: one that
+outlived the process would be a claim about a filesystem several other programs can
+also write to.
+
 ### The keys
 
 `?` puts this list over whatever you are looking at.
@@ -186,6 +206,7 @@ survives opening that family and looking at the faces one at a time.
 | `m` | the glyph map |
 | `w` / `C` | waterfall / compare |
 | `s` | write an HTML specimen and open it |
+| `U` / Ctrl-R | undo the last change to the index / do it again |
 | `R` | rescan every source (`fontina scan --prune`) |
 | `?` | this list |
 | `q`, Ctrl-C | quit |

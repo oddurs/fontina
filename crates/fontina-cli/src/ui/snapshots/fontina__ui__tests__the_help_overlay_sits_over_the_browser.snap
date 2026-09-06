@@ -1,41 +1,41 @@
 ---
 source: crates/fontina-cli/src/ui/mod.rs
-assertion_line: 3663
+assertion_line: 4156
 expression: drawn
 ---
 ┌ 6 faces ───────────────┐┌ 5 families ─────────────────────────────┐┌ Details ────────────────────────────────────────┐
-│Weight                  ││Amiri                              1     ││Amiri Regular                                    │
-│  200 ExtraLight      1 ││Bricolage Grotesque                1 V   ││style     weight 400 · width 100% · normal       │
-│  300 Light   ┌ fontina ui ────────────────────────────────────────────────────────────────────────────┐Arab Latn Zyyy│
-│  400 Regular │                                                                                        │              │
-│  500 Medium  │ Move        j/k ↑/↓ PgUp/PgDn g/G        Tab cycles the panes                          │iga locl mark │
-│  600 SemiBold│ Filter      / type to search  Esc clears   Enter/Space toggles a facet   x clears all  │              │
-│  700 Bold    │ Families    Enter opens a family, Backspace/Esc closes it                              │              │
-│  800 ExtraBol│ Select      Space marks the row under the cursor; v starts a range and v ends it;      │              │
-│Width         │             * marks everything the filter matches, and again unmarks it. Every         │              │
-│  75% Condense│             action below applies to the marked faces when there are any, and to        │              │
-│  87.5% SemiCo│             the row under the cursor when there are not. Esc clears the mark           │lar.ttf       │
-│  100% Normal │ Organise    t tag the selection   c add it to a collection                             │              │
-│Style         │ Activate    a for the user, A until logout, i install a copy, d deactivate, u uninstall│              │
-│  upright     │ Preview     e sets the sample text   + / - change the size                             │              │
-│Variable      │ Controls    h/l ←/→ move an axis (H/L by ten)   Space toggles a feature                │              │
-│  variable    │             n/p step through named instances   0 resets everything                     │              │
-│Color         │ Glyphs      m opens the glyph map: h/l pick a block, j/k scroll, / finds a             │              │
-│  color       │             codepoint (U+0041, 0x41, 41) or a block by name                            │              │
-│Spacing       │ Sheets      w waterfalls the face down the size ladder; C compares every face          │              │
-│  proportional│             the selection stands for. j/k scroll, +/- resize a comparison              │              │
-│Script        │ Specimen    s writes an HTML specimen for the selection and opens it in your           │              │
-│  Latn        │             browser, for the things a terminal cannot show honestly                    │              │
-│  Arab        │ Panes       Three side by side at 112 columns and up; under that the facets            │              │
-│  Zyyy        │             move over the list and Tab opens them; under 76, one pane at a             │              │
-│  Cyrl        │             time, the others still a Tab away                                          │              │
-│  Zinh        │ Index       R rescans every source (fontina scan --prune)                              │              │
-│  Grek        │ Quit        q                                                                          │              │
-│Language      │                                                                                        │              │
-│  en          │ The status line shows the CLI command for what you see. Everything here is a command.  │              │
+│Weight        ┌ fontina ui ────────────────────────────────────────────────────────────────────────────┐              │
+│  200 ExtraLig│                                                                                        │ normal       │
+│  300 Light   │ Move        j/k ↑/↓ PgUp/PgDn g/G        Tab cycles the panes                          │Arab Latn Zyyy│
+│  400 Regular │ Filter      / type to search  Esc clears   Enter/Space toggles a facet   x clears all  │              │
+│  500 Medium  │ Families    Enter opens a family, Backspace/Esc closes it                              │iga locl mark │
+│  600 SemiBold│ Select      Space marks the row under the cursor; v starts a range and v ends it;      │              │
+│  700 Bold    │             * marks everything the filter matches, and again unmarks it. Every         │              │
+│  800 ExtraBol│             action below applies to the marked faces when there are any, and to        │              │
+│Width         │             the row under the cursor when there are not. Esc clears the mark           │              │
+│  75% Condense│ Organise    t tag the selection   c add it to a collection                             │              │
+│  87.5% SemiCo│ Activate    a for the user, A until logout, i install a copy, d deactivate, u uninstall│lar.ttf       │
+│  100% Normal │ Preview     e sets the sample text   + / - change the size                             │              │
+│Style         │ Controls    h/l ←/→ move an axis (H/L by ten)   Space toggles a feature                │              │
+│  upright     │             n/p step through named instances   0 resets everything                     │              │
+│Variable      │ Glyphs      m opens the glyph map: h/l pick a block, j/k scroll, / finds a             │              │
+│  variable    │             codepoint (U+0041, 0x41, 41) or a block by name                            │              │
+│Color         │ Sheets      w waterfalls the face down the size ladder; C compares every face          │              │
+│  color       │             the selection stands for. j/k scroll, +/- resize a comparison              │              │
+│Spacing       │ Specimen    s writes an HTML specimen for the selection and opens it in your           │              │
+│  proportional│             browser, for the things a terminal cannot show honestly                    │              │
+│Script        │ Panes       Three side by side at 112 columns and up; under that the facets            │              │
+│  Latn        │             move over the list and Tab opens them; under 76, one pane at a             │              │
+│  Arab        │             time, the others still a Tab away                                          │              │
+│  Zyyy        │ Undo        U takes back the last thing that changed the index, Ctrl-R does it         │              │
+│  Cyrl        │             again. A whole selection is one undo. What cannot be put back              │              │
+│  Zinh        │             exactly is not offered: a rescan is what the disk says, so there is        │              │
+│  Grek        │             nothing to restore                                                         │              │
+│Language      │ Index       R rescans every source (fontina scan --prune)                              │              │
+│  en          │ Quit        q                                                                          │              │
 │  CAT         │                                                                                        │              │
-│  TRK         │ any key to close                                                                       │              │
-│  AZE         └────────────────────────────────────────────────────────────────────────────────────────┘              │
-└────────────────────────┘└─────────────────────────────────────────┘└─────────────────────────────────────────────────┘
- $ fontina families
+│  TRK         │ The status line shows the CLI command for what you see. Everything here is a command.  │              │
+│  AZE         │                                                                                        │              │
+└──────────────│ any key to close                                                                       │──────────────┘
+ $ fontina fami└────────────────────────────────────────────────────────────────────────────────────────┘
  / search  ⇥ pane  ⏎ open  ⌫ back  ␣ select  t tag  c collection  a/A activate  d deactivate  i install  ? help
