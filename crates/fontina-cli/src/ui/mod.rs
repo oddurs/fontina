@@ -3976,26 +3976,105 @@ mod tests {
         assert!(drawn.contains("Family 00000"), "{drawn}");
     }
 
-    /// What it costs to draw a frame, at the three scales the item asks about.
+    /// What a repaint costs, on each screen the browser has, at three library sizes.
     ///
-    /// Ignored by default: it is a measurement rather than an assertion, and a number
-    /// from a shared runner is not one worth failing a build over. `cargo test -p
-    /// fontina-cli --bins -- --ignored --nocapture what_a_frame_costs`.
+    /// A measurement rather than an assertion, so it is ignored by default and the
+    /// budgets are applied by `scripts/bench`, where every other budget in this project
+    /// is applied. It prints one machine-readable line per screen and size:
+    ///
+    /// ```text
+    /// browser <screen> <faces> <microseconds>
+    /// ```
+    ///
+    /// Microseconds because a frame is well under a millisecond and a budget stated in
+    /// whole milliseconds could only ever read zero.
+    ///
+    /// The library is faked into the field rather than indexed, because what is being
+    /// timed is the drawing: an index of ten thousand rows would put SQLite in the
+    /// middle of a question about `format!` and box drawing. What a query costs is a
+    /// separate budget, already stated in PLAN.md §7 against the real binary.
+    ///
+    /// `cargo test --release -p fontina-cli --bins -- --ignored --nocapture browser_repaint`
     #[test]
-    #[ignore = "a measurement, not an assertion"]
-    fn what_a_frame_costs_at_a_hundred_a_thousand_and_ten_thousand() {
-        for n in [100usize, 1_000, 10_000] {
-            let mut app = app();
-            with_families(&mut app, n);
-            app.list.select(Some(n / 2));
-            frame(&mut app, 120, 36);
-            let start = std::time::Instant::now();
-            const FRAMES: u32 = 200;
-            for _ in 0..FRAMES {
-                frame(&mut app, 120, 36);
+    #[ignore = "a measurement, applied as a budget by scripts/bench"]
+    fn browser_repaint_on_every_screen_and_at_every_size() {
+        // Best of five runs of forty frames, for the same reason `scripts/bench` takes
+        // the best of three: the best run is the machine's capability and the rest is
+        // whatever else it was doing.
+        fn best_micros(app: &mut App, screen: &str, n: usize) {
+            const FRAMES: u32 = 40;
+            frame(app, 120, 36);
+            let mut best = f64::MAX;
+            for _ in 0..5 {
+                let start = std::time::Instant::now();
+                for _ in 0..FRAMES {
+                    frame(app, 120, 36);
+                }
+                let per = start.elapsed().as_secs_f64() * 1e6 / f64::from(FRAMES);
+                best = best.min(per);
             }
-            let per = start.elapsed().as_secs_f64() * 1000.0 / f64::from(FRAMES);
-            println!("{n:>6} families: {per:.3} ms per frame");
+            println!("browser {screen} {n} {best:.0}");
+        }
+
+        for n in [100usize, 1_000, 10_000] {
+            // The family list, which is where the browser opens and where a library of
+            // this size is actually felt.
+            let mut list = app();
+            with_families(&mut list, n);
+            list.list.select(Some(n / 2));
+            best_micros(&mut list, "families", n);
+
+            // A family open: the same pane holding faces instead, with the details
+            // beside it.
+            let mut opened = app();
+            select_family(&mut opened, "Amiri");
+            opened.open_family().unwrap();
+            best_micros(&mut opened, "family", n);
+
+            // The glyph map, which does not grow with the library — it is one face's
+            // coverage — so this row is here to say so, and to fail if that stops
+            // being true.
+            let mut map = app();
+            select_family(&mut map, "Amiri");
+            map.open_glyphs();
+            best_micros(&mut map, "glyphs", n);
+        }
+    }
+            }
+            println!("browser {screen} {n} {best:.0}");
+        }
+
+        for n in [100usize, 1_000, 10_000] {
+            // The family list, which is where the browser opens and where a library of
+            // this size is actually felt.
+            let mut list = app();
+            list.preview_text = Some(" ".into());
+            with_families(&mut list, n);
+            list.list.select(Some(n / 2));
+            best_micros(&mut list, "families", n);
+
+            // A family open: the same pane, holding faces instead, with the face pane
+            // and its preview beside it.
+            let mut opened = app();
+            opened.preview_text = Some(" ".into());
+            select_family(&mut opened, "Amiri");
+            opened.open_family().unwrap();
+            best_micros(&mut opened, "family", n);
+
+            // The two full-screen modes. Neither grows with the library — a glyph map
+            // is one face's coverage and a waterfall is one face at nine sizes — so
+            // these rows are here to say so, and to fail if that ever stops being true.
+            let mut map = app();
+            map.preview_text = Some(" ".into());
+            select_family(&mut map, "Amiri");
+            map.open_glyphs();
+            best_micros(&mut map, "glyphs", n);
+
+            let mut sheet = app();
+            sheet.preview_text = Some(" ".into());
+            select_family(&mut sheet, "Amiri");
+            sheet.open_sheet(sheet::Kind::Waterfall).unwrap();
+            best_micros(&mut sheet, "waterfall", n);
         }
     }
 

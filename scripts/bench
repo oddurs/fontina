@@ -16,9 +16,10 @@
 #   FILES=2000 scripts/bench               # a smaller corpus while iterating
 #   KEEP=1 scripts/bench                   # keep the corpus for a second run
 #
-# Two budgets are not measured here and say so in the report: idle memory of the browser
-# and its repaint time both need a terminal, and a number produced without one would be
-# a number about nothing.
+# The browser is measured through its own drawing code against an in-memory terminal,
+# which needs the source tree; run against a prebuilt binary with FONTINA= it says so
+# and skips those rows. Idle memory is the one budget nothing here can measure: it needs
+# a real terminal, and a number produced without one would be a number about nothing.
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
@@ -105,6 +106,35 @@ list_ms=$(ms 3 "$FONTINA" list -n 5000)
 search_ms=$(ms 3 "$FONTINA" list inter -n 50)
 preview_ms=$(ms 3 "$FONTINA" preview 1 -s 64 -t "Sphinx of black quartz, judge my vow" -p blocks)
 
+# The browser. Every other budget here drives the real binary, because that is what a
+# person runs; this one cannot, because the browser needs a terminal to be in. So it is
+# measured one layer down, through the same drawing code against ratatui's in-memory
+# terminal, by a test that prints microseconds and asserts nothing. The budgets stay
+# here with all the others.
+#
+# Two of them, because one number cannot say both things. The first is the promise: a
+# repaint inside 16 ms, on the worst of the browser's four screens, at ten thousand
+# faces. The second is the property behind it -- that a repaint is the size of the pane
+# and not of the library -- as the cost at ten thousand against the cost at a hundred.
+# A regression to a frame built per item would sail under the first and fail the second:
+# it was 890% before the panes started windowing their rows, and well inside 16 ms.
+browser="" browser_why=""
+if [ ! -f "$repo/Cargo.toml" ] || ! command -v cargo >/dev/null 2>&1; then
+    browser_why="needs the source tree and cargo"
+else
+    # Not silenced: if this stops building, the budget has to go loud rather than
+    # quietly stop being checked, which is how a budget becomes decoration.
+    browser=$( (cd "$repo" && cargo test --release --locked -q -p fontina-cli --bins \
+        -- --ignored --nocapture browser_repaint) | grep '^browser ' || true)
+    [ -n "$browser" ] || browser_why="the measurement did not run"
+fi
+if [ -n "$browser" ]; then
+    worst() { echo "$browser" | awk -v n="$1" '$3 == n && $4 > m { m = $4 } END { printf "%d", m }'; }
+    repaint_us=$(worst 10000)
+    repaint_pct=$(awk -v a="$repaint_us" -v b="$(worst 100)" \
+        'BEGIN { printf "%d", (b > 0 ? a * 100 / b : 0) }')
+fi
+
 echo
 echo "fontina performance budgets"
 echo "  binary:  $FONTINA"
@@ -118,9 +148,18 @@ row "incremental rescan, 1 changed file" "$rescan_ms" ms 50
 row "list, cold start to 5k faces" "$list_ms" ms 80
 row "search, query to a screenful of results" "$search_ms" ms 30
 row "preview render, 64 px, 36 characters" "$preview_ms" ms 30
+if [ -n "$browser" ]; then
+    row "browser repaint, worst screen, 10k faces" "$repaint_us" us 16000
+    row "browser repaint at 10k faces, % of at 100" "$repaint_pct" % 150
+elif [ "$browser_why" = "needs the source tree and cargo" ]; then
+    printf '%-46s %8s %-3s %8s %s\n' "browser repaint" "-" "" "-" "skipped"
+else
+    printf '%-46s %8s %-3s %8s %s\n' "browser repaint" "-" "" "16000" "MISSING"
+    fail=$((fail + 1))
+fi
 echo
-echo "not measured here (both need a terminal):"
-echo "  idle RSS of the browser, TUI repaint"
+echo "not measured here (it needs a terminal):"
+echo "  idle RSS of the browser"
 echo
 if [ "$fail" -gt 0 ]; then
     echo "$fail budget(s) missed"

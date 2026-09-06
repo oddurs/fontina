@@ -2,6 +2,10 @@
 # scripts/bench builds a corpus of real font files, drives the release binary against it,
 # and fails on a miss. Runners are shared and noisy, so each timing is the best of three:
 # the best run is what the machine can do, the rest is whatever else it was doing.
+#
+# The browser's two budgets are measured one layer below the binary, through its own
+# drawing code against an in-memory terminal, because the browser needs a terminal to be
+# in. That is why this job needs the source tree and a toolchain rather than an artifact.
 name: perf
 
 on:

@@ -2,7 +2,7 @@
 id: 8
 title: A frame budget at ten thousand faces, enforced in CI
 type: test
-status: backlog
+status: done
 milestone: tui-speed
 created: 2026-09-05
 updated: 2026-09-05
