@@ -32,9 +32,9 @@ Instant on a library that is not the fixtures. Ten thousand faces, no perceptibl
 - [ ] [`0006`](https://github.com/oddurs/fontina/blob/main/cairn/items/0006-search-off-the-drawing-thread-cancelled-by-the-next-key.md) Search off the drawing thread, cancelled by the next key <sup>perf · p0 · ui</sup>
 - [ ] [`0008`](https://github.com/oddurs/fontina/blob/main/cairn/items/0008-a-frame-budget-at-ten-thousand-faces-enforced-in-ci.md) A frame budget at ten thousand faces, enforced in CI <sup>test · p1 · ui</sup>
 
-### ready to start
+### done
 
-- [ ] [`0005`](https://github.com/oddurs/fontina/blob/main/cairn/items/0005-draw-only-the-rows-that-are-on-screen.md) Draw only the rows that are on screen <sup>perf · p0 · ui</sup>
+- [x] [`0005`](https://github.com/oddurs/fontina/blob/main/cairn/items/0005-draw-only-the-rows-that-are-on-screen.md) Draw only the rows that are on screen <sup>perf · p0 · ui</sup>
 
 ### done
 
