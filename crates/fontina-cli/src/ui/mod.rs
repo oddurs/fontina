@@ -2391,10 +2391,9 @@ impl App {
  Move        j/k ↑/↓ PgUp/PgDn g/G        Tab cycles the panes
  Filter      / type to search  Esc clears   Enter/Space toggles a facet   x clears all
  Families    Enter opens a family, Backspace/Esc closes it
- Select      Space marks the row under the cursor; v starts a range and v ends it;
-             * marks everything the filter matches, and again unmarks it. Every
-             action below applies to the marked faces when there are any, and to
-             the row under the cursor when there are not. Esc clears the mark
+ Select      Space marks a row, v starts and ends a range, * takes everything
+             the filter matches. Every action applies to the marks when there
+             are any, and to the cursor when there are not. Esc clears them
  Organise    t tag the selection   c add it to a collection
  Activate    a for the user, A until logout, i install a copy, d deactivate, u uninstall
  Preview     e sets the sample text   + / - change the size
@@ -2404,19 +2403,17 @@ impl App {
              codepoint (U+0041, 0x41, 41) or a block by name
  Sheets      w waterfalls the face down the size ladder; C compares every face
              the selection stands for. j/k scroll, +/- resize a comparison
- Specimen    s writes an HTML specimen for the selection and opens it in your
-             browser, for the things a terminal cannot show honestly
+ Specimen    s writes an HTML specimen and opens it, for what a terminal cannot
+             show honestly
  Panes       Three side by side at {three} columns and up; under that the facets
              move over the list and Tab opens them; under {two}, one pane at a
              time, the others still a Tab away
- Undo        U takes back the last thing that changed the index, Ctrl-R does it
-             again. A whole selection is one undo. What cannot be put back
-             exactly is not offered: a rescan is what the disk says, so there is
-             nothing to restore
- Commands    : lists every command the program has, with the same description
-             fontina --help gives it, filtered as you type. The ones the browser
-             implements it runs; the ones that print, it writes out for you with
-             the selection already in them
+ Undo        U takes back the last change to the index, Ctrl-R does it again. A
+             whole selection is one undo, and what cannot be put back exactly —
+             a rescan — is not offered
+ Commands    : lists every command the program has, filtered as you type. The
+             ones the browser implements it runs; the ones that print it writes
+             out with your selection already in them
  Index       R rescans every source (fontina scan --prune)
  Quit        q
 
