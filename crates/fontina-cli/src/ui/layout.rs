@@ -204,6 +204,7 @@ const KEYS: &[(&str, &str)] = &[
     ("⇥", "pane"),
     ("⏎", "open"),
     ("⌫", "back"),
+    ("␣", "select"),
     ("t", "tag"),
     ("c", "collection"),
     ("a/A", "activate"),

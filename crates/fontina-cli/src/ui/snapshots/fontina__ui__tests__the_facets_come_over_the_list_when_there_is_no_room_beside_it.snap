@@ -1,6 +1,6 @@
 ---
 source: crates/fontina-cli/src/ui/mod.rs
-assertion_line: 3450
+assertion_line: 3822
 expression: drawn
 ---
 ┌ 6 faces — ⇥ closes ────────┐┌ Details ───────────────────────────────────────┐
@@ -26,4 +26,4 @@ expression: drawn
 │  proportional            6 ││                                                │
 └────────────────────────────┘└────────────────────────────────────────────────┘
  $ fontina families
- / search  ⇥ pane  ⏎ open  ⌫ back  t tag  c collection  a/A activate  ? help
+ / search  ⇥ pane  ⏎ open  ⌫ back  ␣ select  t tag  c collection  ? help
