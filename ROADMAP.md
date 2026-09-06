@@ -39,19 +39,19 @@ Instant on a library that is not the fixtures. Ten thousand faces, no perceptibl
 
 ## tui-depth — TUI 3 — Depth
 
-`#####·····` 50% · 2 of 4 done
+`########··` 75% · 3 of 4 done
 
 What you can do without leaving it. Multi-select, batch work, undo, a command palette, and filters you compose while watching the count.
 
 ### backlog
 
-- [ ] [`0011`](https://github.com/oddurs/fontina/blob/main/cairn/items/0011-a-command-palette-over-the-whole-command-line.md) A command palette over the whole command line <sup>feat · p1 · ui</sup>
 - [ ] [`0012`](https://github.com/oddurs/fontina/blob/main/cairn/items/0012-build-the-filter-while-watching-the-count.md) Build the filter while watching the count <sup>feat · p1 · ui</sup>
 
 ### done
 
 - [x] [`0009`](https://github.com/oddurs/fontina/blob/main/cairn/items/0009-select-many-act-once.md) Select many, act once <sup>feat · p0 · ui</sup>
 - [x] [`0010`](https://github.com/oddurs/fontina/blob/main/cairn/items/0010-undo-anything-that-changed-the-index.md) Undo anything that changed the index <sup>feat · p0 · ui</sup>
+- [x] [`0011`](https://github.com/oddurs/fontina/blob/main/cairn/items/0011-a-command-palette-over-the-whole-command-line.md) A command palette over the whole command line <sup>feat · p1 · ui</sup>
 
 ## tui-discovery — TUI 4 — Discovery
 
