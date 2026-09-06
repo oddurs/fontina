@@ -2,10 +2,10 @@
 id: 6
 title: Search off the drawing thread, cancelled by the next key
 type: perf
-status: backlog
+status: done
 milestone: tui-speed
 created: 2026-09-05
-updated: 2026-09-05
+updated: 2026-09-06
 priority: p0
 effort: m
 crate: ui
