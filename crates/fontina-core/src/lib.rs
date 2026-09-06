@@ -53,7 +53,7 @@ pub use freedom::Freedom;
 pub use index::{
     ActivationRecord, ActivationState, BUNDLE_FILE, BUNDLE_FONTS, BundleReport, CollectionExport,
     CollectionFace, CollectionInfo, Conflict, DuplicateGroup, FaceFilter, FaceSummary, Facets,
-    Family, ImportReport, Index, LanguageSource, Related, Source, SourceKind, TagInfo,
+    Family, ImportReport, Index, Interrupt, LanguageSource, Related, Source, SourceKind, TagInfo,
     TagSyncChange, TagSyncReport, TagSyncSkip,
 };
 pub use model::{Container, FaceMetadata, FileInfo};

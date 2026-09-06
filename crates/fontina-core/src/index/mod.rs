@@ -48,6 +48,25 @@ pub struct Index {
     conn: Connection,
 }
 
+/// Stops whatever the connection it came from is running.
+///
+/// Cheap to clone and safe to hold across threads, and harmless when the connection is
+/// idle: interrupting nothing does nothing.
+#[derive(Clone)]
+pub struct Interrupt(std::sync::Arc<rusqlite::InterruptHandle>);
+
+impl Interrupt {
+    pub fn cancel(&self) {
+        self.0.interrupt();
+    }
+}
+
+impl std::fmt::Debug for Interrupt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Interrupt")
+    }
+}
+
 /// Compact per-face row used by listings.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct FaceSummary {
@@ -301,6 +320,22 @@ impl Index {
 
     pub fn path(&self) -> String {
         self.conn.path().unwrap_or(":memory:").to_string()
+    }
+
+    /// A handle that can stop whatever this connection is running, from another thread.
+    ///
+    /// For a reader that has been superseded. The browser runs its listing queries on a
+    /// worker so that typing never blocks a frame, and a query whose answer nobody will
+    /// look at any more should stop rather than finish politely: at ten thousand faces
+    /// a six-letter family name is six queries, five of whose results are already stale
+    /// before they exist. Dropping the *pending* ones is bookkeeping the caller can do;
+    /// stopping the one already inside SQLite needs SQLite's own say-so, which is this.
+    ///
+    /// An interrupted statement fails with `SQLITE_INTERRUPT`. That is a cancellation
+    /// rather than a fault, and it is the caller — who knows whether it asked for one —
+    /// that can tell the difference.
+    pub fn interrupt_handle(&self) -> Interrupt {
+        Interrupt(std::sync::Arc::new(self.conn.get_interrupt_handle()))
     }
 
     /// Begin a write transaction.

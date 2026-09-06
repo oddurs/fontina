@@ -25,6 +25,7 @@ mod controls;
 mod glyphs;
 mod layout;
 mod preview;
+mod search;
 mod sheet;
 mod theme;
 
@@ -207,6 +208,13 @@ pub struct App {
     /// the real backend that meant copying fixtures into the developer's own font
     /// directory and registering them with the running session.
     activator: Box<dyn fontina_platform::FontActivator>,
+    /// The listing queries, on their own thread and their own connection.
+    ///
+    /// `None` when the index has no file behind it and there is nothing to reopen, in
+    /// which case the browser answers its own questions the way it always did. Nothing
+    /// else in here changes: a search is asked for the same way either way, and only
+    /// the waiting is different.
+    search: Option<search::Search>,
 }
 
 pub fn run(db: &Path) -> Result<()> {
@@ -267,7 +275,9 @@ impl App {
             shape: layout::Shape::Three,
             preview: preview::Cache::default(),
             activator,
+            search: None,
         };
+        app.search = search::Search::open(&app.index);
         app.reload()?;
         if app.families.is_empty() && app.selected.is_empty() && app.query.is_empty() {
             app.status =
@@ -364,19 +374,54 @@ impl App {
         s
     }
 
-    fn reload(&mut self) -> Result<()> {
-        let filter = self.filter();
-        self.facets = self.index.facets(&FaceFilter {
-            family: None,
-            ..filter.clone()
-        })?;
-        if self.open_family.is_some() {
-            self.faces = self.index.list(&filter)?;
-            self.families.clear();
-        } else {
-            self.families = self.index.families(&filter)?;
-            self.faces.clear();
+    /// Ask for the listing this filter describes, and do not wait for it.
+    ///
+    /// This is what a keystroke calls. It returns the generation asked for, which is
+    /// what the callers that cannot carry on without the answer hand to `reload`.
+    fn request_reload(&mut self) -> u64 {
+        let ask = search::Ask {
+            filter: self.filter(),
+            open_family: self.open_family.is_some(),
+        };
+        match &mut self.search {
+            Some(search) => search.ask(ask),
+            None => 0,
         }
+    }
+
+    /// Ask, and wait.
+    ///
+    /// For everywhere the next thing that happens depends on the answer: the first
+    /// frame, and the reload after a tag, an activation or a rescan, where the reader
+    /// is about to look at exactly what changed. Typing is the one path that does not
+    /// call this, which is the whole of the change.
+    fn reload(&mut self) -> Result<()> {
+        let generation = self.request_reload();
+        let settled = match &mut self.search {
+            Some(search) => search.settle(generation),
+            None => {
+                let ask = search::Ask {
+                    filter: self.filter(),
+                    open_family: self.open_family.is_some(),
+                };
+                Some(search::answer_here(&self.index, &ask))
+            }
+        };
+        match settled {
+            Some(listing) => self.apply(listing?)?,
+            // The worker is gone, so nothing will ever arrive. Say so once and leave
+            // the panes holding what they had: a stale listing a reader can still read
+            // beats an empty one they cannot.
+            None => self.status = "the index stopped answering; press R to try again".into(),
+        }
+        Ok(())
+    }
+
+    /// Put an answer on the screen.
+    fn apply(&mut self, listing: search::Listing) -> Result<()> {
+        self.facets = listing.facets;
+        self.families = listing.families;
+        self.faces = listing.faces;
         self.rows = build_rows(&self.facets, &self.selected);
         let len = self.list_len();
         let sel = self.list.selected().unwrap_or(0).min(len.saturating_sub(1));
@@ -390,6 +435,23 @@ impl App {
         self.detail = None;
         self.detail_summary = None;
         self.refresh_detail()?;
+        Ok(())
+    }
+
+    /// Take whatever the worker has finished, if it is still wanted.
+    ///
+    /// Called once per turn of the event loop, between the frame and the key.
+    fn collect(&mut self) -> Result<()> {
+        let Some(search) = &mut self.search else {
+            return Ok(());
+        };
+        let Some(listing) = search.take() else {
+            return Ok(());
+        };
+        match listing {
+            Ok(listing) => self.apply(listing)?,
+            Err(e) => self.status = format!("search failed: {e}"),
+        }
         Ok(())
     }
 
@@ -511,7 +573,17 @@ impl App {
     fn event_loop(&mut self, terminal: &mut ratatui::DefaultTerminal) -> Result<()> {
         loop {
             terminal.draw(|f| self.draw(f))?;
-            if !event::poll(Duration::from_millis(250))? {
+            self.collect()?;
+            // Idle, the browser wakes four times a second, which is enough to notice
+            // another process changing the index. While an answer is owed it wakes at
+            // frame rate instead, so a result that arrives between keystrokes is on the
+            // screen within a frame rather than within a quarter of a second.
+            let wait = if self.search.as_ref().is_some_and(search::Search::waiting) {
+                Duration::from_millis(16)
+            } else {
+                Duration::from_millis(250)
+            };
+            if !event::poll(wait)? {
                 continue;
             }
             let Event::Key(key) = event::read()? else {
@@ -874,7 +946,7 @@ impl App {
                         .as_ref()
                         .map(|i| i.buf.clone())
                         .unwrap_or_default();
-                    self.reload()?;
+                    self.request_reload();
                 }
             }
             KeyCode::Enter => {
@@ -882,8 +954,11 @@ impl App {
                 let value = buf.trim().to_string();
                 match kind {
                     InputKind::Search => {
+                        // Enter closes the box on a query already asked for by the last
+                        // character typed. Waiting here would put the pause back at the
+                        // one moment the reader has finished typing and is looking.
                         self.query = value;
-                        self.reload()?;
+                        self.request_reload();
                     }
                     InputKind::Text => {
                         self.preview_text = (!value.is_empty()).then_some(value);
@@ -935,7 +1010,11 @@ impl App {
                         .as_ref()
                         .map(|i| i.buf.clone())
                         .unwrap_or_default();
-                    self.reload()?;
+                    // Asked for, not waited on. This is the one key in the browser
+                    // that a reader presses ten times in two seconds, and each press
+                    // used to spend a query's worth of time before the next character
+                    // could even be read.
+                    self.request_reload();
                 }
             }
             _ => {}
@@ -3444,6 +3523,93 @@ mod tests {
             let per = start.elapsed().as_secs_f64() * 1000.0 / f64::from(FRAMES);
             println!("{n:>6} families: {per:.3} ms per frame");
         }
+    }
+
+    /// Turn the event loop's collecting step until the worker has nothing owed.
+    ///
+    /// What the loop does between frames, without the frames. Bounded, so a worker that
+    /// never answers fails the test rather than hanging the suite.
+    fn settle(app: &mut App) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while app.search.as_ref().is_some_and(search::Search::waiting) {
+            app.collect().unwrap();
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the worker never answered"
+            );
+        }
+    }
+
+    /// The whole of the item, at the level a reader meets it: typing filters the list,
+    /// and no keystroke waits for the index to say so.
+    #[test]
+    fn typing_filters_the_list_without_any_keystroke_waiting_for_it() {
+        let mut app = app();
+        assert!(
+            app.search.is_some(),
+            "the fixtures' index is a file, so there is a worker to talk to"
+        );
+        assert_eq!(app.families.len(), 5);
+
+        let press = |app: &mut App, c: char| {
+            app.on_key(event::KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE))
+                .unwrap();
+        };
+        press(&mut app, '/');
+        for c in "Amiri".chars() {
+            press(&mut app, c);
+            // Every keystroke leaves a browser that can still draw, which is the thing
+            // that was not true when the query ran here.
+            frame(&mut app, 120, 36);
+        }
+        assert_eq!(app.query, "Amiri", "the box has what was typed");
+
+        settle(&mut app);
+        assert_eq!(
+            app.families
+                .iter()
+                .map(|f| f.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Amiri"],
+            "the answer to the last thing typed is the one on the screen"
+        );
+
+        // And backspacing all the way out brings the rest back.
+        for _ in 0.."Amiri".len() {
+            app.on_key(event::KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE))
+                .unwrap();
+        }
+        settle(&mut app);
+        assert_eq!(app.families.len(), 5, "{:?}", app.families);
+    }
+
+    /// A burst of keystrokes leaves the browser showing the last one, not whichever
+    /// answer happened to arrive last.
+    #[test]
+    fn a_burst_of_typing_ends_on_the_answer_to_the_last_character() {
+        let mut app = app();
+        app.on_key(event::KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE))
+            .unwrap();
+        // Type a query and then take it apart again, with no settling in between, so
+        // several generations are in flight at once.
+        for c in "Inter".chars() {
+            app.on_key(event::KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE))
+                .unwrap();
+        }
+        for _ in 0..3 {
+            app.on_key(event::KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE))
+                .unwrap();
+        }
+        assert_eq!(app.query, "In");
+        settle(&mut app);
+        assert_eq!(
+            app.families
+                .iter()
+                .map(|f| f.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Inter"],
+            "the list is the answer to \"In\", not to something typed on the way"
+        );
     }
 
     #[test]
