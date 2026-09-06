@@ -142,6 +142,22 @@ between two weights at 11px — `s` writes a [self-contained HTML specimen](../s
 for the selection and opens it in your browser. The terminal is where you decide what to
 look at; the specimen is where you look at it.
 
+### Many at once
+
+Every action starts out meaning the row under the cursor. Space marks a row instead,
+`v` starts a range and `v` again ends it, and `*` marks everything the current filter
+matches — so tagging a foundry's worth of faces is `*` and then `t`, rather than two
+hundred keystrokes on the same key.
+
+Once anything is marked, every action below applies to the marked faces: activate,
+deactivate, install, uninstall, tag, collection. The pane title says how many are
+marked so it is readable at the moment you reach for the key, a filter that stops
+matching a marked face drops it and says so, and an action that fails on some of them
+reports which and leaves the rest applied. Esc clears the marks.
+
+A family row stands for its faces, so marking a family marks all of them — the mark
+survives opening that family and looking at the faces one at a time.
+
 ### The keys
 
 `?` puts this list over whatever you are looking at.
@@ -151,10 +167,13 @@ look at; the specimen is where you look at it.
 | Key | Action |
 |---|---|
 | `j` `k`, arrows, PageUp, PageDown, `g`, `G` | move |
-| Tab | cycle the facets, the list and the controls |
+| Tab | cycle the panes this width has |
 | `/` | search; type, then Enter. Esc clears |
-| Enter, Space | open a family, or toggle a facet |
-| Backspace, Esc | back |
+| Enter | open a family, or toggle a facet |
+| Space | mark the row under the cursor |
+| `v` | start a range; `v` again ends it |
+| `*` | mark everything the filter matches, again to unmark |
+| Backspace, Esc | back, or clear the marks |
 | `x` | clear every filter |
 | `t` / `c` | tag the selection / add it to a collection |
 | `a` / `A` | activate for the user / until logout |

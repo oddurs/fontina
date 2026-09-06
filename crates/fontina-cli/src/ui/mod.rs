@@ -39,7 +39,7 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::time::Duration;
 
@@ -152,6 +152,16 @@ pub struct App {
     faces: Vec<FaceSummary>,
     /// `Some(name)` while a family is open.
     open_family: Option<String>,
+    /// Faces the next action will touch, when the reader has picked more than one.
+    ///
+    /// Empty means "the row under the cursor", which is what every action meant before
+    /// there was a set, and still means when nobody has marked anything. Faces rather
+    /// than rows, because a row is a family in one view and a face in another and the
+    /// mark has to survive opening the family it stands for.
+    marked: BTreeSet<i64>,
+    /// Where `v` was pressed, as a row, so the range can be redrawn as the cursor
+    /// moves. Cleared when the range is committed or the view changes under it.
+    mark_anchor: Option<usize>,
     focus: Focus,
     /// The cursor in the families or faces list. Only its selection is used: the pane
     /// windows the data itself before ratatui sees it, so the widget's own offset
@@ -253,6 +263,8 @@ impl App {
             families: Vec::new(),
             faces: Vec::new(),
             open_family: None,
+            marked: BTreeSet::new(),
+            mark_anchor: None,
             focus: Focus::List,
             list: ListState::default(),
             facet_list: ListState::default(),
@@ -430,6 +442,7 @@ impl App {
             self.facet_list
                 .select(Some(first_selectable(&self.rows, 0)));
         }
+        self.prune_marks();
         // Anything the pane shows may have moved underneath it — a tag added, a face
         // activated, a rescan — so the cached detail is dropped and read again.
         self.detail = None;
@@ -474,8 +487,22 @@ impl App {
     }
 
     /// Every face the current selection stands for (all faces of a family).
+    /// The faces the next action touches: the marked set if there is one, otherwise
+    /// the row under the cursor.
+    ///
+    /// One function, so every action inherits the selection at once and none of them
+    /// can be the one that forgot. Everything that changes the index already came
+    /// through here.
     fn current_face_ids(&self) -> Vec<i64> {
-        let Some(i) = self.list.selected() else {
+        if !self.marked.is_empty() {
+            return self.marked.iter().copied().collect();
+        }
+        self.face_ids_at(self.list.selected())
+    }
+
+    /// The faces a row stands for: one for a face, the whole family for a family.
+    fn face_ids_at(&self, row: Option<usize>) -> Vec<i64> {
+        let Some(i) = row else {
             return Vec::new();
         };
         if self.open_family.is_some() {
@@ -485,6 +512,60 @@ impl App {
                 .get(i)
                 .map(|f| f.ids.clone())
                 .unwrap_or_default()
+        }
+    }
+
+    /// Every face the current filter matches, in the order the list shows them.
+    fn visible_face_ids(&self) -> Vec<i64> {
+        if self.open_family.is_some() {
+            self.faces.iter().map(|f| f.id).collect()
+        } else {
+            self.families.iter().flat_map(|f| f.ids.clone()).collect()
+        }
+    }
+
+    /// Whether the row at `i` is marked. A family counts as marked when every face it
+    /// stands for is: a half-marked family is not one the reader chose.
+    fn row_marked(&self, i: usize) -> bool {
+        let ids = self.face_ids_at(Some(i));
+        !ids.is_empty() && ids.iter().all(|id| self.marked.contains(id))
+    }
+
+    /// Mark or unmark the rows from the anchor to the cursor, or just the cursor.
+    fn mark_rows(&mut self, from: usize, to: usize) {
+        let (lo, hi) = if from <= to { (from, to) } else { (to, from) };
+        // One decision for the whole range, taken from where it started: dragging over
+        // a mixture should make them all the same rather than invert each one.
+        let turning_on = !self.row_marked(from);
+        for i in lo..=hi {
+            for id in self.face_ids_at(Some(i)) {
+                if turning_on {
+                    self.marked.insert(id);
+                } else {
+                    self.marked.remove(&id);
+                }
+            }
+        }
+    }
+
+    /// Drop from the mark anything the current filter no longer shows, and say so.
+    ///
+    /// A mark is a promise about which faces an action will touch, and a face that is
+    /// no longer on the screen is one the reader can no longer see they have chosen.
+    /// Keeping it would mean a later keystroke acting on something invisible.
+    fn prune_marks(&mut self) {
+        if self.marked.is_empty() {
+            return;
+        }
+        let visible: BTreeSet<i64> = self.visible_face_ids().into_iter().collect();
+        let before = self.marked.len();
+        self.marked.retain(|id| visible.contains(id));
+        let dropped = before - self.marked.len();
+        if dropped > 0 {
+            self.status = match self.marked.len() {
+                0 => format!("the filter left none of the {before} marked faces"),
+                left => format!("{dropped} marked face(s) no longer match; {left} left"),
+            };
         }
     }
 
@@ -641,7 +722,13 @@ impl App {
             KeyCode::Char('q') => return Ok(Flow::Quit),
             KeyCode::Char('c') if ctrl => return Ok(Flow::Quit),
             KeyCode::Esc => {
-                if self.open_family.is_some() {
+                // The mark first, because it is the thing a reader most recently did
+                // and the thing an accidental action would act on.
+                if !self.marked.is_empty() {
+                    self.marked.clear();
+                    self.mark_anchor = None;
+                    self.status = "selection cleared".into();
+                } else if self.open_family.is_some() {
                     self.close_family()?;
                 } else if !self.query.is_empty() || !self.selected.is_empty() {
                     self.query.clear();
@@ -654,6 +741,44 @@ impl App {
             KeyCode::Char('?') => {
                 self.help = true;
                 self.help_scroll = 0;
+            }
+            // Space marks, everywhere but the facet pane, where it is how a facet is
+            // toggled. Enter still opens a family, so nothing that Space used to do is
+            // lost — it did the same as Enter — and Space is what marks a row in every
+            // other list a terminal has.
+            KeyCode::Char(' ') if self.focus == Focus::List => {
+                if let Some(i) = self.list.selected() {
+                    self.mark_rows(i, i);
+                    self.mark_anchor = None;
+                    self.say_marked();
+                }
+            }
+            // A range, the way vi does it: `v` here, move, `v` again.
+            KeyCode::Char('v') if self.focus == Focus::List => {
+                match (self.mark_anchor, self.list.selected()) {
+                    (None, Some(i)) => {
+                        self.mark_anchor = Some(i);
+                        self.status = format!("range from row {}: move, then v", i + 1);
+                    }
+                    (Some(from), Some(to)) => {
+                        self.mark_rows(from, to);
+                        self.mark_anchor = None;
+                        self.say_marked();
+                    }
+                    _ => {}
+                }
+            }
+            // Everything the filter matches. `A` is taken by activating until logout,
+            // and `*` is what a file manager uses for this.
+            KeyCode::Char('*') => {
+                let all: Vec<i64> = self.visible_face_ids();
+                if self.marked.len() == all.len() && !all.is_empty() {
+                    self.marked.clear();
+                } else {
+                    self.marked = all.into_iter().collect();
+                }
+                self.mark_anchor = None;
+                self.say_marked();
             }
             KeyCode::Char('m') => self.open_glyphs(),
             KeyCode::Char('w') => self.open_sheet(sheet::Kind::Waterfall)?,
@@ -1161,6 +1286,11 @@ impl App {
             ActivationState::User => "activate",
         };
         let mut n = 0;
+        // Failures are collected rather than returned. One unwritable file in a
+        // selection of two hundred used to abandon the other hundred and ninety-nine
+        // and report only the one, which left the reader with no way to know what had
+        // happened and no way to ask again for just the rest.
+        let mut failed: Vec<String> = Vec::new();
         for (path, faces) in crate::files_for(&self.index, &ids)? {
             let result = match state {
                 ActivationState::Installed => self.activator.install(&path).map(|p| {
@@ -1184,14 +1314,10 @@ impl App {
             };
             match result.and_then(|r| r) {
                 Ok(()) => n += faces.len(),
-                Err(e) => {
-                    self.status = format!("{}: {e}", path.display());
-                    self.reload()?;
-                    return Ok(());
-                }
+                Err(e) => failed.push(format!("{}: {e}", path.display())),
             }
         }
-        self.status = format!("{verb}: {n} face(s)   (fontina {verb} <targets>)");
+        self.status = report(verb, n, &failed);
         self.reload()
     }
 
@@ -1202,6 +1328,7 @@ impl App {
             return Ok(());
         }
         let mut n = 0;
+        let mut failed: Vec<String> = Vec::new();
         for (path, faces) in crate::files_for(&self.index, &ids)? {
             let record = self.index.activation(faces[0])?;
             let result = if uninstall {
@@ -1220,15 +1347,11 @@ impl App {
                     self.index.clear_activation(&faces)?;
                     n += faces.len();
                 }
-                Err(e) => {
-                    self.status = format!("{}: {e}", path.display());
-                    self.reload()?;
-                    return Ok(());
-                }
+                Err(e) => failed.push(format!("{}: {e}", path.display())),
             }
         }
         let verb = if uninstall { "uninstall" } else { "deactivate" };
-        self.status = format!("{verb}: {n} face(s)   (fontina {verb} <targets>)");
+        self.status = report(verb, n, &failed);
         self.reload()
     }
 
@@ -1468,6 +1591,15 @@ impl App {
         f.render_widget(Paragraph::new(lines), grid);
     }
 
+    /// Say how many faces the next action would touch, in the words the browser uses
+    /// everywhere else: face counts, because a family is not a unit anything acts on.
+    fn say_marked(&mut self) {
+        self.status = match self.marked.len() {
+            0 => "selection cleared".into(),
+            n => format!("{n} face(s) selected — Esc clears, any action applies to all"),
+        };
+    }
+
     fn border(&self, focused: bool) -> Style {
         if focused {
             self.theme.accent()
@@ -1539,11 +1671,34 @@ impl App {
             self.list_offset,
         );
         self.list_offset = win.start;
+        // A mark column, but only while there is something marked or a range being
+        // drawn: a column of spaces down every list for a feature nobody is using is
+        // two columns of names given up for nothing.
+        let marking = !self.marked.is_empty() || self.mark_anchor.is_some();
+        let marks: Vec<String> = if marking {
+            win.clone()
+                .map(|i| {
+                    let in_range = self.mark_anchor.is_some_and(|a| {
+                        let cursor = self.list.selected().unwrap_or(a);
+                        (a.min(cursor)..=a.max(cursor)).contains(&i)
+                    });
+                    match (self.row_marked(i), in_range) {
+                        (true, _) => "● ".into(),
+                        (false, true) => "· ".into(),
+                        (false, false) => "  ".into(),
+                    }
+                })
+                .collect()
+        } else {
+            vec![String::new(); win.len()]
+        };
+        let width = width.saturating_sub(if marking { 2 } else { 0 });
         let items: Vec<ListItem> = if let Some(fam) = &self.open_family {
             let _ = fam;
             self.faces[win.clone()]
                 .iter()
-                .map(|face| {
+                .enumerate()
+                .map(|(row, face)| {
                     let flags = format!(
                         "{}{}{}",
                         if face.variable { "V" } else { " " },
@@ -1557,7 +1712,8 @@ impl App {
                     };
                     let left = format!("{} {}{}", face.subfamily, face.container, tags);
                     ListItem::new(Line::from(format!(
-                        "{:<w$} {flags}",
+                        "{}{:<w$} {flags}",
+                        marks[row],
                         truncate(&left, width.saturating_sub(5)),
                         w = width.saturating_sub(5)
                     )))
@@ -1566,7 +1722,8 @@ impl App {
         } else {
             self.families[win.clone()]
                 .iter()
-                .map(|fam| {
+                .enumerate()
+                .map(|(row, fam)| {
                     let flags = format!(
                         "{}{}{}",
                         if fam.variable { "V" } else { " " },
@@ -1576,16 +1733,21 @@ impl App {
                     let count = format!("{:>3}", fam.faces);
                     let room = width.saturating_sub(9);
                     ListItem::new(Line::from(format!(
-                        "{:<room$} {count} {flags}",
+                        "{}{:<room$} {count} {flags}",
+                        marks[row],
                         truncate(&fam.name, room),
                         room = room
                     )))
                 })
                 .collect()
         };
-        let title = match &self.open_family {
-            Some(fam) => format!(" {} · {} face(s) ", fam, self.faces.len()),
-            None => format!(" {} families ", self.families.len()),
+        let title = match (&self.open_family, self.marked.len()) {
+            // The count goes in the title rather than only in the status line, which
+            // the next message overwrites: what an action is about to touch has to be
+            // readable at the moment the reader reaches for the key.
+            (_, n) if n > 0 => format!(" {n} of {} selected ", self.visible_face_ids().len()),
+            (Some(fam), _) => format!(" {} · {} face(s) ", fam, self.faces.len()),
+            (None, _) => format!(" {} families ", self.families.len()),
         };
         let list = List::new(items)
             .block(
@@ -1862,6 +2024,10 @@ impl App {
  Move        j/k ↑/↓ PgUp/PgDn g/G        Tab cycles the panes
  Filter      / type to search  Esc clears   Enter/Space toggles a facet   x clears all
  Families    Enter opens a family, Backspace/Esc closes it
+ Select      Space marks the row under the cursor; v starts a range and v ends it;
+             * marks everything the filter matches, and again unmarks it. Every
+             action below applies to the marked faces when there are any, and to
+             the row under the cursor when there are not. Esc clears the mark
  Organise    t tag the selection   c add it to a collection
  Activate    a for the user, A until logout, i install a copy, d deactivate, u uninstall
  Preview     e sets the sample text   + / - change the size
@@ -2128,6 +2294,24 @@ fn windowed(selected: Option<usize>, win: &std::ops::Range<usize>) -> ListState 
     let mut state = ListState::default();
     state.select(selected.filter(|i| win.contains(i)).map(|i| i - win.start));
     state
+}
+
+/// What an action did, including the part of it that did not work.
+///
+/// A selection makes partial success the ordinary case rather than the strange one:
+/// one file in a directory nobody can write to should not hide the two hundred that
+/// went through. The first failure is named because a status line is one line, and the
+/// count says how many more there are to find.
+fn report(verb: &str, done: usize, failed: &[String]) -> String {
+    match failed {
+        [] => format!("{verb}: {done} face(s)   (fontina {verb} <targets>)"),
+        [only] => format!("{verb}: {done} face(s), 1 failed — {only}"),
+        [first, rest @ ..] => format!(
+            "{verb}: {done} face(s), {} failed — {first} (and {} more)",
+            failed.len(),
+            rest.len()
+        ),
+    }
 }
 
 fn truncate(s: &str, n: usize) -> String {
@@ -3610,6 +3794,158 @@ mod tests {
             ["Inter"],
             "the list is the answer to \"In\", not to something typed on the way"
         );
+    }
+
+    fn press(app: &mut App, code: KeyCode) {
+        app.on_key(event::KeyEvent::new(code, KeyModifiers::NONE))
+            .unwrap();
+    }
+
+    /// The point of the whole item: one key marks, and every action that takes a face
+    /// takes the marked ones instead.
+    #[test]
+    fn a_marked_set_is_what_the_next_action_acts_on() {
+        let mut app = app();
+        assert_eq!(app.current_face_ids().len(), 1, "Amiri has one face");
+
+        // Space marks the row under the cursor. A family row stands for its faces, so
+        // marking Inter marks both of them.
+        // Amiri, Bricolage, Inter, Nabla, Source Serif 4.
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Char(' '));
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Char(' '));
+        assert_eq!(
+            app.marked.len(),
+            3,
+            "Bricolage's one face and Inter's two: {:?}",
+            app.marked
+        );
+        assert_eq!(
+            app.current_face_ids().len(),
+            3,
+            "the action takes the mark, not the row under the cursor"
+        );
+
+        // And marking is a toggle.
+        press(&mut app, KeyCode::Char(' '));
+        assert_eq!(app.marked.len(), 1);
+
+        // Esc clears it, and the cursor is what actions mean again.
+        press(&mut app, KeyCode::Esc);
+        assert!(app.marked.is_empty());
+        assert_eq!(app.status, "selection cleared");
+        assert_eq!(app.current_face_ids(), app.face_ids_at(app.list.selected()));
+    }
+
+    /// `v`, a move, `v`. The decision for the whole range is taken from where it
+    /// started, so dragging over a mixture makes them all the same.
+    #[test]
+    fn a_range_marks_from_the_anchor_to_the_cursor() {
+        let mut app = app();
+        press(&mut app, KeyCode::Char('v'));
+        assert_eq!(
+            app.mark_anchor,
+            Some(0),
+            "the anchor is where v was pressed"
+        );
+        assert!(app.marked.is_empty(), "and nothing is marked until it ends");
+        for _ in 0..3 {
+            press(&mut app, KeyCode::Down);
+        }
+        press(&mut app, KeyCode::Char('v'));
+        assert_eq!(app.mark_anchor, None, "the range is committed");
+        // Amiri, Bricolage, Inter (two faces) and Nabla.
+        assert_eq!(app.marked.len(), 5, "{:?}", app.marked);
+
+        // Running it again over the same rows unmarks them, because the row the range
+        // starts on is already marked.
+        press(&mut app, KeyCode::Char('v'));
+        for _ in 0..3 {
+            press(&mut app, KeyCode::Up);
+        }
+        press(&mut app, KeyCode::Char('v'));
+        assert!(app.marked.is_empty(), "{:?}", app.marked);
+    }
+
+    /// `*` takes everything the filter matches, and takes it back.
+    #[test]
+    fn star_marks_everything_the_filter_matches_and_then_nothing() {
+        let mut app = app();
+        press(&mut app, KeyCode::Char('*'));
+        assert_eq!(app.marked.len(), 6, "every face in the fixtures");
+        press(&mut app, KeyCode::Char('*'));
+        assert!(app.marked.is_empty(), "and again is the way back");
+    }
+
+    /// A mark is a promise about what an action will touch, so a face the filter has
+    /// taken off the screen cannot stay in it — and the reader has to be told.
+    #[test]
+    fn a_filter_drops_the_marks_it_no_longer_shows_and_says_so() {
+        let mut app = app();
+        press(&mut app, KeyCode::Char('*'));
+        assert_eq!(app.marked.len(), 6);
+
+        app.query = "Amiri".into();
+        app.reload().unwrap();
+        assert_eq!(app.marked.len(), 1, "only Amiri still matches");
+        assert!(
+            app.status.contains("no longer match"),
+            "the reader was not told: {:?}",
+            app.status
+        );
+
+        // And a filter that matches none of them says that instead of saying nothing.
+        app.query = "Nabla".into();
+        app.reload().unwrap();
+        assert!(app.marked.is_empty());
+        assert!(app.status.contains("none of the"), "{:?}", app.status);
+    }
+
+    /// A marked set makes partial success the ordinary case: one file nobody can write
+    /// must not hide the ones that went through, or take them down with it.
+    #[test]
+    fn a_partial_failure_says_what_worked_and_what_did_not() {
+        assert_eq!(
+            report("activate", 12, &[]),
+            "activate: 12 face(s)   (fontina activate <targets>)"
+        );
+        assert_eq!(
+            report("activate", 11, &["/x/a.ttf: denied".into()]),
+            "activate: 11 face(s), 1 failed — /x/a.ttf: denied"
+        );
+        let many = ["/x/a.ttf: denied".to_string(), "/x/b.ttf: denied".into()];
+        assert_eq!(
+            report("activate", 10, &many),
+            "activate: 10 face(s), 2 failed — /x/a.ttf: denied (and 1 more)"
+        );
+    }
+
+    /// The count belongs where the reader is looking when they reach for the key, not
+    /// only in a status line the next message overwrites.
+    #[test]
+    fn the_pane_says_how_many_are_marked() {
+        let mut app = app();
+        let plain = stable_frame(&mut app, 120, 36);
+        assert!(plain.contains("5 families"), "{plain}");
+
+        press(&mut app, KeyCode::Char(' '));
+        let marked = stable_frame(&mut app, 120, 36);
+        assert!(marked.contains("1 of 6 selected"), "{marked}");
+        assert!(marked.contains('●'), "and the row itself is marked");
+
+        // The mark column is only there while it is doing something. Everything but
+        // the status line comes back byte for byte; the status line is a message about
+        // what just happened, and is meant to differ.
+        press(&mut app, KeyCode::Esc);
+        let cleared = stable_frame(&mut app, 120, 36);
+        let panes = |f: &str| {
+            f.lines()
+                .filter(|l| !l.contains("selection cleared") && !l.contains("$ fontina"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        assert_eq!(panes(&cleared), panes(&plain), "a column was left behind");
     }
 
     #[test]
