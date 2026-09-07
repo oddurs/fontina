@@ -2149,6 +2149,10 @@ impl App {
             (Some(fam), _) => format!(" {} · {} face(s) ", fam, self.faces.len()),
             (None, _) => format!(" {} families ", self.families.len()),
         };
+        if items.is_empty() {
+            self.draw_empty_list(f, area, title);
+            return;
+        }
         let list = List::new(items)
             .block(
                 Block::default()
@@ -2158,6 +2162,58 @@ impl App {
             )
             .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
         f.render_stateful_widget(list, area, &mut windowed(self.list.selected(), &win));
+    }
+
+    /// What the list pane says when there is nothing in it.
+    ///
+    /// Three empty boxes and a line at the bottom of the screen is the worst version of
+    /// this. The reader narrowed the library to nothing with their own last keystroke,
+    /// and the facet pane — counted over the filtered set — took the row that would
+    /// undo it down with the rest. So the pane they are looking at names every filter
+    /// that is on and the two keys that take them off again.
+    fn draw_empty_list(&self, f: &mut ratatui::Frame, area: Rect, title: String) {
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(self.border(self.focus == Focus::List))
+            .title(title);
+        let inner = block.inner(area);
+        f.render_widget(block, area);
+        let mut lines: Vec<Line<'static>> = Vec::new();
+        if self.selected.is_empty() && self.query.is_empty() {
+            lines.push(Line::raw(if self.open_family.is_some() {
+                "No faces in this family."
+            } else {
+                "Nothing in the index yet — run `fontina scan <dir>`."
+            }));
+        } else {
+            lines.push(Line::from(Span::styled(
+                "Nothing matches these filters.",
+                self.theme.accent(),
+            )));
+            lines.push(Line::raw(""));
+            if !self.query.is_empty() {
+                lines.push(kv("search", self.query.clone(), &self.theme));
+            }
+            for (facet, v) in &self.selected {
+                lines.push(kv(
+                    &facet.label().to_lowercase(),
+                    facet_value_label(*facet, v),
+                    &self.theme,
+                ));
+            }
+            lines.push(Line::raw(""));
+            lines.push(Line::from(vec![
+                Span::styled("⇥", self.theme.accent()),
+                Span::raw(" to the filters, then "),
+                Span::styled("⏎", self.theme.accent()),
+                Span::raw(" on a marked row drops that one."),
+            ]));
+            lines.push(Line::from(vec![
+                Span::styled("x", self.theme.accent()),
+                Span::raw(" clears them all."),
+            ]));
+        }
+        f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
     }
 
     fn draw_detail(&mut self, f: &mut ratatui::Frame, area: Rect) {
@@ -2583,7 +2639,8 @@ impl App {
 fn build_rows(facets: &Facets, selected: &BTreeMap<Facet, String>) -> Vec<FacetRow> {
     let mut rows = Vec::new();
     let mut section = |facet: Facet, counts: &[FacetCount], cap: usize| {
-        if counts.is_empty() {
+        let chosen = selected.get(&facet);
+        if counts.is_empty() && chosen.is_none() {
             return;
         }
         rows.push(FacetRow {
@@ -2592,7 +2649,6 @@ fn build_rows(facets: &Facets, selected: &BTreeMap<Facet, String>) -> Vec<FacetR
             count: 0,
             header: true,
         });
-        let chosen = selected.get(&facet);
         for c in counts.iter().take(cap) {
             rows.push(FacetRow {
                 facet,
@@ -2601,15 +2657,19 @@ fn build_rows(facets: &Facets, selected: &BTreeMap<Facet, String>) -> Vec<FacetR
                 header: false,
             });
         }
-        // Keep a selected value visible even when it is past the cap.
+        // Keep a selected value visible when it is past the cap, and — the reason this
+        // is a fix rather than a nicety — when it has left the counts altogether.
+        // The facets are counted over the filtered set, so narrowing to nothing empties
+        // them, and the row the reader would press Enter on to undo their own last
+        // action is the row that disappears. A selected value is drawn at every count,
+        // including zero.
         if let Some(v) = chosen
             && !counts.iter().take(cap).any(|c| &c.value == v)
-            && let Some(c) = counts.iter().find(|c| &c.value == v)
         {
             rows.push(FacetRow {
                 facet,
-                value: c.value.clone(),
-                count: c.count,
+                value: v.clone(),
+                count: counts.iter().find(|c| &c.value == v).map_or(0, |c| c.count),
                 header: false,
             });
         }
@@ -2625,10 +2685,10 @@ fn build_rows(facets: &Facets, selected: &BTreeMap<Facet, String>) -> Vec<FacetR
     section(Facet::Weight, &facets.weight, 9);
     section(Facet::Width, &facets.width, 9);
     section(Facet::Style, &facets.style, 2);
-    if facets.variable > 0 {
+    if facets.variable > 0 || selected.contains_key(&Facet::Variable) {
         section(Facet::Variable, &flags, 1);
     }
-    if facets.color > 0 {
+    if facets.color > 0 || selected.contains_key(&Facet::Color) {
         section(Facet::Color, &color, 1);
     }
     section(Facet::Spacing, &facets.spacing, 2);
@@ -3776,6 +3836,65 @@ mod tests {
             app.command_line().contains("--freedom free"),
             "{}",
             app.command_line()
+        );
+    }
+
+    /// Narrowing to nothing must not take the way back with it.
+    ///
+    /// The facets are counted over the filtered set, so a combination that matches
+    /// nothing used to empty the pane that holds the undo: three empty boxes, and the
+    /// only escape a key nothing on the screen mentions. Both halves of the fix are
+    /// here — the row the reader selected survives at zero and still toggles, and the
+    /// pane they are looking at says what happened and what to press.
+    #[test]
+    fn filtering_to_nothing_leaves_the_way_back_on_the_screen() {
+        let mut app = app();
+        app.selected.insert(Facet::Freedom, "nonfree".into());
+        app.selected.insert(Facet::Script, "Arab".into());
+        app.reload().unwrap();
+        assert_eq!(app.list_len(), 0, "no fixture is both nonfree and Arabic");
+
+        for (facet, value) in [(Facet::Freedom, "nonfree"), (Facet::Script, "Arab")] {
+            let row = app
+                .rows
+                .iter()
+                .find(|r| !r.header && r.facet == facet && r.value == value)
+                .unwrap_or_else(|| {
+                    panic!("{facet:?} {value} left the pane while its filter was still on")
+                });
+            assert_eq!(
+                row.count, 0,
+                "{facet:?} {value} is drawn at the count it has"
+            );
+        }
+
+        let drawn = frame(&mut app, 120, 24);
+        assert!(
+            drawn.contains("Nothing matches these filters"),
+            "the list pane says what happened:\n{drawn}"
+        );
+        assert!(
+            drawn.contains("nonfree") && drawn.contains("Arab"),
+            "and names the filters that are on:\n{drawn}"
+        );
+        assert!(
+            drawn.contains("clears them all"),
+            "and the key that clears them:\n{drawn}"
+        );
+
+        // Enter on a marked row takes that filter off, which is the way back the pane
+        // just described.
+        let row = app
+            .rows
+            .iter()
+            .position(|r| !r.header && r.facet == Facet::Freedom && r.value == "nonfree")
+            .expect("the marked row is still selectable");
+        app.facet_list.select(Some(row));
+        app.toggle_facet().unwrap();
+        assert!(!app.selected.contains_key(&Facet::Freedom));
+        assert!(
+            app.list_len() > 0,
+            "dropping one filter brought the library back"
         );
     }
 

@@ -2,7 +2,7 @@
 id: 23
 title: Filtering to nothing removes the way back
 type: fix
-status: backlog
+status: done
 milestone: unfiled
 created: 2026-09-06
 updated: 2026-09-06
