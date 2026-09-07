@@ -258,6 +258,26 @@ afterwards hands control back to the facets and says so: a typed filter and the 
 pane are two ways of saying the same thing, and there is no sensible way to add one
 facet to `--variable=false`.
 
+### What else is nearly this font
+
+A real library holds families that are one typeface spelled several ways: a patched
+build, a re-encoding, a subset, an interpolation. One library of 149 faces reports
+twenty families and holds about eight typefaces, because a patch spaced three ways
+names itself three times. Nothing surfaced that, so you scrolled past six rows that
+were one design.
+
+`r` lists what else covers nearly the same characters, ranked by how much. Each row
+carries the score, how many codepoints the two share out of the union, and the four
+metrics that decide whether identical coverage means identical design — units per em,
+ascender, descender, and whether the face is fixed pitch.
+
+The score is shown, never thresholded away. That is the whole point: 0.62 between two
+faces at different units per em is a coincidence, and 0.98 with every metric agreeing
+is the same design twice, and only the reader can tell you which of those they were
+looking for. The floor the query used is in the title, so if you see six answers you
+can ask what the seventh was. Enter goes to the face; a face with nothing near it says
+so rather than showing a weak list.
+
 ### The keys
 
 `?` puts this list over whatever you are looking at.
@@ -284,6 +304,7 @@ facet to `--variable=false`.
 | `h` `l`, `H` `L` | move an axis, by one or by ten |
 | `n` / `p` | step through named instances |
 | `0` | reset the axes and features |
+| `r` | what else covers nearly the same characters |
 | `m` | the glyph map |
 | `s` | write an HTML specimen and open it |
 | `U` / Ctrl-R | undo the last change to the index / do it again |
