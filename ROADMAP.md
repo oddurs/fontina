@@ -82,7 +82,7 @@ Every check today reads the metadata and asks whether it is sensible. None asks 
 
 ## unfiled — Found, not yet scheduled
 
-`####······` 33% · 2 of 6 done
+`###·······` 29% · 2 of 7 done
 
 Real findings with no milestone. Triage moves them or drops them; nothing sits here by default.
 
@@ -92,6 +92,7 @@ Real findings with no milestone. Triage moves them or drops them; nothing sits h
 - [ ] [`0027`](https://github.com/oddurs/fontina/blob/main/cairn/items/0027-parse-the-os-2-family-class-and-panose-into-the-face-model.md) Parse the OS/2 family class and PANOSE into the face model <sup>feat · p2</sup>
 - [ ] [`0030`](https://github.com/oddurs/fontina/blob/main/cairn/items/0030-duplicates-are-found-and-then-nothing-can-be-done-about-them.md) Duplicates are found and then nothing can be done about them <sup>feat · p1 · cli</sup>
 - [ ] [`0031`](https://github.com/oddurs/fontina/blob/main/cairn/items/0031-variants-opens-with-the-family-you-are-already-looking-at.md) Variants opens with the family you are already looking at <sup>feat · p2 · cli</sup>
+- [ ] [`0034`](https://github.com/oddurs/fontina/blob/main/cairn/items/0034-two-thirds-of-the-published-json-fields-have-no-description.md) Two thirds of the published JSON fields have no description <sup>docs · p2 · workspace</sup>
 
 ### done
 
