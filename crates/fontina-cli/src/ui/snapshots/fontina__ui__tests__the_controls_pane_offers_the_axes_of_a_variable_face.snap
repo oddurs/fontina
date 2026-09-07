@@ -3,21 +3,12 @@ source: crates/fontina-cli/src/ui/mod.rs
 expression: drawn
 ---
  filter  nothing narrowed — f narrows, / searches                                                          5 families
-┌ 5 families ────────────────────────────────┐┌ Details ───────────────────────────────────────────────────────────────┐
-│Amiri                                 1     ││Bricolage Grotesque 96pt ExtraBold                                      │
-│Bricolage Grotesque                   1 V   ││style     weight 800 · width 100% · normal                              │
-│Inter                                 2     ││axes      opsz 12–96 (96), wght 200–800 (800), wdth 75–100 (100)        │
-│Nabla                                 1 VC  ││glyphs    597 · 527 codepoints · Latn Zyyy Zinh Grek                    │
-│Source Serif 4                        1     ││features  18: aalt case ccmp dnom frac lnum locl numr onum ordn pnum    │
-│                                            ││sinf                                                                    │
-│                                            ││license   OFL-1.1                                                       │
-│                                            ││freedom   free                                                          │
-│                                            ││designer  Mathieu Triay                                                 │
-│                                            ││state     not active                                                    │
-│                                            ││file      ../../fixtures/BricolageGrotesque[opsz,wdth,wght].ttf         │
-│                                            ││                                                                        │
-│                                            ││axes & features — custom                                                │
-│                                            ││> opsz       96  [============] Optical size                            │
+┌ families ──────────────────────────────────┐┌ Bricolage Grotesque 96pt ExtraBold ────────────────────────────────────┐
+│Amiri                                 1     ││style     weight 800 · width 100% · normal · variable (opsz wght wdth)  │
+│Bricolage Grotesque                   1 V   ││state     not active                                                    │
+│Inter                                 2     ││                                                                        │
+│Nabla                                 1 VC  ││axes & features — custom                                                │
+│Source Serif 4                        1     ││> opsz       96  [============] Optical size                            │
 │                                            ││  wght      800  [============] Weight                                  │
 │                                            ││  wdth      100  [============] Width                                   │
 │                                            ││  case [ ] Case-sensitive forms                                         │
@@ -26,15 +17,24 @@ expression: drawn
 │                                            ││  onum [ ] Oldstyle figures                                             │
 │                                            ││  pnum [ ] Proportional figures                                         │
 │                                            ││  sinf [ ] Scientific inferiors                                         │
-│                                            ││  subs [ ] Subscript                                                    │
-│                                            ││  sups [ ] Superscript                                                  │
-│                                            ││  tnum [ ] Tabular figures                                              │
-│                                            ││                                                                        │
-│                                            ││metrics   1000 upm · asc 930 · desc -270 · gap 0                        │
-│                                            ││shape     cap 660 · x-height 528 · x/em 0.53                            │
+│                                            ││glyphs    597 · 527 codepoints                                          │
 │                                            ││Latn      ██████████ 327                                                │
 │                                            ││Zyyy      ██████░░░░ 180                                                │
 │                                            ││Zinh      █░░░░░░░░░ 18                                                 │
+│                                            ││Grek      █░░░░░░░░░ 2                                                  │
+│                                            ││features  18: aalt case ccmp dnom frac lnum locl numr onum ordn pnum    │
+│                                            ││          sinf                                                          │
+│                                            ││                                                                        │
+│                                            ││licence   OFL-1.1  free                                                 │
+│                                            ││                                                                        │
+│                                            ││designer  Mathieu Triay                                                 │
+│                                            ││file      ../../fixtures/BricolageGrotesque[opsz,wdth,wght].ttf         │
+│                                            ││                                                                        │
+│                                            ││metrics   1000 upm · asc 930 · desc -270 · gap 0                        │
+│                                            ││shape     cap 660 · x-height 528 · x/em 0.53                            │
+│                                            ││                                                                        │
+│                                            ││                                                                        │
+│                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
  $ fontina families
- / search  f narrow  F flags  x clear  ⇥ pane  ⏎ open  ⌫ back  ␣ select  t tag  c collection  a/A activate  ? help
+ / search  f narrow  F flags  x clear  ⇥ pane  ⏎ open  ⌫ back  ␣ select  t tag  c collection  a/A activate  … ? help
