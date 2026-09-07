@@ -27,7 +27,7 @@ What the browser looks like. A font manager whose list is set in the fonts it li
 
 ## specimen — The only place the type is drawn
 
-`··········` 0% · 0 of 14 done
+`#·········` 7% · 1 of 14 done
 
 ADR 0010 decided the browser shows structure and never draws type: "the resolution is
 
@@ -50,9 +50,9 @@ ADR 0010 decided the browser shows structure and never draws type: "the resoluti
 - [ ] [`0052`](https://github.com/oddurs/fontina/blob/main/cairn/items/0052-compare-at-a-matched-x-height-not-a-matched-pixel-size.md) Compare at a matched x-height, not a matched pixel size <sup>feat · p0 · core</sup>
 - [ ] [`0053`](https://github.com/oddurs/fontina/blob/main/cairn/items/0053-the-measurements-the-browser-shows-the-specimen-shows-too.md) The measurements the browser shows, the specimen shows too <sup>feat · p0 · core</sup>
 
-### in review
+### done
 
-- [ ] [`0051`](https://github.com/oddurs/fontina/blob/main/cairn/items/0051-lay-the-html-specimen-out-like-a-printed-type-specimen.md) Lay the HTML specimen out like a printed type specimen <sup>feat · p1 · core</sup>
+- [x] [`0051`](https://github.com/oddurs/fontina/blob/main/cairn/items/0051-lay-the-html-specimen-out-like-a-printed-type-specimen.md) Lay the HTML specimen out like a printed type specimen <sup>feat · p1 · core</sup>
 
 ## tui-speed — TUI 2 — Speed
 

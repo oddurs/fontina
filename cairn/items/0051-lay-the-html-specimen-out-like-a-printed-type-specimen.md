@@ -2,7 +2,7 @@
 id: 51
 title: Lay the HTML specimen out like a printed type specimen
 type: feat
-status: review
+status: done
 milestone: specimen
 created: 2026-09-07
 updated: 2026-09-07
