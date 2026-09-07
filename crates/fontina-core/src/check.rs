@@ -316,6 +316,33 @@ fn metrics(c: &mut Ctx) {
             ),
         );
     }
+    // `post.isFixedPitch` is a claim and the advances are the fact. M4 made spacing
+    // filterable on the strength of the flag alone — `--mono`, the `spacing` facet, the
+    // `M` column — and said in as many words that a font whose advances contradict its
+    // own flag is a health check rather than a filter that quietly disagrees with the
+    // file. This is that check. It reports the disagreement and resolves nothing: which
+    // of the two is wrong is not fontina's to decide.
+    match (m.is_fixed_pitch, m.distinct_advances) {
+        (true, Some(n)) if n > 1 => c.warn(
+            "metrics/fixed-pitch",
+            format!(
+                "post.isFixedPitch says monospaced, but the face has {n} distinct advance \
+                 widths; whichever is wrong, a program that trusts the flag will set this \
+                 font badly"
+            ),
+        ),
+        // The other direction is worth saying and is not worth a warning: a font may be
+        // uniform by coincidence rather than by intent. The glyph floor keeps an icon set
+        // or a two-glyph subset from being announced as a monospaced face.
+        (false, Some(1)) if c.f.glyph_count > 16 => c.info(
+            "metrics/fixed-pitch",
+            "every glyph that occupies space has the same advance width, but \
+             post.isFixedPitch is not set; a program looking for a monospaced font will \
+             not find this one",
+        ),
+        _ => {}
+    }
+
     // `OS/2.sCapHeight` is `Some(0)` for any v2+ font that leaves it unset, which is
     // ordinary for a script with no capitals. Zero is "not stated", not "no capitals".
     if let (Some(x), Some(cap)) = (m.x_height, m.cap_height)

@@ -259,6 +259,41 @@ fn healthy_case(
 
 fn cases() -> Vec<Case> {
     vec![
+        // ---- metrics: the claim against the measurement ----------------------------
+        // No fixture is monospaced, and a monospaced fixture would only prove the
+        // agreeing case anyway. Both directions of the disagreement are made instead.
+        //
+        // `post.isFixedPitch` is a uint32 at offset 12 — version, italicAngle,
+        // underlinePosition and underlineThickness come first — so setting it is four
+        // bytes of surgery, and the advances measured from `hmtx` are Amiri's real ones.
+        // This case runs the whole path: bytes on disk, through the parser, into a
+        // finding.
+        case(
+            AMIRI,
+            "metrics/fixed-pitch",
+            Severity::Warn,
+            "a font that claims to be monospaced over advances that are not equal",
+            || {
+                Sfnt::load(AMIRI)
+                    .raw(b"post", 12, &[0, 0, 0, 1])
+                    .parse(AMIRI)
+            },
+        ),
+        // The other direction. Rewriting `hmtx` so every advance matches would be more
+        // fragile than the thing it tests and would prove nothing the case above does
+        // not, so this one edits the measurement rather than the bytes.
+        case(
+            AMIRI,
+            "metrics/fixed-pitch",
+            Severity::Info,
+            "a font whose advances are all equal without saying it is monospaced",
+            || {
+                let mut f = face(AMIRI);
+                f.metrics.is_fixed_pitch = false;
+                f.metrics.distinct_advances = Some(1);
+                f
+            },
+        ),
         // ---- name -----------------------------------------------------------------
         // Dropping the whole `name` table is one mutation standing for "the font says
         // nothing about itself": no family, no PostScript name, no version, no designer,
@@ -829,6 +864,7 @@ const ALL_IDS: &[&str] = &[
     "license/rfn",
     "license/unknown",
     "license/url",
+    "metrics/fixed-pitch",
     "metrics/line-gap",
     "metrics/typo-vs-hhea",
     "metrics/x-height",

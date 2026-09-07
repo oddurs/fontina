@@ -253,6 +253,30 @@ fn vendor_id(tag: read_fonts::types::Tag) -> String {
         .to_string()
 }
 
+/// How many distinct non-zero advance widths a face has.
+///
+/// `hmtx` stores an advance for the first `numberOfHMetrics` glyphs, and every glyph
+/// after that repeats the last one — so the distinct set over the whole font is the
+/// distinct set over that slice, exactly, with no per-glyph walk. A monospaced font
+/// usually has a slice one entry long, which is why this costs nothing at scan time.
+///
+/// Zero advances are excluded. A combining mark occupies no space in a monospaced font
+/// either, and counting it would make every font that has one look inconsistent with
+/// itself.
+///
+/// Measured at the default instance. A variable font can vary advances along an axis,
+/// and the flag it carries is about the default too.
+fn distinct_advances(font: &FontRef) -> Option<u32> {
+    let hmtx = font.hmtx().ok()?;
+    let widths: BTreeSet<u16> = hmtx
+        .h_metrics()
+        .iter()
+        .map(|m| m.advance())
+        .filter(|a| *a != 0)
+        .collect();
+    Some(widths.len() as u32)
+}
+
 fn long_date_time_to_rfc3339(secs_since_1904: i64) -> Option<String> {
     if secs_since_1904 <= 0 {
         return None;
@@ -360,6 +384,7 @@ fn parse_one(font: &FontRef, index: u32, file: &FileInfo) -> Result<FaceMetadata
             .map(|p| p.italic_angle().to_f32())
             .unwrap_or(0.0),
         is_fixed_pitch: post.as_ref().is_some_and(|p| p.is_fixed_pitch() != 0),
+        distinct_advances: distinct_advances(font),
         revision: head.font_revision().to_f64(),
         created: long_date_time_to_rfc3339(head.created().as_secs()),
         modified: long_date_time_to_rfc3339(head.modified().as_secs()),
