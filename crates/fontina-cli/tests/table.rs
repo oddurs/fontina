@@ -277,6 +277,39 @@ fn a_path_or_a_name_is_never_cut_short_to_fit_its_column() {
     );
 }
 
+/// The licence column carries the licence's name, not SPDX's namespace for it.
+///
+/// A library of commercial fonts is a column of `LicenseRef-Proprietary`, and twenty-two
+/// characters into twelve is `LicenseRef-…` on every row: the same eleven characters of
+/// prefix, repeated, telling the reader nothing. Found on a real library where 1,306 of
+/// 1,998 faces read that way. The identifier itself is unchanged everywhere it is data
+/// rather than a column: `--json`, `--license` and `fontina license`.
+#[test]
+fn the_licence_column_shows_the_name_not_the_namespace() {
+    let s = session("licence");
+    let listed = s.ok(&["list"]);
+    assert!(
+        listed.contains("OFL-1.1"),
+        "an SPDX identifier is shown as it is:\n{listed}"
+    );
+    assert!(
+        !listed.contains("LicenseRef-"),
+        "and a LicenseRef- is shown by its name:\n{listed}"
+    );
+
+    // Every fixture is under an SPDX licence, so the `LicenseRef-` half is a unit test
+    // beside `license_cell` itself. What belongs here is that the identifier survives
+    // everywhere it is data rather than a column.
+    let json: serde_json::Value = serde_json::from_str(&s.ok(&["list", "--json"])).unwrap();
+    assert_eq!(json[0]["license"], "OFL-1.1", "--json is the identifier");
+    let id = json[0]["id"].to_string();
+    let full = s.ok(&["license", "--json", &id]);
+    assert!(
+        full.contains("OFL-1.1"),
+        "and so is the licence report:\n{full}"
+    );
+}
+
 /// A name that would reverse the line, or move the cursor, prints as neither.
 ///
 /// `fit` stands a replacement character in for anything with no column of its own. A
