@@ -101,12 +101,24 @@ Real findings with no milestone. Triage moves them or drops them; nothing sits h
 
 ## m5-ship — M5 — Ship
 
-`··········` 0% · 0 of 2 done
+`··········` 0% · 0 of 5 done
 
 Who can run it, rather than what else it can do. Package managers on every desktop, the two unmeasured budgets measured. PLAN.md §5.
 
 ### backlog
 
-- [ ] [`0022`](https://github.com/oddurs/fontina/blob/main/cairn/items/0022-ship-through-the-package-managers-people-actually-use.md) Ship through the package managers people actually use <sup>chore · p1 · workspace</sup>
 - [ ] [`0032`](https://github.com/oddurs/fontina/blob/main/cairn/items/0032-a-first-scan-cannot-see-the-fonts-the-machine-is-already-using.md) A first scan cannot see the fonts the machine is already using <sup>feat · p1 · cli</sup>
+- [ ] [`0040`](https://github.com/oddurs/fontina/blob/main/cairn/items/0040-measure-the-two-budgets-that-nothing-measures.md) Measure the two budgets that nothing measures <sup>test · p1 · cli</sup>
+
+### ready to start
+
+- [ ] [`0039`](https://github.com/oddurs/fontina/blob/main/cairn/items/0039-get-the-credentials-the-package-managers-need.md) Get the credentials the package managers need <sup>chore · p0 · workspace</sup>
+
+### in progress
+
+- [ ] [`0022`](https://github.com/oddurs/fontina/blob/main/cairn/items/0022-ship-through-the-package-managers-people-actually-use.md) Ship through the package managers people actually use <sup>chore · p1 · workspace</sup>
+
+### in review
+
+- [ ] [`0041`](https://github.com/oddurs/fontina/blob/main/cairn/items/0041-make-the-path-filtered-checks-able-to-block.md) Make the path-filtered checks able to block <sup>chore · p1 · workspace</sup>
 
