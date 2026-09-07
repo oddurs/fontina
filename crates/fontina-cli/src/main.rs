@@ -1077,8 +1077,19 @@ fn run() -> Result<()> {
             } else {
                 let t = term::term();
                 for g in &groups {
+                    // A group holding more than one build is not only a packaging
+                    // inconvenience: these files claim one name and do not hold the same
+                    // bytes. Builds rather than fonts, because a WOFF and a WOFF2 of one
+                    // typeface differ and saying "two fonts" would alarm about the
+                    // ordinary case. The count is stated; the conclusion is the reader's,
+                    // since fontina has no reference for which build was meant.
+                    let distinct = if g.distinct > 1 {
+                        format!("; {} distinct builds under it", g.distinct)
+                    } else {
+                        String::new()
+                    };
                     println!(
-                        "{} {}",
+                        "{} {}{distinct}",
                         t.head(&g.reason),
                         t.dim(&format!("({})", g.key.chars().take(16).collect::<String>()))
                     );

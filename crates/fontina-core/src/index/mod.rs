@@ -42,6 +42,7 @@ use crate::model::FaceMetadata;
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 pub struct Index {
@@ -193,7 +194,27 @@ pub struct Related {
 pub struct DuplicateGroup {
     pub reason: String,
     pub key: String,
+    /// How many distinct **builds** the group holds, counted by identity hash.
+    ///
+    /// Builds, not fonts, and the distinction is the whole point of the number. The
+    /// Inter WOFF and WOFF2 in `fixtures/` are one typeface subset two ways — 515 glyphs
+    /// against 518 — so they are two builds and calling them two fonts would be alarming
+    /// about the ordinary web-font case.
+    ///
+    /// One means the same bytes in several files, pure packaging. More than one means
+    /// files that claim a single name and do not hold the same build, which is both the
+    /// ordinary format-pair case *and* what a substituted font looks like from here.
+    ///
+    /// A count, not a verdict. fontina has no reference for which build you meant, and
+    /// fetching one would need the network. What the number does is stop a name
+    /// collision from reading as automatically benign.
+    #[serde(default = "one")]
+    pub distinct: u32,
     pub faces: Vec<FaceSummary>,
+}
+
+fn one() -> u32 {
+    1
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -962,30 +983,49 @@ impl Index {
             let sql = format!(
                 "{} WHERE f.{column} IN (SELECT {column} FROM faces WHERE {column} IS NOT NULL AND {column} != '' GROUP BY {column} HAVING COUNT(*) > 1)
                  ORDER BY f.{column}, fi.path, f.face_index",
-                Self::SUMMARY_SELECT.replace("SELECT f.id,", &format!("SELECT f.{column} AS grp, f.id,"))
+                Self::SUMMARY_SELECT.replace(
+                    "SELECT f.id,",
+                    &format!("SELECT f.{column} AS grp, f.identity_hash, f.id,"),
+                )
             );
             let mut stmt = self.conn.prepare(&sql)?;
             let rows = stmt.query_map([], |r| {
-                Ok((r.get::<_, String>("grp")?, Self::row_to_summary(r)?))
+                Ok((
+                    r.get::<_, String>("grp")?,
+                    r.get::<_, String>("identity_hash")?,
+                    Self::row_to_summary(r)?,
+                ))
             })?;
-            let mut current: Option<DuplicateGroup> = None;
+            // Carried alongside the group rather than in `FaceSummary`, which does not
+            // publish the hash: the useful fact is how many distinct fonts a group holds,
+            // not which hash each face has.
+            let mut current: Option<(DuplicateGroup, BTreeSet<String>)> = None;
             for row in rows {
-                let (key, face) = row?;
+                let (key, hash, face) = row?;
                 match current.as_mut() {
-                    Some(g) if g.key == key => g.faces.push(face),
+                    Some((g, hashes)) if g.key == key => {
+                        g.faces.push(face);
+                        hashes.insert(hash);
+                    }
                     _ => {
-                        if let Some(g) = current.take() {
+                        if let Some((mut g, hashes)) = current.take() {
+                            g.distinct = hashes.len() as u32;
                             groups.push(g);
                         }
-                        current = Some(DuplicateGroup {
-                            reason: reason.into(),
-                            key,
-                            faces: vec![face],
-                        });
+                        current = Some((
+                            DuplicateGroup {
+                                reason: reason.into(),
+                                key,
+                                distinct: 1,
+                                faces: vec![face],
+                            },
+                            BTreeSet::from([hash]),
+                        ));
                     }
                 }
             }
-            if let Some(g) = current.take() {
+            if let Some((mut g, hashes)) = current.take() {
+                g.distinct = hashes.len() as u32;
                 groups.push(g);
             }
         }
