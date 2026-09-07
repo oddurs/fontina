@@ -111,7 +111,7 @@ Every check today reads the metadata and asks whether it is sensible. None asks 
 
 ## unfiled — Found, not yet scheduled
 
-`######····` 57% · 4 of 7 done
+`#####·····` 50% · 4 of 8 done
 
 Real findings with no milestone. Triage moves them or drops them; nothing sits here by default.
 
@@ -120,6 +120,10 @@ Real findings with no milestone. Triage moves them or drops them; nothing sits h
 - [ ] [`0030`](https://github.com/oddurs/fontina/blob/main/cairn/items/0030-duplicates-are-found-and-then-nothing-can-be-done-about-them.md) Duplicates are found and then nothing can be done about them <sup>feat · p1 · cli</sup>
 - [ ] [`0031`](https://github.com/oddurs/fontina/blob/main/cairn/items/0031-variants-opens-with-the-family-you-are-already-looking-at.md) Variants opens with the family you are already looking at <sup>feat · p2 · cli</sup>
 - [ ] [`0042`](https://github.com/oddurs/fontina/blob/main/cairn/items/0042-two-thirds-of-the-published-json-fields-have-no-description.md) Two thirds of the published JSON fields have no description <sup>docs · p2 · workspace</sup>
+
+### ready to start
+
+- [ ] [`0065`](https://github.com/oddurs/fontina/blob/main/cairn/items/0065-the-parse-fuzz-target-has-been-running-out-of-memory-on-main-since-112.md) The parse fuzz target has been running out of memory on main since #112 <sup>fix · p1 · core</sup>
 
 ### done
 
