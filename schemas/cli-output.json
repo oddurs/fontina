@@ -656,7 +656,7 @@
           "type": "array"
         },
         "language": {
-          "description": "Languages the matched faces claim, most-claimed first. The value carries which\nkind of claim it is, because the two are different questions: `TRK` is a shaping\nrule, `tr` is a name record.",
+          "description": "Languages the matched faces claim, most-claimed first.\n\nThe value is the tag alone. Both kinds of claim are offered on the one list and\nthe tag is what tells them apart — `TRK` is an OpenType language system, `tr` a\nBCP 47 name record — so a face claiming a language both ways appears twice, under\ntwo tags. Ask `Index::languages` for the source of a particular claim.",
           "items": {
             "$ref": "#/$defs/FacetCount"
           },
