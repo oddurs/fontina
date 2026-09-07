@@ -334,7 +334,6 @@ impl Index {
                 )
                 .or_default()
                 .add(fam);
-            let _ = scripts;
             freedom
                 .entry(crate::freedom::classify(lic.as_deref()).to_string())
                 .or_default()
