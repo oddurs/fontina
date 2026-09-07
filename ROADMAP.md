@@ -4,7 +4,7 @@
 
 ## tui-craft — TUI 1 — Craft
 
-`########··` 71% · 5 of 7 done
+`########··` 75% · 6 of 8 done
 
 What the browser looks like. A font manager whose list is set in the fonts it lists, drawn with real glyphs, in a layout that holds at any size.
 
@@ -23,6 +23,7 @@ What the browser looks like. A font manager whose list is set in the fonts it li
 - [x] [`0024`](https://github.com/oddurs/fontina/blob/main/cairn/items/0024-nobody-knows-what-the-left-pane-is.md) Nobody knows what the left pane is <sup>feat · p0 · ui</sup>
 - [x] [`0028`](https://github.com/oddurs/fontina/blob/main/cairn/items/0028-the-command-line-prints-in-one-colour-and-one-width.md) The command line prints in one colour and one width <sup>feat · p1 · cli</sup>
 - [x] [`0033`](https://github.com/oddurs/fontina/blob/main/cairn/items/0033-the-face-pane-is-thirteen-rows-in-the-order-they-were-written.md) The face pane is thirteen rows in the order they were written <sup>chore · p1 · ui</sup>
+- [x] [`0034`](https://github.com/oddurs/fontina/blob/main/cairn/items/0034-the-browser-looks-assembled-rather-than-designed.md) The browser looks assembled rather than designed <sup>chore · p1 · ui</sup>
 
 ## tui-speed — TUI 2 — Speed
 

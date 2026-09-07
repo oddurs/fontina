@@ -52,14 +52,36 @@ impl Theme {
     /// The one thing on the screen the reader is being pointed *at*: a codepoint a
     /// search just found, sitting in a grid of several hundred others.
     ///
-    /// Reversed rather than coloured when there is no colour, because the whole job of
-    /// this style is to be the one cell an eye lands on, and a cell that merely goes
-    /// bold in a grid of glyphs is not that.
+    /// Reversed at every depth, and coloured by reversing the *foreground*: the cell
+    /// takes the accent as its background and the terminal's own background as its
+    /// text. Setting a literal black on cyan named a colour the reader had not chosen,
+    /// and on a light theme it is the one cell on the screen that looks like a mistake.
     pub fn cursor(&self) -> Style {
+        let base = Style::default().add_modifier(Modifier::REVERSED);
         match self.depth {
-            Depth::None => Style::default().add_modifier(Modifier::REVERSED),
-            _ => Style::default().fg(Color::Black).bg(Color::Cyan),
+            Depth::None => base,
+            _ => base.fg(Color::Cyan),
         }
+    }
+
+    /// The row a list has its cursor on.
+    ///
+    /// Reversed in the pane that has the focus, and merely bold in the others — a
+    /// reader who has tabbed away still needs to see where they were, and two reversed
+    /// bars on one screen is two answers to "where am I". Reversed rather than a
+    /// background colour so that the bar is the reader's own foreground and background,
+    /// whatever they chose: nothing here paints over a theme.
+    pub fn selection(&self, focused: bool) -> Style {
+        if focused {
+            Style::default().add_modifier(Modifier::REVERSED)
+        } else {
+            Style::default().add_modifier(Modifier::BOLD)
+        }
+    }
+
+    /// The name of a pane, on its border.
+    pub fn title(&self) -> Style {
+        Style::default().add_modifier(Modifier::BOLD)
     }
 
     /// Present, and not what you are reading: labels, keys, the row of hints.

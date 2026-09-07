@@ -2,39 +2,39 @@
 source: crates/fontina-cli/src/ui/mod.rs
 expression: drawn
 ---
- filter  nothing narrowed — f narrows, / searches                                                          5 families
-┌ families ────┌ fontina ui ────────────────────────────────────────────────────────────────────────────┐──────────────┐
-│Amiri         │                                                                                        │              │
-│Bricolage Grot│ MOVING                                                                                 │              │
-│Inter         │ j/k ↑/↓ PgUp/PgDn g/G   move        ⇥  cycle the panes                                 │              │
-│Nabla         │ ⏎  open a family        ⌫ or Esc  close it                                             │              │
-│Source Serif 4│ The list and the face side by side at 76 columns and up, one at a time below           │              │
+  filter  nothing narrowed — f narrows, / searches                                                        5 families
+╭ families ────╭ fontina ui ────────────────────────────────────────────────────────────────────────────╮──────────────╮
+│ Amiri        │                                                                                        │              │
+│ Bricolage Gro│  MOVING                                                                                │              │
+│ Inter        │  j/k ↑/↓ PgUp/PgDn g/G   move        ⇥  cycle the panes                                │              │
+│ Nabla        │  ⏎  open a family        ⌫ or Esc  close it                                            │              │
+│ Source Serif │  The list and the face side by side at 78 columns and up, one at a time below          │              │
 │              │                                                                                        │              │
-│              │ FINDING                                                                                │              │
-│              │ /  search names, Esc clears it      x  clear every filter                              │              │
-│              │ f  Narrow by, the facets as a panel: ⏎ picks, ⏎ on +N more opens, Esc closes           │              │
-│              │ F  the filter bar: the flags fontina list takes, applied as you type                   │              │
-│              │    Ctrl-S saves what it matched as a collection                                        │              │
+│              │  FINDING                                                                               │              │
+│              │  /  search names, Esc clears it      x  clear every filter                             │              │
+│              │  f  Narrow by, the facets as a panel: ⏎ picks, ⏎ on +N more opens, Esc closes          │              │
+│              │  F  the filter bar: the flags fontina list takes, applied as you type                  │              │
+│              │     Ctrl-S saves what it matched as a collection                                       │              │
 │              │                                                                                        │              │
-│              │ DOING — to the marks when there are any, to the row under the cursor when not          │              │
-│              │ ␣  mark a row   v  a range   *  all the filter matches   Esc  clear the marks          │              │
-│              │ t  tag          c  add to a collection                                                 │              │
-│              │ a  activate for the user   A  until logout   i  install a copy   d/u  undo those       │              │
-│              │ U  undo the last change to the index   Ctrl-R  do it again                             │              │
+│              │  DOING — to the marks when there are any, to the row under the cursor when not         │              │
+│              │  ␣  mark a row   v  a range   *  all the filter matches   Esc  clear the marks         │              │
+│              │  t  tag          c  add to a collection                                                │              │
+│              │  a  activate for the user   A  until logout   i  install a copy   d/u  undo those      │              │
+│              │  U  undo the last change to the index   Ctrl-R  do it again                            │              │
 │              │                                                                                        │              │
-│              │ LOOKING                                                                                │ pnum rlig    │
-│              │ h/l ←/→  move an axis (H/L by ten)   ␣  a feature   n/p  instances   0  reset          │              │
-│              │ m  the glyph map: h/l pick a block, / finds a codepoint or a block by name             │              │
-│              │ r  what else covers nearly the same characters, with the score and the metrics         │              │
-│              │ e  who can set a line of text: paste it, and see what each face lacks                  │              │
-│              │ P  the library ranked against this face: weight, width, spacing, x-height              │              │
-│              │ s  write an HTML specimen and open it, because a terminal cannot set type              │              │
+│              │  LOOKING                                                                               │mr pnum rlig  │
+│              │  h/l ←/→  move an axis (H/L by ten)   ␣  a feature   n/p  instances   0  reset         │              │
+│              │  m  the glyph map: h/l pick a block, / finds a codepoint or a block by name            │              │
+│              │  r  what else covers nearly the same characters, with the score and the metrics        │              │
+│              │  e  who can set a line of text: paste it, and see what each face lacks                 │              │
+│              │  P  the library ranked against this face: weight, width, spacing, x-height             │              │
+│              │  s  write an HTML specimen and open it, because a terminal cannot set type             │              │
 │              │                                                                                        │              │
-│              │ THE PROGRAM                                                                            │              │
-│              │ :  every command, filtered as you type    R  rescan every source    q  quit            │              │
+│              │  THE PROGRAM                                                                           │              │
+│              │  :  every command, filtered as you type    R  rescan every source    q  quit           │              │
 │              │                                                                                        │              │
-│              │ The status line is the command that would give you what is on the screen.              │              │
+│              │  The status line is the command that would give you what is on the screen.             │              │
 │              │                                                                                        │              │
-└──────────────│ any key to close                                                                       │──────────────┘
- $ fontina fami└────────────────────────────────────────────────────────────────────────────────────────┘
- / search  f narrow  F flags  x clear  ⇥ pane  ⏎ open  ⌫ back  ␣ select  t tag  c collection  a/A activate  … ? help
+╰──────────────│  any key to close                                                                      │──────────────╯
+  $ fontina fam╰────────────────────────────────────────────────────────────────────────────────────────╯
+  / search  f narrow  F flags  x clear  ⇥ pane  ⏎ open  ⌫ back  ␣ select  t tag  c collection  a/A activate  … ? help
