@@ -47,30 +47,31 @@ What you can do without leaving it. Multi-select, batch work, undo, a command pa
 
 ## tui-discovery — TUI 4 — Discovery
 
-`####······` 40% · 2 of 5 done
+`######····` 60% · 3 of 5 done
 
 Helping someone find the right face rather than the one they asked for: comparison, similarity, coverage against real text.
 
 ### backlog
 
 - [ ] [`0013`](https://github.com/oddurs/fontina/blob/main/cairn/items/0013-pin-faces-and-set-them-side-by-side.md) Pin faces and set them side by side <sup>feat · p0 · ui</sup>
-- [ ] [`0016`](https://github.com/oddurs/fontina/blob/main/cairn/items/0016-suggest-a-face-to-pair-with-this-one.md) Suggest a face to pair with this one <sup>feat · p2 · ui</sup>
 - [ ] [`0026`](https://github.com/oddurs/fontina/blob/main/cairn/items/0026-several-values-in-one-facet-in-the-browser-and-on-the-command-line.md) Several values in one facet, in the browser and on the command line <sup>feat · p1 · core</sup>
 
 ### done
 
 - [x] [`0014`](https://github.com/oddurs/fontina/blob/main/cairn/items/0014-show-me-faces-like-this-one.md) Show me faces like this one <sup>feat · p1 · ui</sup>
 - [x] [`0015`](https://github.com/oddurs/fontina/blob/main/cairn/items/0015-paste-text-see-who-can-set-it.md) Paste text, see who can set it <sup>feat · p1 · ui</sup>
+- [x] [`0016`](https://github.com/oddurs/fontina/blob/main/cairn/items/0016-suggest-a-face-to-pair-with-this-one.md) Suggest a face to pair with this one <sup>feat · p2 · ui</sup>
 
 ## unfiled — Found, not yet scheduled
 
-`#######···` 67% · 2 of 3 done
+`#####·····` 50% · 2 of 4 done
 
 Real findings with no milestone. Triage moves them or drops them; nothing sits here by default.
 
 ### backlog
 
 - [ ] [`0018`](https://github.com/oddurs/fontina/blob/main/cairn/items/0018-say-what-a-scan-skipped.md) Say what a scan skipped <sup>feat · p1 · core</sup>
+- [ ] [`0027`](https://github.com/oddurs/fontina/blob/main/cairn/items/0027-parse-the-os-2-family-class-and-panose-into-the-face-model.md) Parse the OS/2 family class and PANOSE into the face model <sup>feat · p2</sup>
 
 ### done
 

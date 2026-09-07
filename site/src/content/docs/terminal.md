@@ -301,6 +301,37 @@ near misses need each candidate's own coverage, so they are asked of what you ha
 already filtered to, up to two hundred faces; when the answer is bounded, the title
 says so.
 
+### What might go with this
+
+Pairing is the question after choosing, and it is the one thing here that no field in
+the index answers directly. So be clear about what `P` is: **it is not taste and it does
+not pretend to be.** It is a ranking, shown with the numbers behind it, that puts twenty
+plausible candidates in front of you instead of four hundred faces.
+
+Nothing is called a good pairing. Every row says what was measured and what was found,
+in the words of the measurement:
+
+```
+Inter Regular                 weight +100 · spacing differs · x/em 0.48 vs 0.55 · 2 scripts shared
+```
+
+Four things are measured, all of them already in the index: contrast in weight,
+contrast in width, whether the spacing class differs, and how close the x-heights are
+at a common size. Plus one gate — scripts in common — because two faces that cannot set
+the same text are not a pair whatever else is true of them. The pseudo-scripts (`Zyyy`,
+`Zinh`) do not count, or every pair would look compatible.
+
+Faces from the same family are left out: pairing a typeface with its own bold is a
+weight, not a pairing. The ranking looks at the whole library rather than the pane you
+are on, because a partner is by definition something you do not already have in front
+of you. A face with nothing sharing a script says so.
+
+One thing is deliberately missing. The item behind this asked for "a different outline
+class", meaning serif against sans — and **the index does not store that**. There is no
+PANOSE and no `OS/2.sFamilyClass` in the model, so rather than dress a `glyf`-versus-`CFF`
+difference up as a typographic one, it is left out and said so here. The nearest thing
+the index does hold is the spacing class, which is a real signal on its own.
+
 ### The keys
 
 `?` puts this list over whatever you are looking at.
@@ -329,6 +360,7 @@ says so.
 | `0` | reset the axes and features |
 | `r` | what else covers nearly the same characters |
 | `e` | who can set this text |
+| `P` | faces ranked against this one for pairing |
 | `m` | the glyph map |
 | `s` | write an HTML specimen and open it |
 | `U` / Ctrl-R | undo the last change to the index / do it again |
