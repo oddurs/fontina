@@ -548,7 +548,7 @@ of printing ten thousand lines rather than of finding them.
 
 The browser has two budgets rather than one because a single number cannot say both
 things. The first is the promise a reader feels: a repaint inside 16 ms, on the worst of
-the browser's four screens, at ten thousand faces. The second is the property behind it,
+the browser's screens, at ten thousand faces. The second is the property behind it,
 that a repaint is the size of the pane and not of the library, stated as the cost at ten
 thousand against the same screen at a hundred. A regression to a frame built per item
 would sail under the first and fail the second: it was 890% before the panes started

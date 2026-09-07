@@ -113,7 +113,7 @@ preview_ms=$(ms 3 "$FONTINA" preview 1 -s 64 -t "Sphinx of black quartz, judge m
 # here with all the others.
 #
 # Two of them, because one number cannot say both things. The first is the promise: a
-# repaint inside 16 ms, on the worst of the browser's four screens, at ten thousand
+# repaint inside 16 ms, on the worst of the browser's screens, at ten thousand
 # faces. The second is the property behind it -- that a repaint is the size of the pane
 # and not of the library -- as the cost at ten thousand against the cost at a hundred.
 # A regression to a frame built per item would sail under the first and fail the second:

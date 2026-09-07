@@ -209,9 +209,6 @@ pub struct App {
     /// Columns the glyph grid used when it was last drawn, so a PageDown moves by what
     /// the reader can see rather than by a guess.
     glyph_cols: usize,
-    /// The waterfall or comparison, while it is open. Full-screen for the same reason
-    /// the glyph map is: rendered type needs the width.
-    /// Terminal lines the sheet had on the last frame, so a PageDown moves by a screen.
     /// How many panes the last frame had room for.
     ///
     /// Read by the key handler, written by the drawing: Tab has to cycle through the
@@ -4040,43 +4037,6 @@ mod tests {
             best_micros(&mut map, "glyphs", n);
         }
     }
-            }
-            println!("browser {screen} {n} {best:.0}");
-        }
-
-        for n in [100usize, 1_000, 10_000] {
-            // The family list, which is where the browser opens and where a library of
-            // this size is actually felt.
-            let mut list = app();
-            list.preview_text = Some(" ".into());
-            with_families(&mut list, n);
-            list.list.select(Some(n / 2));
-            best_micros(&mut list, "families", n);
-
-            // A family open: the same pane, holding faces instead, with the face pane
-            // and its preview beside it.
-            let mut opened = app();
-            opened.preview_text = Some(" ".into());
-            select_family(&mut opened, "Amiri");
-            opened.open_family().unwrap();
-            best_micros(&mut opened, "family", n);
-
-            // The two full-screen modes. Neither grows with the library — a glyph map
-            // is one face's coverage and a waterfall is one face at nine sizes — so
-            // these rows are here to say so, and to fail if that ever stops being true.
-            let mut map = app();
-            map.preview_text = Some(" ".into());
-            select_family(&mut map, "Amiri");
-            map.open_glyphs();
-            best_micros(&mut map, "glyphs", n);
-
-            let mut sheet = app();
-            sheet.preview_text = Some(" ".into());
-            select_family(&mut sheet, "Amiri");
-            sheet.open_sheet(sheet::Kind::Waterfall).unwrap();
-            best_micros(&mut sheet, "waterfall", n);
-        }
-    }
 
     /// Turn the event loop's collecting step until the worker has nothing owed.
     ///
@@ -4101,8 +4061,6 @@ mod tests {
         }
     }
 
-    /// The whole of the item, at the level a reader meets it: typing filters the list,
-    /// and no keystroke waits for the index to say so.
     #[test]
     fn typing_filters_the_list_without_any_keystroke_waiting_for_it() {
         let mut app = app();
