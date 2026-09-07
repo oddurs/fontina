@@ -387,6 +387,13 @@
     },
     "DuplicateGroup": {
       "properties": {
+        "distinct": {
+          "default": 1,
+          "description": "How many distinct **builds** the group holds, counted by identity hash.\n\nBuilds, not fonts, and the distinction is the whole point of the number. The\nInter WOFF and WOFF2 in `fixtures/` are one typeface subset two ways — 515 glyphs\nagainst 518 — so they are two builds and calling them two fonts would be alarming\nabout the ordinary web-font case.\n\nOne means the same bytes in several files, pure packaging. More than one means\nfiles that claim a single name and do not hold the same build, which is both the\nordinary format-pair case *and* what a substituted font looks like from here.\n\nA count, not a verdict. fontina has no reference for which build you meant, and\nfetching one would need the network. What the number does is stop a name\ncollision from reading as automatically benign.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
         "faces": {
           "items": {
             "$ref": "#/$defs/FaceSummary"
