@@ -81,6 +81,35 @@ fn a_second_woff2_panic_is_contained_the_same_way() {
     );
 }
 
+/// A third panic in the same decoder, and the first that a release build does not survive.
+///
+/// `push_simple_table_record` slices the decompressed table stream with a range taken
+/// from the file's own table directory — `&decompressed_tables[table.get_source_range()]`
+/// — and never checks it against the length it has. A file declaring `origLength` 208
+/// over a stream that decompresses to nothing indexes `[..208]` into an empty slice.
+///
+/// The distinction from the two above matters and is the reason this one is written down
+/// separately. Those are arithmetic underflows: with `overflow-checks` off they wrap, the
+/// decoder's own length guard rejects the wrapped value, and a release build comes back
+/// with `Invalid("Stream truncated")` having never panicked. A slice index is bounds-
+/// checked in every profile, so this one panics in the shipped binary too. Nothing but
+/// the `catch_unwind` in `container::decode_woff2` stands between it and the caller.
+///
+/// Found by `scripts/fuzz parse` on an unrelated pull request, at 111,095 bytes;
+/// minimised by hand to fifty-two — a WOFF 2.0 header, one table record, and a one-byte
+/// brotli stream that decompresses to nothing.
+#[test]
+fn a_table_record_reaching_past_its_stream_is_contained_too() {
+    let bytes = open_input("woff2-table-record-past-its-stream.woff2");
+    let err = fontina_core::load_bytes(&bytes, "woff2-table-record-past-its-stream")
+        .expect_err("this input cannot produce a face");
+    let message = err.to_string();
+    assert!(
+        message.contains("woff2"),
+        "the error should name the container it came from, got {message:?}"
+    );
+}
+
 /// The containment must not swallow the ordinary case: a WOFF 2.0 file that decodes
 /// still decodes, and one that is merely truncated still says so rather than reporting a
 /// panic that did not happen.
