@@ -25,6 +25,35 @@ What the browser looks like. A font manager whose list is set in the fonts it li
 - [x] [`0033`](https://github.com/oddurs/fontina/blob/main/cairn/items/0033-the-face-pane-is-thirteen-rows-in-the-order-they-were-written.md) The face pane is thirteen rows in the order they were written <sup>chore · p1 · ui</sup>
 - [x] [`0034`](https://github.com/oddurs/fontina/blob/main/cairn/items/0034-the-browser-looks-assembled-rather-than-designed.md) The browser looks assembled rather than designed <sup>chore · p1 · ui</sup>
 
+## specimen — The only place the type is drawn
+
+`··········` 0% · 0 of 14 done
+
+ADR 0010 decided the browser shows structure and never draws type: "the resolution is
+
+### backlog
+
+- [ ] [`0054`](https://github.com/oddurs/fontina/blob/main/cairn/items/0054-choose-the-paper-and-the-ink.md) Choose the paper and the ink <sup>feat · p1 · core</sup>
+- [ ] [`0055`](https://github.com/oddurs/fontina/blob/main/cairn/items/0055-say-whether-the-font-is-sound-not-only-what-it-looks-like.md) Say whether the font is sound, not only what it looks like <sup>feat · p1 · core</sup>
+- [ ] [`0056`](https://github.com/oddurs/fontina/blob/main/cairn/items/0056-set-a-paragraph-not-only-a-ladder.md) Set a paragraph, not only a ladder <sup>feat · p1 · core</sup>
+- [ ] [`0057`](https://github.com/oddurs/fontina/blob/main/cairn/items/0057-what-the-file-permits-in-the-file-that-carries-it.md) What the file permits, in the file that carries it <sup>feat · p1 · core</sup>
+- [ ] [`0058`](https://github.com/oddurs/fontina/blob/main/cairn/items/0058-show-the-words-the-designer-chose.md) Show the words the designer chose <sup>feat · p2 · core</sup>
+- [ ] [`0059`](https://github.com/oddurs/fontina/blob/main/cairn/items/0059-a-feature-you-can-watch-working.md) A feature you can watch working <sup>feat · p2 · core</sup>
+- [ ] [`0060`](https://github.com/oddurs/fontina/blob/main/cairn/items/0060-will-this-font-set-my-text.md) Will this font set my text? <sup>feat · p2 · core</sup>
+- [ ] [`0061`](https://github.com/oddurs/fontina/blob/main/cairn/items/0061-a-specimen-you-can-send-someone.md) A specimen you can send someone <sup>feat · p2 · core</sup>
+- [ ] [`0062`](https://github.com/oddurs/fontina/blob/main/cairn/items/0062-find-a-glyph-without-scrolling-for-it.md) Find a glyph without scrolling for it <sup>feat · p2 · core</sup>
+- [ ] [`0063`](https://github.com/oddurs/fontina/blob/main/cairn/items/0063-the-glyph-map-at-the-scale-of-a-cjk-font.md) The glyph map at the scale of a CJK font <sup>perf · p2 · core</sup>
+- [ ] [`0064`](https://github.com/oddurs/fontina/blob/main/cairn/items/0064-a-specimen-worth-printing.md) A specimen worth printing <sup>feat · p3 · core</sup>
+
+### ready to start
+
+- [ ] [`0052`](https://github.com/oddurs/fontina/blob/main/cairn/items/0052-compare-at-a-matched-x-height-not-a-matched-pixel-size.md) Compare at a matched x-height, not a matched pixel size <sup>feat · p0 · core</sup>
+- [ ] [`0053`](https://github.com/oddurs/fontina/blob/main/cairn/items/0053-the-measurements-the-browser-shows-the-specimen-shows-too.md) The measurements the browser shows, the specimen shows too <sup>feat · p0 · core</sup>
+
+### in review
+
+- [ ] [`0051`](https://github.com/oddurs/fontina/blob/main/cairn/items/0051-lay-the-html-specimen-out-like-a-printed-type-specimen.md) Lay the HTML specimen out like a printed type specimen <sup>feat · p1 · core</sup>
+
 ## tui-speed — TUI 2 — Speed
 
 `##########` 100% · 5 of 5 done

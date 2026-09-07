@@ -211,7 +211,10 @@ cairn render                      # regenerate ROADMAP.md
 - **`priority`**: one of p0, p1, p2, p3 — p0 blocks a release
 - **`effort`**: one of s, m, l, xl — Rough size. s is an afternoon, xl needs breaking up
 - **`crate`**: one of core, platform, cli, ui, site, workspace — Where the change lands. `ui` is crates/fontina-cli/src/ui
-- **Milestones**: `tui-craft`, `tui-speed`, `tui-depth`, `tui-discovery`, `m4-ask`, `m3-ecosystem`, `before-1.0`
+- **Milestones**: `tui-craft`, `tui-speed`, `tui-depth`, `tui-discovery`, `integrity`,
+  `m5-ship`, `unfiled`. Since format 2 a milestone is an item of type `milestone`, so
+  `cairn list --type milestone` is the current list and `cairn check` rejects a name
+  that is not one of them.
 - **Saved views** (`cairn list --view NAME`): `now`, `tui`, `triage`
 
 ### Rules
