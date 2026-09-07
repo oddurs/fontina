@@ -202,7 +202,14 @@ pub struct Metrics {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cap_height: Option<i16>,
     pub italic_angle: f32,
+    /// What `post.isFixedPitch` claims.
     pub is_fixed_pitch: bool,
+    /// How many distinct non-zero advance widths the face has, at its default instance.
+    ///
+    /// The fact `is_fixed_pitch` is a claim about. One means every glyph that occupies
+    /// space occupies the same amount. `None` when there is no `hmtx` to measure.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub distinct_advances: Option<u32>,
     /// `head.fontRevision`.
     pub revision: f64,
     /// `head.created` as RFC 3339, when set.

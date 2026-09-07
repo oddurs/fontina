@@ -859,10 +859,9 @@ mod tests {
         let mut index = fontina_core::Index::open_in_memory().unwrap();
         let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures");
         fontina_core::scan::scan(&mut index, &[fixtures], &Default::default()).unwrap();
-        let mut app = crate::ui::App::new(index).unwrap();
+        let app = crate::ui::App::new(index).unwrap();
         // A blank sample text keeps the rasteriser out of these frames; what the
         // preview draws has its own tests in `ui::mod`.
-        app.preview_text = Some(" ".into());
         app
     }
 
@@ -1003,7 +1002,14 @@ mod tests {
             let buffer = terminal.backend().buffer().clone();
             (0..buffer.area.height)
                 .flat_map(|y| (0..buffer.area.width).map(move |x| (x, y)))
-                .filter(|&(x, y)| buffer[(x, y)].bg == ratatui::style::Color::Cyan)
+                // The cursor reverses the accent rather than painting a background:
+                // the cell takes the accent as its background and the reader's own
+                // background as its text, whatever they have themed it to.
+                .filter(|&(x, y)| {
+                    let cell = &buffer[(x, y)];
+                    cell.fg == ratatui::style::Color::Cyan
+                        && cell.modifier.contains(ratatui::style::Modifier::REVERSED)
+                })
                 .map(|(x, y)| (y, x, buffer[(x, y)].symbol().to_string()))
                 .collect()
         }
@@ -1052,7 +1058,9 @@ mod tests {
                 let drawn = frame(&mut app, 120, height);
                 let marked: Vec<&String> = drawn
                     .iter()
-                    .filter(|l| l.chars().nth(1) == Some('>'))
+                    // The marker sits in the pane's first content column, which is
+                    // the border and then the column of padding inside it.
+                    .filter(|l| l.chars().nth(2) == Some('>'))
                     .collect();
                 assert_eq!(marked.len(), 1, "one block is marked, at 120x{height}");
                 let head: String = name.chars().take(8).collect();

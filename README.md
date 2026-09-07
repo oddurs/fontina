@@ -60,7 +60,7 @@ fontina restore                  # re-apply activations after a reboot
 fontina agent install            # have the OS run restore at login; off until asked for
 fontina preview 42 -t "Sphinx of black quartz" -a wght=700 -f smcp   # shaped glyphs, in the terminal
 fontina preview 42 -o specimen.png            # or as a PNG
-fontina ui                       # browse: facets, families, previews, tag and activate
+fontina ui                       # browse: facets, families, coverage, tag and activate
 fontina dupes                    # same font in several files
 fontina css 42 --url-prefix /fonts/ > fonts.css
 fontina covers "Þórður át 12 blóðbergsbrauð"   # faces that can set this text

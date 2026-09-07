@@ -43,3 +43,17 @@ about. Everything else in this milestone supports it.
 
 Row height is the constraint that decides the design: an image sized to one cell
 is unreadable and one sized to three makes a list of twenty. Try two.
+
+## Where this stands after the preview came out of the browser
+
+The half-block rendering was removed in #158, on the argument that a terminal cell is
+about one pixel wide and two tall, so type drawn into it is honest about the glyphs and
+dishonest about the typeface. `ui/preview.rs` and `ui/sheet.rs` are gone.
+
+That does not retire this item — it settles how it has to be done. The acceptance
+criteria above already say **kitty, iTerm2 and sixel**, with the terminal's own face as
+the fallback where no protocol is available, and a real image is not what #158 objected
+to. What it rules out is the half-block version, which is what the first attempt (#162,
+closed) built.
+
+So this stays open, and the thing to build is the image path.

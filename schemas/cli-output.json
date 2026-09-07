@@ -587,6 +587,12 @@
     "FacetCount": {
       "properties": {
         "count": {
+          "description": "Faces at this value.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "families": {
+          "description": "Families with at least one face at this value.\n\nThe two are different questions and the browser asks the second one: a facet\npane beside a list of families that counts faces cannot say what pressing a row\nwill do to the list. `400 Regular 681` next to `341 families` is a number about\nsomething else.",
           "format": "int64",
           "type": "integer"
         },
@@ -596,7 +602,8 @@
       },
       "required": [
         "value",
-        "count"
+        "count",
+        "families"
       ],
       "type": "object"
     },
@@ -605,6 +612,13 @@
       "properties": {
         "activation": {
           "description": "`session`, `user`, `installed`, or `none`.",
+          "items": {
+            "$ref": "#/$defs/FacetCount"
+          },
+          "type": "array"
+        },
+        "capability": {
+          "description": "What the faces can do: `variable`, `color`, `monospace`, `proportional`.\n\nThe same three questions as `variable`, `color` and `spacing`, gathered into one\nlist because that is how a person looks for them — \"a variable monospace\" is one\nthought, not three sections of a filter pane.",
           "items": {
             "$ref": "#/$defs/FacetCount"
           },
@@ -725,6 +739,7 @@
         "script",
         "language",
         "spacing",
+        "capability",
         "license",
         "freedom",
         "vendor",

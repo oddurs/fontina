@@ -294,7 +294,10 @@ Laid out as pull requests in §10 and shipped in that order.
 3. **See the coverage** (#48). A glyph map by Unicode block with a codepoint search, and
    `unicode::cell_for`, which stopped `glyphs` printing U+202E raw into the terminal.
 4. **Compare** (#49). Waterfall and comparison as one scrolling sheet, laid out once per
-   width rather than per frame.
+   width rather than per frame. Both were removed again on 2026-09-06: a terminal cell
+   is one pixel wide and two tall, so what they drew was a picture of something that is
+   not the font (ADR 0010). The browser shows structure; `s` opens a real specimen and
+   `fontina preview` draws a true image where the terminal has a protocol for one.
 5. **Say whether it is free** (#55). The freedom verdict and its reason in the details
    pane, and a `freedom` facet, so `--free` is reachable from the browser.
 6. **Check more** (#60). `name/empty`, `name/whitespace`, `metrics/line-gap`,
@@ -524,8 +527,8 @@ Explicit non-goals, unchanged: font editing, format conversion/subsetting (point
 Stated for the machine they are enforced on: a GitHub-hosted runner, which is around two
 and a half times slower than a developer's laptop. `scripts/bench` measures these against
 a corpus of real font files and fails on a miss;
-`.github/workflows/perf.yml` runs it. The two marked *not measured* need a terminal, and
-a number produced without one would be a number about nothing; they are checked by hand
+`.github/workflows/perf.yml` runs it. The one marked *not measured* needs a terminal, and
+a number produced without one would be a number about nothing; it is checked by hand
 until there is a harness that can hold a pty.
 
 | Metric | Budget | Measured |
@@ -536,11 +539,23 @@ until there is a harness that can hold a pty.
 | Incremental rescan, 1 changed file | ≤ 50 ms | yes |
 | Search keystroke → a screenful of results | ≤ 30 ms | yes, at 10k faces |
 | Preview render, one face, 64 px, 40 characters | ≤ 30 ms | yes |
+| Browser repaint, worst screen, 10k faces | ≤ 16 ms | yes |
+| Browser repaint at 10k faces, against 100 | ≤ 150% | yes |
 | Idle RSS of `fontina ui`, 5k faces | ≤ 40 MB | not measured |
-| TUI repaint | ≤ 16 ms | not measured |
 
 The search budget is a screenful, not every match: the unbounded form measures the cost
 of printing ten thousand lines rather than of finding them.
+
+The browser has two budgets rather than one because a single number cannot say both
+things. The first is the promise a reader feels: a repaint inside 16 ms, on the worst of
+the browser's screens, at ten thousand faces. The second is the property behind it,
+that a repaint is the size of the pane and not of the library, stated as the cost at ten
+thousand against the same screen at a hundred. A regression to a frame built per item
+would sail under the first and fail the second: it was 890% before the panes started
+windowing their rows, and still well inside 16 ms. Both are measured one layer below the
+binary, through the browser's own drawing code against an in-memory terminal, because
+the browser needs a terminal to be in and every other budget here drives the real
+binary.
 
 ---
 

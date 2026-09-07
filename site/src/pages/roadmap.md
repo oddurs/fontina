@@ -45,7 +45,12 @@ Still to do before 1.0: a Homebrew formula, winget and Scoop manifests, an AUR
 ## M2, typography
 
 In the browser: axis sliders with named-instance snapping, feature toggles, a glyph
-map by block with codepoint search, compare and waterfall views, a license viewer.
+map by block with codepoint search, a license viewer. The compare and waterfall views
+were built and then removed: a terminal cell is one pixel wide and two tall, so type
+drawn into one is a picture of something that is not the font
+([ADR 0010](../adr/0010-the-browser-shows-structure/)). The browser shows what is in a
+font; `s` opens a real specimen in a browser and `fontina preview` draws a true image
+where the terminal has a protocol for one.
 `check` grows toward fontbakery parity where it is cheap; identifiers never change.
 Optional login-agent packaging (systemd user unit, LaunchAgent, Run key), off by
 default. An optional offline Google Fonts index, separately packaged, opt-in.

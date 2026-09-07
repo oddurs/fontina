@@ -1,41 +1,40 @@
 ---
 source: crates/fontina-cli/src/ui/mod.rs
-assertion_line: 3642
 expression: drawn
 ---
-┌ 6 faces ───────────────┐┌ 5 families ─────────────────────────────┐┌ Details ────────────────────────────────────────┐
-│Weight                  ││Amiri                              1     ││Amiri Regular                                    │
-│  200 ExtraLight      1 ││Bricolage Grotesque                1 V   ││style     weight 400 · width 100% · normal       │
-│  300 Light           1 ││Inter                              2     ││glyphs    6710 · 1699 codepoints · Arab Latn Zyyy│
-│  400 Regular         6 ││Nabla                              1 VC  ││Zinh                                             │
-│  500 Medium          1 ││Source Serif 4                     1     ││features  25: ccmp dnom fina init liga locl mark │
-│  600 SemiBold        1 ││                                         ││medi numr pnum rlig rtlm                         │
-│  700 Bold            1 ││                                         ││license   OFL-1.1                                │
-│  800 ExtraBold       1 ││                                         ││freedom   free                                   │
-│Width                   ││                                         ││designer  Khaled Hosny                           │
-│  75% Condensed       1 ││                                         ││state     not active                             │
-│  87.5% SemiCondensed 1 ││                                         ││file      ../../fixtures/Amiri-Regular.ttf       │
-│  100% Normal         6 ││                                         ││                                                 │
-│Style                   ││                                         ││features                                         │
-│  upright             6 ││                                         ││  liga [ ] Standard ligatures                    │
-│Variable                ││                                         ││  pnum [ ] Proportional figures                  │
-│  variable            2 ││                                         ││  ss01 [ ] Stylistic set 1                       │
-│Color                   ││                                         ││  ss02 [ ] Stylistic set 2                       │
-│  color               1 ││                                         ││  ss03 [ ] Stylistic set 3                       │
-│Spacing                 ││                                         ││  ss04 [ ] Stylistic set 4                       │
-│  proportional        6 ││                                         ││  ss05 [ ] Stylistic set 5                       │
-│Script                  ││                                         ││  ss06 [ ] Stylistic set 6                       │
-│  Latn                6 ││                                         ││  ss07 [ ] Stylistic set 7                       │
-│  Arab                1 ││                                         ││  ss08 [ ] Stylistic set 8                       │
-│  Zyyy                6 ││                                         ││                                                 │
-│  Cyrl                1 ││                                         ││                                                 │
-│  Zinh                6 ││                                         ││                                                 │
-│  Grek                2 ││                                         ││                                                 │
-│Language                ││                                         ││                                                 │
-│  en                  6 ││                                         ││                                                 │
-│  CAT                 3 ││                                         ││                                                 │
-│  TRK                 3 ││                                         ││                                                 │
-│  AZE                 2 ││                                         ││                                                 │
-└────────────────────────┘└─────────────────────────────────────────┘└─────────────────────────────────────────────────┘
- $ fontina families
- / search  ⇥ pane  ⏎ open  ⌫ back  ␣ select  t tag  c collection  a/A activate  d deactivate  i install  ? help
+  filter  nothing narrowed — f narrows, / searches                                                        5 families
+╭ families ──────────────────────────────────╮╭ Amiri Regular ─────────────────────────────────────────────────────────╮
+│ Amiri                               1      ││ style      weight 400 · width 100% · normal                            │
+│ Bricolage Grotesque                 1 V    ││ state      not active                                                  │
+│ Inter                               2      ││                                                                        │
+│ Nabla                               1 VC   ││ features                                                               │
+│ Source Serif 4                      1      ││   liga ○ Standard ligatures                                            │
+│                                            ││   pnum ○ Proportional figures                                          │
+│                                            ││   ss01 ○ Stylistic set 1                                               │
+│                                            ││   ss02 ○ Stylistic set 2                                               │
+│                                            ││   ss03 ○ Stylistic set 3                                               │
+│                                            ││   ss04 ○ Stylistic set 4                                               │
+│                                            ││   ss05 ○ Stylistic set 5                                               │
+│                                            ││   ss06 ○ Stylistic set 6                                               │
+│                                            ││   ss07 ○ Stylistic set 7                                               │
+│                                            ││ glyphs     6710 · 1699 codepoints                                      │
+│                                            ││ Arab       ██████████ 1217                                             │
+│                                            ││ Latn       ██▌░░░░░░░ 291                                              │
+│                                            ││ Zyyy       █▍░░░░░░░░ 160                                              │
+│                                            ││ Zinh       ▍░░░░░░░░░ 31                                               │
+│                                            ││ features   25: ccmp dnom fina init liga locl mark medi numr pnum rlig  │
+│                                            ││            rtlm                                                        │
+│                                            ││                                                                        │
+│                                            ││ licence    OFL-1.1  free                                               │
+│                                            ││                                                                        │
+│                                            ││ designer   Khaled Hosny                                                │
+│                                            ││ file       ../../fixtures/Amiri-Regular.ttf                            │
+│                                            ││                                                                        │
+│                                            ││ metrics    1000 upm · asc 1124 · desc -634 · gap 0                     │
+│                                            ││ shape      cap 646 · x-height 433 · x/em 0.43                          │
+│                                            ││                                                                        │
+│                                            ││                                                                        │
+│                                            ││                                                                        │
+╰────────────────────────────────────────────╯╰────────────────────────────────────────────────────────────────────────╯
+  $ fontina families
+  / search  f narrow  F flags  x clear  ⇥ pane  ⏎ open  ⌫ back  ␣ select  t tag  c collection  a/A activate  … ? help

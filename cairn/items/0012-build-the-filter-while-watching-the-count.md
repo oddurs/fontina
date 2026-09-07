@@ -2,10 +2,10 @@
 id: 12
 title: Build the filter while watching the count
 type: feat
-status: backlog
+status: done
 milestone: tui-depth
 created: 2026-09-05
-updated: 2026-09-05
+updated: 2026-09-06
 priority: p1
 effort: m
 crate: ui
