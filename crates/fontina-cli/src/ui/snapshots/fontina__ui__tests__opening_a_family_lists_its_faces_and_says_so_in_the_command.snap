@@ -1,41 +1,40 @@
 ---
 source: crates/fontina-cli/src/ui/mod.rs
-assertion_line: 3651
 expression: "stable_frame(&mut app, 120, 36)"
 ---
-┌ 6 faces ───────────────┐┌ Inter · 2 face(s) ──────────────────────┐┌ Details ────────────────────────────────────────┐
-│Weight                  ││Regular woff                             ││Inter Regular                                    │
-│  200 ExtraLight      1 ││Regular woff2                            ││style     weight 400 · width 100% · normal       │
-│  300 Light           1 ││                                         ││glyphs    515 · 230 codepoints · Latn Zyyy Zinh  │
-│  400 Regular         6 ││                                         ││features  11: calt ccmp dnom frac locl numr pnum │
-│  500 Medium          1 ││                                         ││tnum kern mark mkmk                              │
-│  600 SemiBold        1 ││                                         ││license   OFL-1.1                                │
-│  700 Bold            1 ││                                         ││freedom   free                                   │
-│  800 ExtraBold       1 ││                                         ││state     not active                             │
-│Width                   ││                                         ││file                                             │
-│  75% Condensed       1 ││                                         ││../../fixtures/inter-latin-400-normal.woff       │
-│  87.5% SemiCondensed 1 ││                                         ││                                                 │
-│  100% Normal         6 ││                                         ││features                                         │
-│Style                   ││                                         ││  calt [ ] Contextual alternates                 │
-│  upright             6 ││                                         ││  frac [ ] Fractions                             │
-│Variable                ││                                         ││  pnum [ ] Proportional figures                  │
-│  variable            2 ││                                         ││  tnum [ ] Tabular figures                       │
-│Color                   ││                                         ││                                                 │
-│  color               1 ││                                         ││                                                 │
-│Spacing                 ││                                         ││                                                 │
-│  proportional        6 ││                                         ││                                                 │
-│Script                  ││                                         ││                                                 │
-│  Latn                6 ││                                         ││                                                 │
-│  Arab                1 ││                                         ││                                                 │
-│  Zyyy                6 ││                                         ││                                                 │
-│  Cyrl                1 ││                                         ││                                                 │
-│  Zinh                6 ││                                         ││                                                 │
-│  Grek                2 ││                                         ││                                                 │
-│Language                ││                                         ││                                                 │
-│  en                  6 ││                                         ││                                                 │
-│  CAT                 3 ││                                         ││                                                 │
-│  TRK                 3 ││                                         ││                                                 │
-│  AZE                 2 ││                                         ││                                                 │
-└────────────────────────┘└─────────────────────────────────────────┘└─────────────────────────────────────────────────┘
- $ fontina list --family "Inter"
- / search  ⇥ pane  ⏎ open  ⌫ back  ␣ select  t tag  c collection  a/A activate  d deactivate  i install  ? help
+  filter  nothing narrowed — f narrows, / searches                                                           2 faces
+╭ Inter ─────────────────────────────────────╮╭ Inter Regular ─────────────────────────────────────────────────────────╮
+│ Regular  400 woff                          ││ style      weight 400 · width 100% · normal                            │
+│ Regular  400 woff2                         ││ state      not active                                                  │
+│                                            ││                                                                        │
+│                                            ││ features                                                               │
+│                                            ││   calt ○ Contextual alternates                                         │
+│                                            ││   frac ○ Fractions                                                     │
+│                                            ││   pnum ○ Proportional figures                                          │
+│                                            ││   tnum ○ Tabular figures                                               │
+│                                            ││ glyphs     515 · 230 codepoints                                        │
+│                                            ││ Latn       ██████████ 119                                              │
+│                                            ││ Zyyy       ████████▊░ 104                                              │
+│                                            ││ Zinh       ▋░░░░░░░░░ 7                                                │
+│                                            ││ features   11: calt ccmp dnom frac locl numr pnum tnum kern mark mkmk  │
+│                                            ││                                                                        │
+│                                            ││ licence    OFL-1.1  free                                               │
+│                                            ││                                                                        │
+│                                            ││ postscript Inter-Regular                                               │
+│                                            ││ version    Version 4.001;git-66647c0bb                                 │
+│                                            ││ file       ../../fixtures/inter-latin-400-normal.woff                  │
+│                                            ││                                                                        │
+│                                            ││ metrics    2048 upm · asc 1984 · desc -494 · gap 0                     │
+│                                            ││ shape      cap 1490 · x-height 1118 · x/em 0.55                        │
+│                                            ││                                                                        │
+│                                            ││                                                                        │
+│                                            ││                                                                        │
+│                                            ││                                                                        │
+│                                            ││                                                                        │
+│                                            ││                                                                        │
+│                                            ││                                                                        │
+│                                            ││                                                                        │
+│                                            ││                                                                        │
+╰────────────────────────────────────────────╯╰────────────────────────────────────────────────────────────────────────╯
+  $ fontina list --family "Inter"
+  / search  f narrow  F flags  x clear  ⇥ pane  ⏎ open  ⌫ back  ␣ select  t tag  c collection  a/A activate  … ? help

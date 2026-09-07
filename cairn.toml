@@ -176,6 +176,11 @@ title = "TUI 4 — Discovery"
 description = "Helping someone find the right face rather than the one they asked for: comparison, similarity, coverage against real text."
 
 [[milestone]]
+name = "integrity"
+title = "Integrity — what the file claims against what it is"
+description = "Every check today reads the metadata and asks whether it is sensible. None asks whether the file agrees with itself. The first tractable piece of PLAN.md \u00a712's closing question: report the disagreement, never resolve it."
+
+[[milestone]]
 name = "unfiled"
 title = "Found, not yet scheduled"
 description = "Real findings with no milestone. Triage moves them or drops them; nothing sits here by default."

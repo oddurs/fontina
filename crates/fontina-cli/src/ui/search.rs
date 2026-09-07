@@ -159,17 +159,28 @@ impl Search {
         let (tx, requests) = channel::<Request>();
         let (replies, rx) = channel::<Reply>();
         thread::spawn(move || {
-            while let Ok(request) = requests.recv() {
+            // A request taken off the channel and not yet answered.
+            //
+            // Everything the worker takes out has to be answered or superseded by an
+            // answer to something newer, because `settle` waits for a generation and
+            // has nothing else to wait on. This is where the one request that used to
+            // be dropped on the floor is kept instead.
+            let mut held: Option<Request> = None;
+            loop {
+                let mut request = match held.take() {
+                    Some(request) => request,
+                    None => match requests.recv() {
+                        Ok(request) => request,
+                        Err(_) => return,
+                    },
+                };
                 // Coalesce: whatever else is already waiting supersedes this one, and
                 // running a superseded query is work whose answer is known to be
-                // unwanted before it starts.
-                let mut request = request;
-                loop {
-                    match requests.try_recv() {
-                        Ok(newer) => request = newer,
-                        Err(TryRecvError::Empty) => break,
-                        Err(TryRecvError::Disconnected) => return,
-                    }
+                // unwanted before it starts. Superseding is safe where dropping is
+                // not — the reply carries the newer generation, which is what the
+                // waiter was going to accept anyway.
+                while let Ok(newer) = requests.try_recv() {
+                    request = newer;
                 }
                 let mut listing = worker.answer(&request.ask);
                 // An interrupt is aimed at whatever was running when it was fired, and
@@ -178,8 +189,21 @@ impl Search {
                 // failed and nothing newer is waiting, it was either that race or a
                 // real fault, and one more attempt tells them apart. A real fault fails
                 // again and is reported; the race costs one query nobody notices.
-                if listing.is_err() && matches!(requests.try_recv(), Err(TryRecvError::Empty)) {
-                    listing = worker.answer(&request.ask);
+                //
+                // And if something newer *is* waiting, it is held rather than looked at
+                // and forgotten. `try_recv` takes the request out of the channel: the
+                // old code read it only to decide whether to retry, dropped it, and
+                // replied with the older generation — so a `settle` waiting on the
+                // newer one waited for an answer that no longer existed anywhere, with
+                // the worker parked on an empty channel. That is a browser frozen on a
+                // keystroke, and it took a filter change landing in the window where a
+                // search was still running to do it.
+                if listing.is_err() {
+                    match requests.try_recv() {
+                        Ok(newer) => held = Some(newer),
+                        Err(TryRecvError::Empty) => listing = worker.answer(&request.ask),
+                        Err(TryRecvError::Disconnected) => {}
+                    }
                 }
                 if replies
                     .send(Reply {
@@ -265,6 +289,13 @@ impl Search {
         None
     }
 
+    /// How many have been asked for and how many answered, for a test that wants to
+    /// say which of the two went wrong rather than only that something did.
+    #[cfg(test)]
+    pub fn progress(&self) -> (u64, u64) {
+        (self.sent, self.applied)
+    }
+
     /// Whether an answer is still owed. The event loop polls faster while it is.
     pub fn waiting(&self) -> bool {
         self.applied < self.sent
@@ -319,6 +350,77 @@ mod tests {
                 ..empty()
             })
         }
+    }
+
+    /// A worker that says when it has started an answer and waits to be told how it
+    /// ends, so a test can stand exactly in the window where the browser interrupts a
+    /// query that is already running.
+    struct Gated {
+        started: Sender<()>,
+        outcome: Receiver<bool>,
+    }
+
+    impl Worker for Gated {
+        fn answer(&mut self, _: &Ask) -> fontina_core::Result<Listing> {
+            let _ = self.started.send(());
+            match self.outcome.recv() {
+                Ok(true) => Ok(empty()),
+                _ => Err(fontina_core::Error::Other("interrupted".into())),
+            }
+        }
+    }
+
+    /// Every generation the worker takes off the channel gets an answer, or is
+    /// superseded by an answer to a newer one. Nothing is taken out and dropped.
+    ///
+    /// The hang this pins: the browser asks while a query is running (typing does this
+    /// on every keystroke), the interrupt lands on that running query and it comes back
+    /// an error, and the worker looked at the newer request only to decide whether to
+    /// retry — taking it out of the channel and throwing it away. It then replied with
+    /// the *older* generation. `settle` was waiting for the newer one, which no longer
+    /// existed anywhere, and the worker was parked on an empty channel. The browser
+    /// froze on the keystroke, with no error and nothing to see.
+    #[test]
+    fn a_request_the_worker_takes_out_is_never_dropped() {
+        let (started_tx, started) = channel::<()>();
+        let (outcome, outcome_rx) = channel::<bool>();
+        let mut search = Search::with_worker(
+            Gated {
+                started: started_tx,
+                outcome: outcome_rx,
+            },
+            None,
+        );
+
+        // One query, running. The worker is inside `answer` and cannot see anything
+        // else on its channel yet.
+        let first = search.ask(ask());
+        started.recv_timeout(Duration::from_secs(5)).unwrap();
+
+        // A second, asked while the first is still running: the keystroke that used to
+        // freeze the browser.
+        let second = search.ask(ask());
+        assert!(second > first);
+
+        // The first ends as an interrupt does, in an error.
+        outcome.send(false).unwrap();
+        // The second is asked for real and answers.
+        started.recv_timeout(Duration::from_secs(5)).unwrap();
+        outcome.send(true).unwrap();
+
+        // Settling has to be able to finish, so it is done where a deadlock is a failed
+        // assertion rather than a test runner that never comes back.
+        let (done, waited) = channel();
+        thread::spawn(move || {
+            let settled = search.settle(second);
+            let _ = done.send(settled.is_some());
+        });
+        assert_eq!(
+            waited.recv_timeout(Duration::from_secs(10)),
+            Ok(true),
+            "the answer to generation {second} never arrived: the worker took the \
+             request off its channel and dropped it"
+        );
     }
 
     /// An index nothing can reopen gets no worker, and the browser answers its own

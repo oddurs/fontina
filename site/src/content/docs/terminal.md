@@ -1,6 +1,6 @@
 ---
 title: Watching, previews and the browser
-description: "`watch` keeps the index current; `preview` draws real shaped glyphs in the terminal; `ui` is the keyboard-first browser."
+description: "`watch` keeps the index current; `preview` draws real shaped glyphs in the terminal; `ui` is the keyboard-first browser over what is in your fonts."
 order: 4
 ---
 
@@ -83,18 +83,54 @@ background; `--max-width` clips.
 $ fontina ui
 ```
 
-opens the index with a keyboard on it. Three panes: every facet of the library down
-the left, families or faces in the middle, the face itself on the right. It uses the
-terminal's own sixteen colours, so it looks like your terminal rather than like a
-website, and truecolor only where a preview needs it. The mouse works. The keyboard
-is the design.
+opens the index with a keyboard on it. A filter line across the top, families or faces
+on the left, the face itself on the right.
+
+It uses the terminal's own sixteen colours, so it looks like your terminal rather than
+like a website — and it uses them by *reversing* rather than by painting, so the cursor
+in the glyph map and the row your list is on are your own foreground and background,
+whichever way round you have them. Six roles, no more: the pane you are in, a label, a
+thing that worked, a thing to notice, a thing that failed, and the thing being pointed
+at. Colour carries hierarchy and never meaning; a failing check says `FAIL` whether or
+not the red arrives.
+
+Every pane is the same box — rounded, a column of padding inside it, dim until it has
+the focus, its name on the top edge and what to press on the bottom. Every quantity is
+the same bar, in eighths: what a script covers, how far along its range an axis is set.
+A list longer than its pane says so, down the right-hand border. The mouse works. The
+keyboard is the design.
+
+It shows what is *in* a font rather than a picture of one. A terminal cell is about one
+pixel wide and two tall, so type drawn with block characters arrives through a filter
+that changes its weight, loses its spacing and destroys its detail — a judgement made
+on something that is not the font. `s` writes a real specimen and opens it in a
+browser; `fontina preview` draws a true image where the terminal has a protocol for
+one. The browser is where you decide what to look at.
 
 <!--frame:the_browser_opens_on_the_family_list "families"-->
 
-The left column is the library counted rather than searched: how many faces are Light,
-how many are condensed, which scripts they cover, which vendors made them, what
-licences they carry. Selecting one filters everything; `x` clears them all. Nothing
-here is a saved list you have to build first.
+The top line is the filter, and it is there whether or not anything is filtered. With
+nothing on it says so and says which key would change that. With something on it names
+every filter in your own words, says what they did to the count — `341 → 12 families`
+— and names the key that clears them.
+
+### Narrow by
+
+`f` opens the library counted rather than searched.
+
+<!--frame:narrow_by_opens_over_the_list_and_says_how_to_leave "f — narrow by"-->
+
+Script first, then language, foundry, your own tags and collections, then what a face
+can do, then weight, width and style, licence, source and format. That is the order a
+person walks into a font library; nobody has ever opened a font manager thinking "show
+me the 500 Mediums". Each section shows its top three and ends with `+N more`, which
+Enter opens. Enter on a value filters everything; `x` clears them all; Esc closes the
+panel. Nothing here is a saved list you have to build first.
+
+Every count is a pair: families, and faces in brackets. The list beside the panel is a
+list of families, so the number that leads is the one that says what pressing the row
+will do to it. And a value you have selected is drawn at every count, including zero —
+narrowing to nothing must not take away the row that undoes it.
 
 ### Opening a family
 
@@ -128,19 +164,38 @@ becomes a family you can move through.
 
 `h` and `l` move an axis and `H` and `L` move it by ten; `n` and `p` step through the
 named instances the designer drew; Space toggles an OpenType feature; `0` puts
-everything back. The preview above redraws as you move, so what you are looking at is
-the font at that position rather than an interpolation of a picture.
+everything back. The status line carries the command that draws what you have set —
+`fontina preview 12 --axes wght=600,opsz=14` — so a position you found by feel is a
+position you can hand to something that renders.
 
-### Waterfalls, comparisons, specimens
+### What the face pane says, and in what order
 
-`w` sets the face down the size ladder, `C` compares every face the selection stands
-for, and `+` and `-` resize a comparison. `e` changes the sample text everywhere, so
-you can put your own words in.
+The pane is named by the face, and reads down in the order you are likely to be
+asking: what it is and what you have done to it, then the axes and features you can
+move, then what it can set — glyphs, codepoints, coverage per script with the count
+beside a bar — then the licence and the verdict on it, then where the file is, and
+last the measurements.
 
-For what a terminal cannot show honestly — colour fonts, fine hinting, the difference
-between two weights at 11px — `s` writes a [self-contained HTML specimen](../specimen/)
-for the selection and opens it in your browser. The terminal is where you decide what to
-look at; the specimen is where you look at it.
+Last is deliberate. A terminal too short for all of it drops from the bottom, and the
+measurements are the numbers you go looking for, while everything above is a question
+you arrive with. The blank lines between the groups go before the content does, and a
+face with eleven stylistic sets gets a third of the pane for them rather than
+two-thirds — the block scrolls to keep the cursor in it.
+
+The measurements themselves are what a terminal is good for: units per em, ascender,
+descender, line gap, cap height, x-height and the x-height ratio. Two faces compared
+this way are actually comparable. `x/em 0.43` against `x/em 0.52` says which will look
+larger at the same size, and no rendering at terminal resolution would have told you
+that.
+
+### Looking at the type
+
+`s` writes a [self-contained HTML specimen](../specimen/) for the selection and opens
+it in your browser: a waterfall, the script samples, axis sliders, feature toggles and
+a glyph map, with real antialiasing and real spacing. On the command line,
+[`fontina preview`](#previews) draws a true image over kitty graphics, iTerm2 or sixel.
+
+Neither is the browser's job. It finds and organises; those show.
 
 ### Many at once
 
@@ -198,6 +253,107 @@ written into the status line instead, ready to paste into another window: the br
 is using the screen they would print to. Anything that writes to the disk asks first,
 and anything but `y` is a no.
 
+### Filters the facets cannot express
+
+The facet pane shows what the library contains and lets one value be chosen from each
+heading. A weight *range*, two scripts at once, a coverage threshold, "not variable" —
+none of those fit that shape, and the only way to find out how many faces a filter
+would leave was to run it in another window.
+
+`F` opens a filter bar that takes the flags `fontina list` takes, and takes them by
+handing them to `fontina list`'s own parser. Nothing lists the fields twice: a flag
+added to the command line is a flag the browser understands the same day.
+
+```
+--weight 300-500 --script Cyrl --script Grek --script-min 200 --variable=false
+```
+
+It is applied as you type, so the panes behind the prompt are already showing the
+answer and the count sits beside the line. A half-typed flag is not a filter, so the
+panes stay on the last line that parsed and the prompt says which word is wrong, in the
+command line's own words. Enter keeps it, Esc puts back what was there, and `Ctrl-S`
+saves everything it matched as a collection.
+
+The bar opens pre-filled with the flags for the screen you are already on, so it starts
+as an editable copy of what you can see rather than an empty box. Toggling a facet
+afterwards hands control back to the facets and says so: a typed filter and the facet
+pane are two ways of saying the same thing, and there is no sensible way to add one
+facet to `--variable=false`.
+
+### What else is nearly this font
+
+A real library holds families that are one typeface spelled several ways: a patched
+build, a re-encoding, a subset, an interpolation. One library of 149 faces reports
+twenty families and holds about eight typefaces, because a patch spaced three ways
+names itself three times. Nothing surfaced that, so you scrolled past six rows that
+were one design.
+
+`r` lists what else covers nearly the same characters, ranked by how much. Each row
+carries the score, how many codepoints the two share out of the union, and the four
+metrics that decide whether identical coverage means identical design — units per em,
+ascender, descender, and whether the face is fixed pitch.
+
+The score is shown, never thresholded away. That is the whole point: 0.62 between two
+faces at different units per em is a coincidence, and 0.98 with every metric agreeing
+is the same design twice, and only the reader can tell you which of those they were
+looking for. The floor the query used is in the title, so if you see six answers you
+can ask what the seventh was. Enter goes to the face; a face with nothing near it says
+so rather than showing a weak list.
+
+### Can anything I own set this?
+
+Coverage shown per face, as scripts and counts, answers a question about fonts. The
+question a designer actually has is about *text*: here is a line, who can set it.
+
+`e` takes a line — paste it — and answers per face. A face that sets the whole thing is
+marked; a face that nearly does is offered **with the characters it lacks named**, by
+codepoint and by the character itself, because "no" tells you nothing you can act on
+and "missing U+0641 ف" tells you whether to subset, pair, or look elsewhere.
+
+A mixed-script line fails per script rather than as a whole. A line of English with one
+Arabic word is two questions, and a face that answers the first and not the second has
+said something useful.
+
+The text is kept when you close the answer, and `e` opens with it already in the box —
+retyping a sentence to change one word of it is the friction this exists to remove.
+Enter goes to the face.
+
+Which faces cover the whole line comes out of one query over the whole library. The
+near misses need each candidate's own coverage, so they are asked of what you have
+already filtered to, up to two hundred faces; when the answer is bounded, the title
+says so.
+
+### What might go with this
+
+Pairing is the question after choosing, and it is the one thing here that no field in
+the index answers directly. So be clear about what `P` is: **it is not taste and it does
+not pretend to be.** It is a ranking, shown with the numbers behind it, that puts twenty
+plausible candidates in front of you instead of four hundred faces.
+
+Nothing is called a good pairing. Every row says what was measured and what was found,
+in the words of the measurement:
+
+```
+Inter Regular                 weight +100 · spacing differs · x/em 0.48 vs 0.55 · 2 scripts shared
+```
+
+Four things are measured, all of them already in the index: contrast in weight,
+contrast in width, whether the spacing class differs, and how close the x-heights are
+at a common size. Plus one gate — scripts in common — because two faces that cannot set
+the same text are not a pair whatever else is true of them. The pseudo-scripts (`Zyyy`,
+`Zinh`) do not count, or every pair would look compatible.
+
+Faces from the same family are left out: pairing a typeface with its own bold is a
+weight, not a pairing. The ranking looks at the whole library rather than the pane you
+are on, because a partner is by definition something you do not already have in front
+of you. A face with nothing sharing a script says so.
+
+One thing is deliberately missing. The item behind this asked for "a different outline
+class", meaning serif against sans — and **the index does not store that**. There is no
+PANOSE and no `OS/2.sFamilyClass` in the model, so rather than dress a `glyf`-versus-`CFF`
+difference up as a typographic one, it is left out and said so here. The nearest thing
+the index does hold is the spacing class, which is a real signal on its own.
+
 ### The keys
 
 `?` puts this list over whatever you are looking at.
@@ -209,7 +365,9 @@ and anything but `y` is a no.
 | `j` `k`, arrows, PageUp, PageDown, `g`, `G` | move |
 | Tab | cycle the panes this width has |
 | `/` | search; type, then Enter. Esc clears |
-| Enter | open a family, or toggle a facet |
+| `f` | Narrow by: the facets, as a panel. Esc closes it |
+| `F` | the filter bar: `fontina list` flags, applied as you type |
+| Enter | open a family, or pick a value in Narrow by |
 | Space | mark the row under the cursor |
 | `v` | start a range; `v` again ends it |
 | `*` | mark everything the filter matches, again to unmark |
@@ -219,12 +377,13 @@ and anything but `y` is a no.
 | `a` / `A` | activate for the user / until logout |
 | `i` / `u` | install a copy / uninstall it |
 | `d` | deactivate |
-| `e`, `+`, `-` | sample text, preview size |
 | `h` `l`, `H` `L` | move an axis, by one or by ten |
 | `n` / `p` | step through named instances |
 | `0` | reset the axes and features |
+| `r` | what else covers nearly the same characters |
+| `e` | who can set this text |
+| `P` | faces ranked against this one for pairing |
 | `m` | the glyph map |
-| `w` / `C` | waterfall / compare |
 | `s` | write an HTML specimen and open it |
 | `U` / Ctrl-R | undo the last change to the index / do it again |
 | `:` | every command, filtered as you type |

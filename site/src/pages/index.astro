@@ -4,12 +4,13 @@ import { getCollection } from 'astro:content';
 import { current } from '../releases';
 import { frame } from '../frames';
 
-// One session in five frames, in the order a person meets them: the list, a family
-// opened, what that face covers, the axes it can be moved along, and the keys. Each
-// caption is the key that got there, so the strip reads as a session rather than a
-// gallery.
+// One session in six frames, in the order a person meets them: the list, the library
+// counted, a family opened, what that face covers, the axes it can be moved along, and
+// the keys. Each caption is the key that got there, so the strip reads as a session
+// rather than a gallery.
 const frames: [string, string][] = [
-  ['the_browser_opens_on_the_family_list', 'Families, with every facet of the library down the left.'],
+  ['the_browser_opens_on_the_family_list', 'Families, and a filter line that says the library is not narrowed yet.'],
+  ['narrow_by_opens_over_the_list_and_says_how_to_leave', 'f — Narrow by: script, foundry, your own tags, counted in families.'],
   ['opening_a_family_lists_its_faces_and_says_so_in_the_command', '⏎ opens a family: its faces, and the command that lists them.'],
   ['the_glyph_map_lists_the_blocks_and_lays_out_the_characters', 'm — every character the font has, by Unicode block.'],
   ['the_controls_pane_offers_the_axes_of_a_variable_face', '⇥ to the controls: a variable font on sliders, and its features.'],
@@ -163,11 +164,12 @@ const status = `
     <h2 id="browse">And a browser over the same index</h2>
     <p>
       <code>fontina ui</code> is the same library with a keyboard on it: facets on the
-      left, families in the middle, the face itself on the right, and two full-screen
-      modes for the questions that need the whole width. One session, five frames.
+      left, families in the middle, the face itself on the right. It shows what is
+      <em>in</em> a font — coverage, axes, features, metrics — and hands the looking to
+      something that can draw. One session, six frames.
     </p>
     <div class="terminal">
-      <div class="terminal-bar"><span class="where">fontina ui</span><span>5 frames</span></div>
+      <div class="terminal-bar"><span class="where">fontina ui</span><span>6 frames</span></div>
       <div class="frames">
         {frames.map(([f], i) => (
           <pre class={`term frame f${i + 1}`} aria-hidden={i > 0 ? 'true' : undefined}>{f}</pre>

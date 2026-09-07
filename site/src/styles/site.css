@@ -1001,14 +1001,14 @@ pre.astro-code, pre.astro-code span {
 }
 
 /* ------------------------------------------------------------ TUI frames */
-/* Five real snapshots, stacked in one grid cell and cross-faded, with a caption
+/* Six real snapshots, stacked in one grid cell and cross-faded, with a caption
    strip on the same clock. This one loops, because it is a session being
    replayed rather than a session being typed: no frame is the one to end on.
 
    Every frame is a file a test asserts on, so what animates here is the
-   program's actual output in five states, not an impression of it.
+   program's actual output in six states, not an impression of it.
 
-   Five phases of 3.6s: 18s a lap. Long for an animation and deliberate — the
+   Six phases of 3.6s: 21.6s a lap. Long for an animation and deliberate — the
    frames are dense, and a glance is not enough to read a glyph map — but not so
    long that a reader leaves before the fourth one. The caption changes with the
    frame, so the strip reads as narration rather than as a legend. */
@@ -1017,20 +1017,21 @@ pre.astro-code, pre.astro-code span {
   grid-area: 1 / 1;
   margin: 0;
   opacity: 0;
-  animation: frame-cycle 18s infinite;
+  animation: frame-cycle 21.6s infinite;
 }
 .frames .f1 { animation-delay: 0s; }
 .frames .f2 { animation-delay: 3.6s; }
 .frames .f3 { animation-delay: 7.2s; }
 .frames .f4 { animation-delay: 10.8s; }
 .frames .f5 { animation-delay: 14.4s; }
-/* On for its fifth of the lap. The fade in of one begins while the fade out of
+.frames .f6 { animation-delay: 18s; }
+/* On for its sixth of the lap. The fade in of one begins while the fade out of
    the last is still running, so the change is a dissolve and the frame is never
    empty — a gap of even a fifth of a second reads as a flicker. */
 @keyframes frame-cycle {
   0% { opacity: 0; }
-  2%, 19% { opacity: 1; }
-  21%, 100% { opacity: 0; }
+  2%, 15.5% { opacity: 1; }
+  17.5%, 100% { opacity: 0; }
 }
 
 /* The caption strip: one line tall, whatever is in it, so nothing below moves
@@ -1045,13 +1046,14 @@ pre.astro-code, pre.astro-code span {
 .captions .caption {
   grid-area: 1 / 1;
   opacity: 0;
-  animation: frame-cycle 18s infinite;
+  animation: frame-cycle 21.6s infinite;
 }
 .captions .c1 { animation-delay: 0s; }
 .captions .c2 { animation-delay: 3.6s; }
 .captions .c3 { animation-delay: 7.2s; }
 .captions .c4 { animation-delay: 10.8s; }
 .captions .c5 { animation-delay: 14.4s; }
+.captions .c6 { animation-delay: 18s; }
 
 /* Motion is a preference, not a hint. With it off, the session is already
    typed and the browser shows its first frame and stays there. */
@@ -1065,10 +1067,10 @@ pre.astro-code, pre.astro-code span {
      away in the manual, and the sentence under the strip says so. */
   .frames .frame { animation: none; }
   .frames .f1 { opacity: 1; }
-  .frames .f2, .frames .f3, .frames .f4, .frames .f5 { display: none; }
+  .frames .f2, .frames .f3, .frames .f4, .frames .f5, .frames .f6 { display: none; }
   .captions .caption { animation: none; }
   .captions .c1 { opacity: 1; }
-  .captions .c2, .captions .c3, .captions .c4, .captions .c5 { display: none; }
+  .captions .c2, .captions .c3, .captions .c4, .captions .c5, .captions .c6 { display: none; }
 }
 
 /* The only animation on the site. A cursor that does not blink reads as a

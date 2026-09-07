@@ -2,7 +2,7 @@
 id: 24
 title: Nobody knows what the left pane is
 type: feat
-status: backlog
+status: done
 milestone: tui-craft
 created: 2026-09-06
 updated: 2026-09-06
@@ -74,10 +74,14 @@ does not look like one, and ninety rows with no shape.
 
 ## Acceptance criteria
 
-- [ ] the filter state is visible without opening anything, and names the key
+- [x] the filter state is visible without opening anything, and names the key
       that clears it
-- [ ] the facet panel opens on one key, closes on Esc, and is titled with a verb
-- [ ] sections are collapsed by default and ordered as above
-- [ ] counts are in the same unit as the list beside them
-- [ ] a facet accepts more than one value
-- [ ] the browser at 80 columns still shows a list and a details pane
+- [x] the facet panel opens on one key, closes on Esc, and is titled with a verb
+- [x] sections are collapsed by default and ordered as above
+- [x] counts are in the same unit as the list beside them
+- [ ] a facet accepts more than one value — deferred to [[0026]]. Everything else
+      here is drawing and ordering inside the browser; this one is a change to
+      `FaceFilter`, to the SQL that builds the `WHERE`, and to the clap flags that
+      expose it, and stapling it on would have made one pull request out of two
+      arguments
+- [x] the browser at 80 columns still shows a list and a details pane

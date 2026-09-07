@@ -1,41 +1,40 @@
 ---
 source: crates/fontina-cli/src/ui/mod.rs
-assertion_line: 4599
 expression: drawn
 ---
-┌ 6 faces ─────┌ fontina ui ────────────────────────────────────────────────────────────────────────────┐──────────────┐
-│Weight        │                                                                                        │              │
-│  200 ExtraLig│ Move        j/k ↑/↓ PgUp/PgDn g/G        Tab cycles the panes                          │ normal       │
-│  300 Light   │ Filter      / type to search  Esc clears   Enter/Space toggles a facet   x clears all  │Arab Latn Zyyy│
-│  400 Regular │ Families    Enter opens a family, Backspace/Esc closes it                              │              │
-│  500 Medium  │ Select      Space marks a row, v starts and ends a range, * takes everything           │iga locl mark │
-│  600 SemiBold│             the filter matches. Every action applies to the marks when there           │              │
-│  700 Bold    │             are any, and to the cursor when there are not. Esc clears them             │              │
-│  800 ExtraBol│ Organise    t tag the selection   c add it to a collection                             │              │
-│Width         │ Activate    a for the user, A until logout, i install a copy, d deactivate, u uninstall│              │
-│  75% Condense│ Preview     e sets the sample text   + / - change the size                             │              │
-│  87.5% SemiCo│ Controls    h/l ←/→ move an axis (H/L by ten)   Space toggles a feature                │lar.ttf       │
-│  100% Normal │             n/p step through named instances   0 resets everything                     │              │
-│Style         │ Glyphs      m opens the glyph map: h/l pick a block, j/k scroll, / finds a             │              │
-│  upright     │             codepoint (U+0041, 0x41, 41) or a block by name                            │              │
-│Variable      │ Sheets      w waterfalls the face down the size ladder; C compares every face          │              │
-│  variable    │             the selection stands for. j/k scroll, +/- resize a comparison              │              │
-│Color         │ Specimen    s writes an HTML specimen and opens it, for what a terminal cannot         │              │
-│  color       │             show honestly                                                              │              │
-│Spacing       │ Panes       Three side by side at 112 columns and up; under that the facets            │              │
-│  proportional│             move over the list and Tab opens them; under 76, one pane at a             │              │
-│Script        │             time, the others still a Tab away                                          │              │
-│  Latn        │ Undo        U takes back the last change to the index, Ctrl-R does it again. A         │              │
-│  Arab        │             whole selection is one undo, and what cannot be put back exactly —         │              │
-│  Zyyy        │             a rescan — is not offered                                                  │              │
-│  Cyrl        │ Commands    : lists every command the program has, filtered as you type. The           │              │
-│  Zinh        │             ones the browser implements it runs; the ones that print it writes         │              │
-│  Grek        │             out with your selection already in them                                    │              │
-│Language      │ Index       R rescans every source (fontina scan --prune)                              │              │
-│  en          │ Quit        q                                                                          │              │
-│  CAT         │                                                                                        │              │
-│  TRK         │ The status line shows the CLI command for what you see. Everything here is a command.  │              │
-│  AZE         │                                                                                        │              │
-└──────────────│ any key to close                                                                       │──────────────┘
- $ fontina fami└────────────────────────────────────────────────────────────────────────────────────────┘
- / search  ⇥ pane  ⏎ open  ⌫ back  ␣ select  t tag  c collection  a/A activate  d deactivate  i install  ? help
+  filter  nothing narrowed — f narrows, / searches                                                        5 families
+╭ families ────╭ fontina ui ────────────────────────────────────────────────────────────────────────────╮──────────────╮
+│ Amiri        │                                                                                        │              │
+│ Bricolage Gro│  MOVING                                                                                │              │
+│ Inter        │  j/k ↑/↓ PgUp/PgDn g/G   move        ⇥  cycle the panes                                │              │
+│ Nabla        │  ⏎  open a family        ⌫ or Esc  close it                                            │              │
+│ Source Serif │  The list and the face side by side at 78 columns and up, one at a time below          │              │
+│              │                                                                                        │              │
+│              │  FINDING                                                                               │              │
+│              │  /  search names, Esc clears it      x  clear every filter                             │              │
+│              │  f  Narrow by, the facets as a panel: ⏎ picks, ⏎ on +N more opens, Esc closes          │              │
+│              │  F  the filter bar: the flags fontina list takes, applied as you type                  │              │
+│              │     Ctrl-S saves what it matched as a collection                                       │              │
+│              │                                                                                        │              │
+│              │  DOING — to the marks when there are any, to the row under the cursor when not         │              │
+│              │  ␣  mark a row   v  a range   *  all the filter matches   Esc  clear the marks         │              │
+│              │  t  tag          c  add to a collection                                                │              │
+│              │  a  activate for the user   A  until logout   i  install a copy   d/u  undo those      │              │
+│              │  U  undo the last change to the index   Ctrl-R  do it again                            │              │
+│              │                                                                                        │              │
+│              │  LOOKING                                                                               │mr pnum rlig  │
+│              │  h/l ←/→  move an axis (H/L by ten)   ␣  a feature   n/p  instances   0  reset         │              │
+│              │  m  the glyph map: h/l pick a block, / finds a codepoint or a block by name            │              │
+│              │  r  what else covers nearly the same characters, with the score and the metrics        │              │
+│              │  e  who can set a line of text: paste it, and see what each face lacks                 │              │
+│              │  P  the library ranked against this face: weight, width, spacing, x-height             │              │
+│              │  s  write an HTML specimen and open it, because a terminal cannot set type             │              │
+│              │                                                                                        │              │
+│              │  THE PROGRAM                                                                           │              │
+│              │  :  every command, filtered as you type    R  rescan every source    q  quit           │              │
+│              │                                                                                        │              │
+│              │  The status line is the command that would give you what is on the screen.             │              │
+│              │                                                                                        │              │
+╰──────────────│  any key to close                                                                      │──────────────╯
+  $ fontina fam╰────────────────────────────────────────────────────────────────────────────────────────╯
+  / search  f narrow  F flags  x clear  ⇥ pane  ⏎ open  ⌫ back  ␣ select  t tag  c collection  a/A activate  … ? help

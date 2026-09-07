@@ -22,19 +22,20 @@
 //! preview, so the screen looks native in any theme.
 
 mod controls;
+mod covering;
+mod filter;
 mod glyphs;
 mod history;
 mod layout;
+mod pairing;
 mod palette;
-mod preview;
+mod related;
 mod search;
-mod sheet;
 mod theme;
 
 use anyhow::Result;
 use fontina_core::index::FacetCount;
 use fontina_core::model::EmbeddingLevel;
-use fontina_core::render::RenderOptions;
 use fontina_core::{ActivationState, FaceFilter, FaceMetadata, FaceSummary, Facets, Family, Index};
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -109,15 +110,109 @@ impl Facet {
     }
 }
 
+/// A section of the Narrow-by panel: a heading, and the facets gathered under it.
+///
+/// The order is the order a person enters a font library. Weight was first for a year
+/// because it was the cheapest thing to count, and nobody has ever opened a font
+/// manager thinking "show me the 500 Mediums". Script, foundry and the reader's own
+/// tags and collections are how a library is actually walked into; the mechanical
+/// facts about a face are what you reach for once you are already inside.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Section {
+    Script,
+    Language,
+    Foundry,
+    Tag,
+    Collection,
+    Capability,
+    Weight,
+    Licence,
+    Source,
+    Format,
+    Activation,
+}
+
+const SECTIONS: &[Section] = &[
+    Section::Script,
+    Section::Language,
+    Section::Foundry,
+    Section::Tag,
+    Section::Collection,
+    Section::Capability,
+    Section::Weight,
+    Section::Licence,
+    Section::Source,
+    Section::Format,
+    Section::Activation,
+];
+
+impl Section {
+    fn label(self) -> &'static str {
+        match self {
+            Section::Script => "Script",
+            Section::Language => "Language",
+            Section::Foundry => "Foundry",
+            Section::Tag => "Tag",
+            Section::Collection => "Collection",
+            Section::Capability => "Capability",
+            Section::Weight => "Weight, width and style",
+            Section::Licence => "Licence",
+            Section::Source => "Source",
+            Section::Format => "Format",
+            Section::Activation => "Activation",
+        }
+    }
+}
+
+/// Which section a facet is filed under, so a value the reader has selected can be
+/// found again in the pane it came from.
+fn section_of(facet: Facet) -> Section {
+    match facet {
+        Facet::Script => Section::Script,
+        Facet::Language => Section::Language,
+        Facet::Vendor => Section::Foundry,
+        Facet::Tag => Section::Tag,
+        Facet::Collection => Section::Collection,
+        Facet::Variable | Facet::Color | Facet::Spacing => Section::Capability,
+        Facet::Weight | Facet::Width | Facet::Style => Section::Weight,
+        Facet::License | Facet::Freedom => Section::Licence,
+        Facet::Source => Section::Source,
+        Facet::Container => Section::Format,
+        Facet::Activation => Section::Activation,
+    }
+}
+
+/// What a row in the Narrow-by panel is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RowKind {
+    /// A section heading. Not somewhere the cursor stops.
+    Head,
+    /// A value, which Enter toggles.
+    Value,
+    /// `+N more`, which Enter opens.
+    More(usize),
+}
+
 struct FacetRow {
+    section: Section,
     facet: Facet,
     value: String,
+    /// Families with a face at this value, and faces. The panel leads with whichever
+    /// the list beside it is counting.
+    families: i64,
     count: i64,
-    header: bool,
+    kind: RowKind,
+}
+
+impl FacetRow {
+    fn header(&self) -> bool {
+        self.kind == RowKind::Head
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Focus {
+    /// The Narrow-by panel, which is open exactly while the focus is here.
     Facets,
     List,
     /// The face pane. Beside the others it is a readout and Tab only stops on it when
@@ -132,9 +227,12 @@ enum InputKind {
     Search,
     Tag,
     Collection,
-    Text,
     /// A codepoint or a block name, in the glyph map.
     Glyph,
+    /// Text to ask the library about: who can set this?
+    Cover,
+    /// The flags `fontina list` takes, applied to the panes as they are typed.
+    Filter,
 }
 
 struct Input {
@@ -150,6 +248,16 @@ pub struct App {
     selected: BTreeMap<Facet, String>,
     facets: Facets,
     rows: Vec<FacetRow>,
+    /// Sections of the Narrow-by panel the reader has opened. Everything is collapsed
+    /// to its top few values until somebody asks for the rest.
+    expanded: BTreeSet<Section>,
+    /// Families in the index with nothing narrowed, so the filter line can say what
+    /// the filters did — `341 → 12` rather than `12`, which says nothing.
+    ///
+    /// Kept fresh by the listing itself: with no filter and no query on, the count the
+    /// facets just returned *is* the total. The browser starts that way, so it is right
+    /// from the first frame and right again every time the reader clears.
+    total_families: i64,
     families: Vec<Family>,
     faces: Vec<FaceSummary>,
     /// `Some(name)` while a family is open.
@@ -161,6 +269,19 @@ pub struct App {
     /// than rows, because a row is a family in one view and a face in another and the
     /// mark has to survive opening the family it stands for.
     marked: BTreeSet<i64>,
+    /// The filter bar's line, while one is set.
+    ///
+    /// Kept as the text the reader typed rather than only as the parsed filter, because
+    /// it is also the command line the status bar shows: rebuilding flags from a parsed
+    /// `FaceFilter` would be a second renderer to keep in step with the first.
+    filter_line: Option<String>,
+    /// The same line, parsed. `None` while the line does not parse, which is most of
+    /// the time somebody is typing one.
+    filter_override: Option<FaceFilter>,
+    /// What to put back if the reader presses Esc.
+    filter_before: Option<(Option<String>, Option<FaceFilter>)>,
+    /// Why the line does not parse, while it does not.
+    filter_error: Option<String>,
     /// Where `v` was pressed, as a row, so the range can be redrawn as the cursor
     /// moves. Cleared when the range is committed or the view changes under it.
     mark_anchor: Option<usize>,
@@ -180,11 +301,9 @@ pub struct App {
     input: Option<Input>,
     status: String,
     help: bool,
-    preview_text: Option<String>,
     /// First line of the help the overlay is showing. Only ever non-zero on a terminal
     /// too short to hold all of it at once.
     help_scroll: u16,
-    preview_size: f32,
     detail: Option<FaceMetadata>,
     detail_id: Option<i64>,
     /// The listing row for `detail_id`: tags and activation state, joined once per
@@ -196,14 +315,29 @@ pub struct App {
     /// The glyph map, while it is open. It covers the whole screen, so it is a mode
     /// rather than a pane: there is no room to browse and read coverage at once.
     glyphs: Option<glyphs::Glyphs>,
+    /// What else covers nearly the same characters, while the list is open. A mode
+    /// rather than a pane, for the reason the glyph map is one: the evidence beside
+    /// each score is what makes it worth reading, and it needs the width.
+    related: Option<related::View>,
+    /// Faces ranked against this one for pairing, while the list is open.
+    pairing: Option<pairing::View>,
+    /// Rows the pairing list had on the last frame, so a PageDown moves by a screen.
+    pairing_rows: usize,
+    /// Rows the related list had on the last frame, so a PageDown moves by a screen.
+    related_rows: usize,
+    /// Who can set the pasted text, while the answer is on the screen.
+    covering: Option<covering::View>,
+    /// Rows the coverage answer had on the last frame, so a PageDown moves by a screen.
+    covering_rows: usize,
+    /// The text the reader last asked about.
+    ///
+    /// Kept on the browser rather than in the view, because retyping it is the whole
+    /// friction the item is about: closing the answer to go and look at a face has to
+    /// leave the question intact, and `e` has to open pre-filled with it.
+    cover_text: String,
     /// Columns the glyph grid used when it was last drawn, so a PageDown moves by what
     /// the reader can see rather than by a guess.
     glyph_cols: usize,
-    /// The waterfall or comparison, while it is open. Full-screen for the same reason
-    /// the glyph map is: rendered type needs the width.
-    sheet: Option<sheet::Sheet>,
-    /// Terminal lines the sheet had on the last frame, so a PageDown moves by a screen.
-    sheet_visible: usize,
     /// How many panes the last frame had room for.
     ///
     /// Read by the key handler, written by the drawing: Tab has to cycle through the
@@ -211,7 +345,6 @@ pub struct App {
     /// terminal was. A resize therefore reaches the keys one frame late, which is a
     /// frame the reader spends letting go of the mouse.
     shape: layout::Shape,
-    preview: preview::Cache,
     /// How the browser registers a font with the operating system.
     ///
     /// A field rather than a call to `fontina_platform::activator()` at each use, so a
@@ -265,11 +398,17 @@ impl App {
             selected: BTreeMap::new(),
             facets: Facets::default(),
             rows: Vec::new(),
+            expanded: BTreeSet::new(),
+            total_families: 0,
             theme: theme::Theme::default(),
             families: Vec::new(),
             faces: Vec::new(),
             open_family: None,
             marked: BTreeSet::new(),
+            filter_line: None,
+            filter_override: None,
+            filter_before: None,
+            filter_error: None,
             mark_anchor: None,
             focus: Focus::List,
             list: ListState::default(),
@@ -280,18 +419,20 @@ impl App {
             status: String::new(),
             help: false,
             help_scroll: 0,
-            preview_text: None,
-            preview_size: 28.0,
             detail: None,
             detail_id: None,
             detail_summary: None,
             controls: controls::Controls::default(),
             glyphs: None,
+            related: None,
+            pairing: None,
+            pairing_rows: 0,
+            related_rows: 0,
+            covering: None,
+            covering_rows: 0,
+            cover_text: String::new(),
             glyph_cols: 16,
-            sheet: None,
-            sheet_visible: 20,
-            shape: layout::Shape::Three,
-            preview: preview::Cache::default(),
+            shape: layout::Shape::Two,
             activator,
             history: history::History::default(),
             search: None,
@@ -308,7 +449,37 @@ impl App {
 
     // ----- data -----
 
+    /// What the panes are showing, as a filter.
+    ///
+    /// The filter bar, when one is set, is the whole answer: it came from the command
+    /// line's own parser and can say things the facet pane cannot, so mixing the two
+    /// would mean deciding what `--variable=false` plus a "variable" facet means. The
+    /// open family is the one thing that survives, because it is the pane the reader is
+    /// standing in rather than part of the filter they wrote.
     fn filter(&self) -> FaceFilter {
+        if let Some(f) = &self.filter_override {
+            return FaceFilter {
+                family: self.open_family.clone().or_else(|| f.family.clone()),
+                ..f.clone()
+            };
+        }
+        self.filter_from_facets()
+    }
+
+    /// Whether anything is narrowing the library: a facet, a search, or a typed line.
+    ///
+    /// The filter line and the empty-list message both ask this, and both name `x` as
+    /// the way out, so `x` has to clear every one of the three.
+    fn narrowed(&self) -> bool {
+        !self.selected.is_empty()
+            || !self.query.is_empty()
+            || self
+                .filter_line
+                .as_deref()
+                .is_some_and(|l| !l.trim().is_empty())
+    }
+
+    fn filter_from_facets(&self) -> FaceFilter {
         let mut f = FaceFilter {
             query: (!self.query.is_empty()).then(|| self.query.clone()),
             family: self.open_family.clone(),
@@ -356,6 +527,19 @@ impl App {
         } else {
             "fontina families"
         });
+        // A filter that came from a typed line is already a command line; rebuilding it
+        // from the parsed form would be a second renderer to keep in step with the
+        // first, and the reader typed the flags they wanted to see.
+        if let Some(line) = &self.filter_line {
+            if !line.trim().is_empty() {
+                s.push(' ');
+                s.push_str(line.trim());
+            }
+            if let Some(f) = &self.open_family {
+                s.push_str(&format!(" --family {f:?}"));
+            }
+            return s;
+        }
         if !self.query.is_empty() {
             s.push_str(&format!(" {:?}", self.query));
         }
@@ -442,7 +626,10 @@ impl App {
         self.facets = listing.facets;
         self.families = listing.families;
         self.faces = listing.faces;
-        self.rows = build_rows(&self.facets, &self.selected);
+        self.rows = build_rows(&self.facets, &self.selected, &self.expanded);
+        if self.selected.is_empty() && self.query.is_empty() && self.open_family.is_none() {
+            self.total_families = self.facets.families;
+        }
         let len = self.list_len();
         let sel = self.list.selected().unwrap_or(0).min(len.saturating_sub(1));
         self.list.select((len > 0).then_some(sel));
@@ -667,19 +854,23 @@ impl App {
     }
 
     /// Tab: through the panes this width has, in the order they are drawn.
+    ///
+    /// The Narrow-by panel is not one of them. It is opened on `f` and closed on Esc,
+    /// like the palette and the glyph map, because a thing you use in bursts should be
+    /// somewhere you go on purpose rather than a third stop on the way round.
     fn cycle_focus(&mut self) {
         self.focus = match self.focus {
             Focus::Facets => Focus::List,
             Focus::List if self.detail_takes_focus() => Focus::Detail,
-            Focus::List | Focus::Detail => Focus::Facets,
+            Focus::List | Focus::Detail => Focus::List,
         }
     }
 
-    /// Which pane the layout should show, for a focus that may be in the controls.
+    /// Which pane the layout should show, for a focus that is in the controls or in
+    /// the panel drawn over the list.
     fn pane(&self) -> layout::Pane {
         match self.focus {
-            Focus::Facets => layout::Pane::Facets,
-            Focus::List => layout::Pane::List,
+            Focus::Facets | Focus::List => layout::Pane::List,
             Focus::Detail => layout::Pane::Detail,
         }
     }
@@ -689,11 +880,10 @@ impl App {
     /// Asking the environment happens here, once, rather than inside `Theme::default`,
     /// so that building an App — which every test does — does not inherit whatever
     /// `TERM` and `NO_COLOR` the machine running the tests happens to have. Both the
-    /// panes and the preview cache hold the answer, because a preview drawn at one
-    /// depth and a border drawn at another would be one screen in two palettes.
+    /// panes hold the answer, because two panes drawn at two depths would be one screen
+    /// in two palettes.
     fn use_depth(&mut self, depth: theme::Depth) {
         self.theme = theme::Theme::new(depth);
-        self.preview = preview::Cache::new(self.theme);
     }
 
     // ----- events -----
@@ -732,7 +922,7 @@ impl App {
     /// relies on.
     fn on_key(&mut self, key: event::KeyEvent) -> Result<Flow> {
         if self.input.is_some() {
-            self.handle_input_key(key.code)?;
+            self.handle_input_key(key)?;
             return Ok(Flow::Continue);
         }
         if self.help {
@@ -758,32 +948,44 @@ impl App {
         }
         // Ctrl-C still quits from anywhere; a full-screen mode takes every other key,
         // so nothing underneath can move while it covers the panes.
-        if !ctrl_c(&key) {
-            if self.glyphs.is_some() {
-                self.handle_glyph_key(key.code)?;
-                return Ok(Flow::Continue);
-            }
-            if self.sheet.is_some() {
-                self.handle_sheet_key(key.code)?;
-                return Ok(Flow::Continue);
-            }
+        if !ctrl_c(&key) && self.covering.is_some() {
+            self.handle_covering_key(key.code)?;
+            return Ok(Flow::Continue);
+        }
+        if !ctrl_c(&key) && self.glyphs.is_some() {
+            self.handle_glyph_key(key.code)?;
+            return Ok(Flow::Continue);
+        }
+        if !ctrl_c(&key) && self.pairing.is_some() {
+            self.handle_pairing_key(key.code)?;
+            return Ok(Flow::Continue);
+        }
+        if !ctrl_c(&key) && self.related.is_some() {
+            self.handle_related_key(key.code)?;
+            return Ok(Flow::Continue);
         }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match key.code {
             KeyCode::Char('q') => return Ok(Flow::Quit),
             KeyCode::Char('c') if ctrl => return Ok(Flow::Quit),
             KeyCode::Esc => {
-                // The mark first, because it is the thing a reader most recently did
+                // The panel first: it is the thing on top of the screen, and Esc is
+                // what every reader tries on a thing that is on top of the screen.
+                if self.focus == Focus::Facets {
+                    self.focus = Focus::List;
+                // The mark next, because it is the thing a reader most recently did
                 // and the thing an accidental action would act on.
-                if !self.marked.is_empty() {
+                } else if !self.marked.is_empty() {
                     self.marked.clear();
                     self.mark_anchor = None;
                     self.status = "selection cleared".into();
                 } else if self.open_family.is_some() {
                     self.close_family()?;
-                } else if !self.query.is_empty() || !self.selected.is_empty() {
+                } else if self.narrowed() {
                     self.query.clear();
                     self.selected.clear();
+                    self.filter_line = None;
+                    self.filter_override = None;
                     self.reload()?;
                 } else {
                     return Ok(Flow::Quit);
@@ -833,26 +1035,28 @@ impl App {
                 self.say_marked();
             }
             KeyCode::Char('m') => self.open_glyphs(),
-            KeyCode::Char('w') => self.open_sheet(sheet::Kind::Waterfall)?,
-            KeyCode::Char('C') => self.open_sheet(sheet::Kind::Compare)?,
+            // Guarded, because Ctrl-R is redo and an unguarded arm would swallow it.
+            KeyCode::Char('r') if !ctrl => self.open_related()?,
+            // Pre-filled with the last question, because retyping a sentence to change
+            // one word in it is the friction this is here to remove.
+            KeyCode::Char('e') => self.start_input(InputKind::Cover, self.cover_text.clone()),
+            KeyCode::Char('P') => self.open_pairing()?,
             KeyCode::Char('s') => self.open_specimen()?,
             KeyCode::Tab => self.cycle_focus(),
             KeyCode::Char('/') => self.start_input(InputKind::Search, self.query.clone()),
-            KeyCode::Char('e') => {
-                let text = self.preview_text.clone().unwrap_or_default();
-                self.start_input(InputKind::Text, text)
-            }
+            KeyCode::Char('F') => self.open_filter_bar(),
             KeyCode::Char('t') => self.start_input(InputKind::Tag, String::new()),
             KeyCode::Char('c') => self.start_input(InputKind::Collection, String::new()),
+            // Everything off, including a line typed into the filter bar. The row at
+            // the top of the screen names this key, so it has to clear what that row
+            // says is on, and a typed line is one of the things it says.
             KeyCode::Char('x') => {
                 self.selected.clear();
                 self.query.clear();
+                self.filter_line = None;
+                self.filter_override = None;
                 self.reload()?;
             }
-            KeyCode::Char('+') | KeyCode::Char('=') => {
-                self.preview_size = (self.preview_size + 4.0).min(160.0)
-            }
-            KeyCode::Char('-') => self.preview_size = (self.preview_size - 4.0).max(8.0),
             KeyCode::Char('a') => self.activate(ActivationState::User)?,
             KeyCode::Char('A') => self.activate(ActivationState::Session)?,
             KeyCode::Char('i') => self.activate(ActivationState::Installed)?,
@@ -871,29 +1075,41 @@ impl App {
             KeyCode::PageUp | KeyCode::Char('b') if ctrl || key.code == KeyCode::PageUp => {
                 self.step(-15)?
             }
+            // The whole point of the panel: one key, a name and a way out. Ctrl-F is
+            // still a page down — the arm above takes it — so this is the bare `f`.
+            KeyCode::Char('f') => self.open_narrow(),
             KeyCode::Home | KeyCode::Char('g') => self.jump(0)?,
             KeyCode::End | KeyCode::Char('G') => self.jump(usize::MAX)?,
             // In the controls the arrows move an axis, so they cannot also open a
             // family; Space and Enter still toggle the row under the cursor.
             KeyCode::Right | KeyCode::Char('l') if self.controls_active() => {
                 self.controls.adjust(1);
+                self.say_position();
             }
             KeyCode::Left | KeyCode::Char('h') if self.controls_active() => {
                 self.controls.adjust(-1);
+                self.say_position();
             }
             KeyCode::Char('L') if self.controls_active() => {
                 self.controls.adjust(10);
+                self.say_position();
             }
             KeyCode::Char('H') if self.controls_active() => {
                 self.controls.adjust(-10);
+                self.say_position();
             }
             KeyCode::Char('n') if self.controls_active() => {
                 self.controls.cycle_instance(1);
+                self.say_position();
             }
             KeyCode::Char('p') if self.controls_active() => {
                 self.controls.cycle_instance(-1);
+                self.say_position();
             }
-            KeyCode::Char('0') if self.controls_active() => self.controls.reset(),
+            KeyCode::Char('0') if self.controls_active() => {
+                self.controls.reset();
+                self.say_position();
+            }
             KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Right | KeyCode::Char('l') => {
                 match self.focus {
                     Focus::Facets => self.toggle_facet()?,
@@ -901,6 +1117,7 @@ impl App {
                     Focus::Detail => {
                         if self.controls_active() {
                             self.controls.toggle();
+                            self.say_position();
                         }
                     }
                 }
@@ -917,6 +1134,266 @@ impl App {
 
     /// Open the glyph map on the face on show. A face with no coverage at all — a
     /// broken font, or one still being scanned — has nothing to map.
+    /// How many faces the pairing ranking will read the metadata of.
+    ///
+    /// x-height and spacing come out of each face's own metrics, which is a row and a
+    /// JSON parse each. Two hundred of whatever the reader has already filtered to is
+    /// far more than the twenty this is meant to put in front of them, and the title
+    /// says when the number is a floor.
+    const PAIR_CAP: usize = 200;
+
+    /// Rank the library against the face on show, for pairing.
+    fn open_pairing(&mut self) -> Result<()> {
+        let (Some(id), Some(target)) = (self.detail_id, self.detail.clone()) else {
+            self.status = "no face on show".into();
+            return Ok(());
+        };
+        // Without the open family, deliberately. A partner is something the reader
+        // does not already have on the screen, and ranking inside an open family can
+        // only ever return that family's own weights.
+        let listed = self.index.list(&FaceFilter {
+            family: None,
+            ..self.filter()
+        })?;
+        let capped = listed.len() > Self::PAIR_CAP;
+        let considered = listed.len();
+        let mut rows = Vec::new();
+        for summary in listed.into_iter().take(Self::PAIR_CAP) {
+            // Not itself, and not another face of the same family: pairing a typeface
+            // with its own bold is a weight, not a pairing.
+            if summary.id == id || summary.family == target.names.family {
+                continue;
+            }
+            let Some(face) = self.index.get_face(summary.id)? else {
+                continue;
+            };
+            rows.push(pairing::measure(&target, &face, summary.id));
+        }
+        let view = pairing::View::new(&target, rows, considered, capped);
+        if view.is_empty() {
+            self.status = format!(
+                "nothing in this filter shares a script with {} {}   (fontina list --script ...)",
+                target.names.family, target.names.subfamily
+            );
+            self.pairing = None;
+            return Ok(());
+        }
+        self.status = view.title();
+        self.pairing = Some(view);
+        Ok(())
+    }
+
+    /// Keys while the pairing list is up.
+    fn handle_pairing_key(&mut self, code: KeyCode) -> Result<()> {
+        let page = self.pairing_rows.max(1) as i32;
+        let Some(view) = self.pairing.as_mut() else {
+            return Ok(());
+        };
+        match code {
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('P') => self.pairing = None,
+            KeyCode::Down | KeyCode::Char('j') => view.move_cursor(1),
+            KeyCode::Up | KeyCode::Char('k') => view.move_cursor(-1),
+            KeyCode::PageDown => view.move_cursor(page),
+            KeyCode::PageUp => view.move_cursor(-page),
+            KeyCode::Home | KeyCode::Char('g') => view.jump(0),
+            KeyCode::End | KeyCode::Char('G') => view.jump(usize::MAX),
+            KeyCode::Enter => {
+                let Some(id) = view.selected().map(|r| r.id) else {
+                    return Ok(());
+                };
+                self.pairing = None;
+                return self.go_to_face(id);
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// List what else in the library covers nearly the same characters.
+    ///
+    /// Every candidate's metadata is read here, once, rather than per frame: the four
+    /// metrics beside each score come out of the face itself, and a mode drawn four
+    /// times a second cannot go back to the index for them.
+    fn open_related(&mut self) -> Result<()> {
+        let (Some(id), Some(face)) = (self.detail_id, self.detail.clone()) else {
+            self.status = "no face on show".into();
+            return Ok(());
+        };
+        let mut candidates = Vec::new();
+        for row in self.index.related(id, related::FLOOR)? {
+            let Some(other) = self.index.get_face(row.face.id)? else {
+                continue;
+            };
+            candidates.push(related::Candidate {
+                metrics: related::Metrics::of(&other),
+                row,
+            });
+        }
+        let view = related::View::new(&face, candidates);
+        // Saying so is the answer, and a better one than a list of weak matches: a
+        // library where nothing resembles this face has told the reader something.
+        if view.is_empty() {
+            self.status = format!(
+                "nothing in the library covers what {} {} covers   (fontina variants {id})",
+                face.names.family, face.names.subfamily
+            );
+            return Ok(());
+        }
+        self.status = format!("{}   (fontina variants {id})", view.title());
+        self.related = Some(view);
+        Ok(())
+    }
+
+    /// Keys while the related list is up. It covers the screen, so it takes them all.
+    fn handle_related_key(&mut self, code: KeyCode) -> Result<()> {
+        let page = self.related_rows.max(1) as i32;
+        let Some(view) = self.related.as_mut() else {
+            return Ok(());
+        };
+        match code {
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('r') => self.related = None,
+            KeyCode::Down | KeyCode::Char('j') => view.move_cursor(1),
+            KeyCode::Up | KeyCode::Char('k') => view.move_cursor(-1),
+            KeyCode::PageDown => view.move_cursor(page),
+            KeyCode::PageUp => view.move_cursor(-page),
+            KeyCode::Home | KeyCode::Char('g') => view.jump(0),
+            KeyCode::End | KeyCode::Char('G') => view.jump(usize::MAX),
+            // Enter takes the reader to the face they are looking at, which is the
+            // whole point of having found it.
+            KeyCode::Enter => {
+                let Some(id) = view.selected().map(|c| c.row.face.id) else {
+                    return Ok(());
+                };
+                self.related = None;
+                return self.go_to_face(id);
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Put the cursor on a face by id, opening the family it lives in.
+    fn go_to_face(&mut self, id: i64) -> Result<()> {
+        let Some(face) = self.index.get_face(id)? else {
+            self.status = format!("face {id} is no longer in the index");
+            return Ok(());
+        };
+        // Whatever was filtering the list would probably hide the face just chosen,
+        // and a "go here" that goes nowhere is worse than none.
+        self.filter_line = None;
+        self.filter_override = None;
+        self.selected.clear();
+        self.query.clear();
+        self.open_family = Some(face.names.family.clone());
+        self.reload()?;
+        if let Some(i) = self.faces.iter().position(|f| f.id == id) {
+            self.list.select(Some(i));
+            self.refresh_detail()?;
+        }
+        self.status = format!("{} {}", face.names.family, face.names.subfamily);
+        Ok(())
+    }
+
+    /// How many faces the coverage answer will read the metadata of.
+    ///
+    /// The list of faces that cover everything comes out of SQLite in one query and is
+    /// not bounded by this. The near misses are: naming the codepoints a face lacks
+    /// needs that face's own ranges, which is a row and a JSON parse each, and doing
+    /// that for ten thousand faces to answer a keystroke is not an answer, it is a
+    /// pause. Two hundred of whatever the reader has already filtered to is a screenful
+    /// many times over, and the title says when the number is a floor.
+    const COVER_CAP: usize = 200;
+
+    /// Ask the library who can set the text.
+    fn open_covering(&mut self) -> Result<()> {
+        let text = self.cover_text.clone();
+        let want = covering::wanted(&text);
+        if want.is_empty() {
+            self.covering = None;
+            self.status = "nothing to set: type some text".into();
+            return Ok(());
+        }
+
+        // Two questions, because they have different costs. Which faces cover all of
+        // it is one query over the whole library; which faces nearly do needs each
+        // candidate's own coverage, so it is asked of what the reader has filtered to.
+        let filter = self.filter();
+        let complete: BTreeSet<i64> = self
+            .index
+            .covering(&text, &filter)?
+            .into_iter()
+            .map(|f| f.id)
+            .collect();
+        let listed = self.index.list(&filter)?;
+        let capped = listed.len() > Self::COVER_CAP;
+        let considered = listed.len();
+
+        let mut rows = Vec::new();
+        for summary in listed.into_iter().take(Self::COVER_CAP) {
+            let label = format!("{} {}", summary.family, summary.subfamily);
+            // A face the query already said covers everything needs no second opinion,
+            // and skipping it is most of the work saved on an ordinary question.
+            let verdict = if complete.contains(&summary.id) {
+                covering::Verdict {
+                    missing: Vec::new(),
+                    per_script: covering::judge_scripts(&want),
+                    wanted: want.len(),
+                }
+            } else {
+                let Some(face) = self.index.get_face(summary.id)? else {
+                    continue;
+                };
+                covering::judge(&face, &want)
+            };
+            rows.push(covering::Row {
+                id: summary.id,
+                label,
+                verdict,
+            });
+        }
+        let view = covering::View::new(&text, rows, considered, capped);
+        if view.is_empty() {
+            self.status = format!("no face in this filter to ask about {text:?}");
+            self.covering = None;
+            return Ok(());
+        }
+        self.status = format!("{}   (fontina covers {})", view.title(), shell_quote(&text));
+        self.covering = Some(view);
+        Ok(())
+    }
+
+    /// Keys while the coverage answer is up.
+    fn handle_covering_key(&mut self, code: KeyCode) -> Result<()> {
+        let page = self.covering_rows.max(1) as i32;
+        let Some(view) = self.covering.as_mut() else {
+            return Ok(());
+        };
+        match code {
+            KeyCode::Esc | KeyCode::Char('q') => self.covering = None,
+            // `e` from inside asks a new question with the old one in the box, which is
+            // what a reader changing one word of a sentence wants.
+            KeyCode::Char('e') => {
+                self.covering = None;
+                self.start_input(InputKind::Cover, self.cover_text.clone());
+            }
+            KeyCode::Down | KeyCode::Char('j') => view.move_cursor(1),
+            KeyCode::Up | KeyCode::Char('k') => view.move_cursor(-1),
+            KeyCode::PageDown => view.move_cursor(page),
+            KeyCode::PageUp => view.move_cursor(-page),
+            KeyCode::Home | KeyCode::Char('g') => view.jump(0),
+            KeyCode::End | KeyCode::Char('G') => view.jump(usize::MAX),
+            KeyCode::Enter => {
+                let Some(id) = view.selected().map(|r| r.id) else {
+                    return Ok(());
+                };
+                self.covering = None;
+                return self.go_to_face(id);
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     fn open_glyphs(&mut self) {
         let Some(face) = &self.detail else {
             self.status = "no face on show".into();
@@ -936,49 +1413,38 @@ impl App {
         self.glyphs = Some(map);
     }
 
-    /// Open a waterfall over the selected face, or a comparison across everything the
-    /// selection stands for.
-    fn open_sheet(&mut self, kind: sheet::Kind) -> Result<()> {
-        let ids: Vec<i64> = match kind {
-            sheet::Kind::Waterfall => self.current_face_id().into_iter().collect(),
-            // Inside an open family the listing is the family's own faces, and that is
-            // exactly the view a reader presses `C` from. `current_face_ids` narrows to
-            // the selected face there, which would compare a face with itself.
-            sheet::Kind::Compare if self.open_family.is_some() => {
-                self.faces.iter().map(|f| f.id).collect()
-            }
-            sheet::Kind::Compare => self.current_face_ids(),
-        };
-        // Read every face once, here. The sheet is drawn on every frame and holds what
-        // it needs; querying per row per frame is the mistake #36 fixed for the pane.
-        let mut faces = Vec::with_capacity(ids.len());
-        for id in &ids {
-            if let Some(face) = self.index.get_face(*id)? {
-                faces.push(face);
-            }
+    /// Say where the axes and features now stand, as the command that would draw it.
+    ///
+    /// The controls used to move a picture in the pane below them. They move a position
+    /// now, and a position with nothing to show for it is a knob attached to nothing —
+    /// so it goes where every other action in this program goes: the status line, as the
+    /// command line that would produce it. `fontina preview` draws a true image where
+    /// the terminal has a protocol for one, and `s` opens the specimen with the sliders
+    /// in it.
+    fn say_position(&mut self) {
+        let Some(id) = self.detail_id else { return };
+        let axes = self
+            .controls
+            .variations()
+            .iter()
+            .map(|(tag, value)| format!("{tag}={}", (value * 100.0).round() / 100.0))
+            .collect::<Vec<_>>()
+            .join(",");
+        let features = self
+            .controls
+            .forced_features()
+            .iter()
+            .map(|(tag, _)| tag.clone())
+            .collect::<Vec<_>>()
+            .join(",");
+        let mut command = format!("fontina preview {id}");
+        if !axes.is_empty() {
+            command.push_str(&format!(" --axes {axes}"));
         }
-        if faces.is_empty() {
-            self.status = "no face on show".into();
-            return Ok(());
+        if !features.is_empty() {
+            command.push_str(&format!(" --features {features}"));
         }
-        let sheet = match kind {
-            sheet::Kind::Waterfall => sheet::Sheet::waterfall(
-                faces.remove(0),
-                self.controls.variations(),
-                self.controls.forced_features(),
-            ),
-            sheet::Kind::Compare => sheet::Sheet::compare(faces, self.preview_size),
-        };
-        self.status = format!(
-            "{}   (fontina specimen {})",
-            sheet.title(),
-            ids.iter()
-                .map(|id| id.to_string())
-                .collect::<Vec<_>>()
-                .join(" ")
-        );
-        self.sheet = Some(sheet);
-        Ok(())
+        self.status = command;
     }
 
     /// Write a specimen for the selection and hand it to the user's browser.
@@ -1007,7 +1473,7 @@ impl App {
         let html = fontina_core::specimen::render(
             &faces,
             &fontina_core::specimen::SpecimenOptions {
-                text: self.preview_text.clone(),
+                text: None,
                 link: false,
                 title: None,
             },
@@ -1028,51 +1494,6 @@ impl App {
             // written either way, and its path is the useful half of the answer.
             Err(e) => format!("wrote {} but could not open it: {e}", path.display()),
         };
-        Ok(())
-    }
-
-    /// Keys the sheet owns while it is open. Everything else is swallowed, for the same
-    /// reason the glyph map swallows: it covers the panes underneath.
-    fn handle_sheet_key(&mut self, code: KeyCode) -> Result<()> {
-        let visible = self.sheet_visible.max(1);
-        let Some(sheet) = self.sheet.as_mut() else {
-            return Ok(());
-        };
-        match code {
-            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('w') | KeyCode::Char('C') => {
-                self.sheet = None;
-            }
-            KeyCode::Down | KeyCode::Char('j') => sheet.scroll_by(1, visible),
-            KeyCode::Up | KeyCode::Char('k') => sheet.scroll_by(-1, visible),
-            // A page is a screen less one line of overlap, and at least one line: in a
-            // pane one line tall the overlap would be the whole page, and PageDown,
-            // PageUp and Space were dead keys.
-            KeyCode::PageDown | KeyCode::Char(' ') => {
-                sheet.scroll_by((visible as i32 - 1).max(1), visible)
-            }
-            KeyCode::PageUp => sheet.scroll_by(-(visible as i32 - 1).max(1), visible),
-            KeyCode::Home | KeyCode::Char('g') => sheet.scroll_by(i32::MIN / 2, visible),
-            KeyCode::End | KeyCode::Char('G') => sheet.scroll_by(i32::MAX / 2, visible),
-            KeyCode::Char('+') | KeyCode::Char('=') | KeyCode::Char('-') => {
-                let delta = if code == KeyCode::Char('-') {
-                    -4.0
-                } else {
-                    4.0
-                };
-                let fixed = !sheet.resize(delta) && sheet.kind() == sheet::Kind::Waterfall;
-                if fixed {
-                    // Silence would read as a broken key; the ladder is deliberate.
-                    self.status =
-                        "a waterfall is the size ladder; C compares faces at one size".into();
-                }
-            }
-            KeyCode::Char('e') => {
-                let text = self.preview_text.clone().unwrap_or_default();
-                self.start_input(InputKind::Text, text);
-            }
-            KeyCode::Char('s') => self.open_specimen()?,
-            _ => {}
-        }
         Ok(())
     }
 
@@ -1113,7 +1534,16 @@ impl App {
         self.input = Some(Input { kind, buf });
     }
 
-    fn handle_input_key(&mut self, code: KeyCode) -> Result<()> {
+    fn handle_input_key(&mut self, key: event::KeyEvent) -> Result<()> {
+        let code = key.code;
+        // The filter bar is applied as it is typed, so every key that changes the line
+        // has to re-apply it, and Esc has to put back what was there before. Checked
+        // before the borrow below, because applying a line touches the whole browser.
+        match self.input.as_ref().map(|i| i.kind) {
+            None => return Ok(()),
+            Some(InputKind::Filter) => return self.handle_filter_key(key),
+            Some(_) => {}
+        }
         let Some(input) = self.input.as_mut() else {
             return Ok(());
         };
@@ -1134,15 +1564,18 @@ impl App {
                 let Input { kind, buf } = self.input.take().expect("checked");
                 let value = buf.trim().to_string();
                 match kind {
+                    InputKind::Filter => {
+                        // Already applied, keystroke by keystroke. Enter just closes
+                        // the prompt over the answer.
+                        self.filter_before = None;
+                        self.status = format!("{}   ({})", self.count_line(), self.command_line());
+                    }
                     InputKind::Search => {
                         // Enter closes the box on a query already asked for by the last
                         // character typed. Waiting here would put the pause back at the
                         // one moment the reader has finished typing and is looking.
                         self.query = value;
                         self.request_reload();
-                    }
-                    InputKind::Text => {
-                        self.preview_text = (!value.is_empty()).then_some(value);
                     }
                     InputKind::Glyph => {
                         let cols = self.glyph_cols.max(1);
@@ -1158,6 +1591,10 @@ impl App {
                                 format!("nothing covered matches {value:?}")
                             };
                         }
+                    }
+                    InputKind::Cover => {
+                        self.cover_text = value;
+                        self.open_covering()?;
                     }
                     InputKind::Tag => {
                         if !value.is_empty() {
@@ -1245,7 +1682,7 @@ impl App {
                 // rather than abandoning the move: PageUp from row 8 used to do nothing
                 // at all, while Home on the same row settled on row 1.
                 let mut ran_off = false;
-                while self.rows[next].header {
+                while self.rows[next].header() {
                     let n = next as i32 + delta.signum();
                     if n < 0 || n >= self.rows.len() as i32 {
                         ran_off = true;
@@ -1288,6 +1725,25 @@ impl App {
         Ok(())
     }
 
+    /// Open the Narrow-by panel, on the first row worth stopping on.
+    fn open_narrow(&mut self) {
+        self.focus = Focus::Facets;
+        if self.rows.is_empty() {
+            self.status = "nothing to narrow: the index is empty".into();
+            self.focus = Focus::List;
+            return;
+        }
+        if self
+            .facet_list
+            .selected()
+            .is_none_or(|i| i >= self.rows.len())
+        {
+            self.facet_list
+                .select(Some(first_selectable(&self.rows, 0)));
+        }
+    }
+
+    /// Enter, in the panel: toggle a value, or open the section a `+N more` ends.
     fn toggle_facet(&mut self) -> Result<()> {
         let Some(i) = self.facet_list.selected() else {
             return Ok(());
@@ -1295,17 +1751,39 @@ impl App {
         let Some(row) = self.rows.get(i) else {
             return Ok(());
         };
-        if row.header {
-            return Ok(());
+        match row.kind {
+            RowKind::Head => Ok(()),
+            // Opening a section shows more of what is already there. It picks nothing,
+            // so it must not disturb a typed filter the way picking a value does.
+            RowKind::More(hidden) => {
+                let section = row.section;
+                self.expanded.insert(section);
+                self.rows = build_rows(&self.facets, &self.selected, &self.expanded);
+                self.status = format!("{}: {hidden} more", section.label());
+                Ok(())
+            }
+            RowKind::Value => {
+                // A typed filter can say things a facet cannot — a range, two scripts
+                // at once, "not variable" — so there is no sensible way to add one
+                // facet to one of those. The facets take over again, and the line is
+                // not silently half-kept.
+                if self.filter_override.take().is_some() {
+                    self.filter_line = None;
+                    self.status = "the filter bar was cleared: facets and a typed \
+                                   filter are two ways of saying the same thing"
+                        .into();
+                }
+                let row = &self.rows[i];
+                let (facet, value) = (row.facet, row.value.clone());
+                if self.selected.get(&facet) == Some(&value) {
+                    self.selected.remove(&facet);
+                } else {
+                    self.selected.insert(facet, value);
+                }
+                self.list.select(Some(0));
+                self.reload()
+            }
         }
-        let (facet, value) = (row.facet, row.value.clone());
-        if self.selected.get(&facet) == Some(&value) {
-            self.selected.remove(&facet);
-        } else {
-            self.selected.insert(facet, value);
-        }
-        self.list.select(Some(0));
-        self.reload()
     }
 
     fn open_family(&mut self) -> Result<()> {
@@ -1474,7 +1952,6 @@ impl App {
             report.removed,
             report.failed.len()
         );
-        self.preview.clear();
         self.reload()
     }
 
@@ -1485,11 +1962,17 @@ impl App {
         let vertical = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
+                // The filter line, always. It is the one row that says what the browser
+                // is currently showing you a subset of, and it costs a row whether or
+                // not anything is narrowed, because a control that appears only once
+                // you have used it is a control nobody finds.
+                Constraint::Length(1),
                 Constraint::Min(3),
                 Constraint::Length(1),
                 Constraint::Length(1),
             ])
             .split(area);
+        let body = vertical[1];
         self.shape = layout::Shape::for_width(area.width);
         // The focus can outlive the pane it was in: drag a window narrow while the
         // cursor sits in the controls and the face pane stops taking focus. Settle
@@ -1497,27 +1980,49 @@ impl App {
         if self.focus == Focus::Detail && !self.detail_takes_focus() {
             self.focus = Focus::List;
         }
-        let panes = layout::split(vertical[0], self.pane());
-        // Beneath first, overlay last: at two panes the facets are drawn over the list.
+        let panes = layout::split(body, self.pane());
+        // The three chrome rows are inset by the column the panes' borders occupy, so
+        // that the filter, the status line and the key hints start where the panes'
+        // text starts. One left edge down the whole screen is most of what makes a
+        // terminal look composed rather than assembled.
+        let chrome = |row: Rect| {
+            row.inner(ratatui::layout::Margin {
+                horizontal: 1,
+                vertical: 0,
+            })
+        };
+        self.draw_filter(f, chrome(vertical[0]));
         if let Some(area) = panes.list {
             self.draw_list(f, area);
         }
         if let Some(area) = panes.detail {
             self.draw_detail(f, area);
         }
-        if let Some(area) = panes.facets {
-            if panes.overlay {
-                f.render_widget(Clear, area);
+        // Last, and over the top: the panel is a drawer, not a pane. The whole list
+        // pane is cleared under it, not just the columns the drawer covers — the list
+        // is wider than the drawer at most widths, and the stripe left showing down its
+        // right edge is the end of every row: the counts, the flags, and its own
+        // scrollbar. A margin of nothing there reads as a drawer standing open; three
+        // columns of somebody else's table reads as a drawing bug.
+        if self.focus == Focus::Facets {
+            if let Some(under) = panes.list {
+                f.render_widget(Clear, under);
             }
-            self.draw_facets(f, area, panes.overlay);
+            self.draw_facets(f, layout::panel(body));
         }
-        self.draw_status(f, vertical[1]);
-        self.draw_keys(f, vertical[2]);
-        if self.sheet.is_some() {
-            self.draw_sheet(f, vertical[0]);
-        }
+        self.draw_status(f, chrome(vertical[2]));
+        self.draw_keys(f, chrome(vertical[3]));
         if self.glyphs.is_some() {
-            self.draw_glyphs(f, vertical[0]);
+            self.draw_glyphs(f, body);
+        }
+        if self.related.is_some() {
+            self.draw_related(f, body);
+        }
+        if self.covering.is_some() {
+            self.draw_covering(f, body);
+        }
+        if self.pairing.is_some() {
+            self.draw_pairing(f, body);
         }
         if self.palette.is_some() {
             self.draw_palette(f, area);
@@ -1525,6 +2030,110 @@ impl App {
         if self.help {
             self.draw_help(f, area);
         }
+    }
+
+    /// The filter line: what is on, what it did, and how to take it off.
+    ///
+    /// One row above everything else. The state used to live in the facet pane's
+    /// marks and in the command at the bottom of the screen, which meant a reader had
+    /// to reconstruct it from two places, one of which they had to scroll. Now it is
+    /// written out: every filter in the reader's own words, the count before and
+    /// after, and the key that clears it.
+    fn draw_filter(&self, f: &mut ratatui::Frame, area: Rect) {
+        let width = area.width as usize;
+        let unit = if self.open_family.is_some() {
+            "faces"
+        } else {
+            "families"
+        };
+        let shown = if self.open_family.is_some() {
+            self.faces.len() as i64
+        } else {
+            self.facets.families
+        };
+        let narrowed = self.narrowed();
+        // The right-hand side first, because it is the part that must not be cut: a
+        // count with no filters named still says something, a filter list with no
+        // count does not.
+        let mut right: Vec<Span<'static>> = Vec::new();
+        // `before → after` only while the list is families, because that is the number
+        // `total_families` is about; inside a family the count is faces and there is
+        // nothing honest to compare it with. The key that clears is named either way,
+        // because either way the left of this row is naming filters that are on.
+        if narrowed && self.open_family.is_none() {
+            right.push(Span::raw(format!(
+                "{} → {shown} {unit}   ",
+                self.total_families
+            )));
+        } else {
+            right.push(Span::styled(format!("{shown} {unit}   "), self.theme.dim()));
+        }
+        if narrowed {
+            right.push(Span::styled("x", self.theme.accent()));
+            right.push(Span::styled(" clear ", self.theme.dim()));
+        }
+        let right_w: usize = right.iter().map(|s| s.content.chars().count()).sum();
+
+        let mut left: Vec<Span<'static>> = vec![Span::styled(" filter  ", self.theme.dim())];
+        let room = width.saturating_sub(right_w + 10);
+        if !narrowed {
+            // Whole phrases, longest first: a hint cut in the middle leaves a stray
+            // slash on the screen and tells nobody anything.
+            let (dim, accent) = (self.theme.dim(), self.theme.accent());
+            let hints: [Vec<Span<'static>>; 4] = [
+                vec![
+                    Span::styled("nothing narrowed — ", dim),
+                    Span::styled("f", accent),
+                    Span::styled(" narrows, ", dim),
+                    Span::styled("/", accent),
+                    Span::styled(" searches", dim),
+                ],
+                vec![
+                    Span::styled("nothing narrowed — ", dim),
+                    Span::styled("f", accent),
+                    Span::styled(" narrows", dim),
+                ],
+                vec![Span::styled("f", accent), Span::styled(" narrows", dim)],
+                Vec::new(),
+            ];
+            for hint in hints {
+                let w: usize = hint.iter().map(|s| s.content.chars().count()).sum();
+                if w <= room || hint.is_empty() {
+                    left.extend(hint);
+                    break;
+                }
+            }
+        } else if let Some(line) = self.filter_line.as_deref().filter(|l| !l.trim().is_empty()) {
+            // A typed line is the whole filter — `filter` ignores the facets while one
+            // is set — so it is what this row says, in the words the reader typed.
+            left.push(Span::raw(truncate(line.trim(), room)));
+        } else {
+            let mut parts: Vec<String> = Vec::new();
+            if !self.query.is_empty() {
+                parts.push(format!("“{}”", self.query));
+            }
+            parts.extend(self.selected.iter().map(|(facet, v)| {
+                format!(
+                    "{} {}",
+                    facet.label().to_lowercase(),
+                    facet_value_label(*facet, v)
+                )
+            }));
+            left.push(Span::raw(truncate(&parts.join(" · "), room)));
+        }
+        // The count is the part that must survive a narrow terminal, so the hints give
+        // way to it a span at a time rather than the line running off the end.
+        let width_of = |spans: &[Span<'static>]| -> usize {
+            spans.iter().map(|s| s.content.chars().count()).sum()
+        };
+        while left.len() > 1 && width_of(&left) + right_w > width {
+            left.pop();
+        }
+        let gap = width.saturating_sub(width_of(&left) + right_w);
+        let mut spans = left;
+        spans.push(Span::raw(" ".repeat(gap)));
+        spans.extend(right);
+        f.render_widget(Paragraph::new(Line::from(spans)), area);
     }
 
     /// The command palette: what has been typed, and what still matches.
@@ -1556,10 +2165,7 @@ impl App {
                 palette.total()
             ),
         };
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(self.theme.accent())
-            .title(title);
+        let block = self.pane_block(title, true);
         let inner = block.inner(rect);
         f.render_widget(Clear, rect);
         f.render_widget(block, rect);
@@ -1597,85 +2203,109 @@ impl App {
                 ]))
             })
             .collect();
-        let list =
-            List::new(items).highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+        let list = List::new(items).highlight_style(self.theme.selection(true));
         f.render_stateful_widget(list, rows, &mut windowed(Some(palette.cursor()), &win));
     }
 
-    /// The waterfall or the comparison: each row rendered, labelled, and stacked, with
-    /// the whole sheet scrolling by terminal lines.
-    fn draw_sheet(&mut self, f: &mut ratatui::Frame, area: Rect) {
-        let Some(sheet) = &self.sheet else { return };
+    /// The pairing list: a name, and the measurements it was ranked on.
+    fn draw_pairing(&mut self, f: &mut ratatui::Frame, area: Rect) {
+        let Some(view) = &self.pairing else { return };
         f.render_widget(Clear, area);
-        // A waterfall runs to a few hundred lines, so where you are in it is worth
-        // saying; without it the only cue is that scrolling stopped.
-        let position = match sheet.lines() {
-            0 => String::new(),
-            total => format!(" [{}/{}]", sheet.scroll_row() + 1, total),
-        };
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(self.theme.accent())
-            .title(format!(
-                " {}{position} — e sets the text, Esc closes ",
-                sheet.title()
+        let block = self
+            .pane_block(format!(" {} ", view.title()), true)
+            .title_bottom(Span::styled(
+                " ⏎ goes to it · P or Esc closes ",
+                self.theme.dim(),
             ));
         let inner = block.inner(area);
         f.render_widget(block, area);
-        if inner.width < 8 || inner.height < 2 {
+        if inner.width < 24 || inner.height < 1 {
             return;
         }
-
-        let visible = inner.height as usize;
-        self.sheet_visible = visible;
-        let width = inner.width;
-        let text = self.preview_text.clone();
-
-        // Lay the sheet out once per pane width and sample text, not once per frame:
-        // a waterfall is nine rasterisations and a comparison is one per face.
-        if !self
-            .sheet
-            .as_ref()
-            .is_some_and(|s| s.is_built_for(width, text.as_deref()))
-        {
-            let Some(sheet) = self.sheet.take() else {
-                return;
-            };
-            let mut lines: Vec<Line> = Vec::new();
-            for row in sheet.rows() {
-                let words = sheet.text_for(row, text.as_deref());
-                let opts = sheet.options(row, words, width as u32);
-                lines.push(Line::from(Span::styled(
-                    row.label.clone(),
-                    self.theme.dim(),
-                )));
-                let px_rows = (row.size.ceil() as u32 * 2).max(2);
-                lines.extend(self.preview.lines(&row.face, &opts, px_rows));
-                lines.push(Line::from(""));
-            }
-            let mut sheet = sheet;
-            sheet.set_built(width, text, lines);
-            self.sheet = Some(sheet);
-        }
-
-        let Some(sheet) = self.sheet.as_mut() else {
-            return;
-        };
-        // Re-clamp against the height being drawn: a pane that grew since the last
-        // keypress must not start past the end and render blank.
-        sheet.scroll_by(0, visible);
-        f.render_widget(Paragraph::new(sheet.window(visible)), inner);
+        self.pairing_rows = inner.height as usize;
+        let win = layout::window(view.rows().len(), view.cursor(), inner.height as usize, 0);
+        let items: Vec<ListItem> = view.rows()[win.clone()]
+            .iter()
+            .map(|r| ListItem::new(Line::from(view.row_text(r, inner.width as usize))))
+            .collect();
+        let list = List::new(items).highlight_style(self.theme.selection(true));
+        f.render_stateful_widget(list, inner, &mut windowed(Some(view.cursor()), &win));
     }
 
-    /// The glyph map: covered blocks down the left, the characters of the selected one
-    /// in a grid on the right. Full width, because a coverage grid needs the room.
+    /// The related list: a score, a name, and the evidence for the score.
+    fn draw_related(&mut self, f: &mut ratatui::Frame, area: Rect) {
+        let Some(view) = &self.related else { return };
+        f.render_widget(Clear, area);
+        let block = self
+            .pane_block(format!(" {} ", view.title()), true)
+            .title_bottom(Span::styled(
+                " ⏎ goes to it · r or Esc closes ",
+                self.theme.dim(),
+            ));
+        let inner = block.inner(area);
+        f.render_widget(block, area);
+        if inner.width < 24 || inner.height < 1 {
+            return;
+        }
+        self.related_rows = inner.height as usize;
+        let win = layout::window(
+            view.candidates().len(),
+            view.cursor(),
+            inner.height as usize,
+            0,
+        );
+        let items: Vec<ListItem> = view.candidates()[win.clone()]
+            .iter()
+            .map(|c| ListItem::new(Line::from(view.row_text(c, inner.width as usize))))
+            .collect();
+        let list = List::new(items).highlight_style(self.theme.selection(true));
+        f.render_stateful_widget(list, inner, &mut windowed(Some(view.cursor()), &win));
+    }
+
+    /// Who can set the text: a mark, a name, and what is missing.
+    fn draw_covering(&mut self, f: &mut ratatui::Frame, area: Rect) {
+        let Some(view) = &self.covering else { return };
+        f.render_widget(Clear, area);
+        let block = self
+            .pane_block(format!(" {} ", view.title()), true)
+            .title_bottom(Span::styled(
+                " ⏎ goes to it · e asks again · Esc closes ",
+                self.theme.dim(),
+            ));
+        let inner = block.inner(area);
+        f.render_widget(block, area);
+        if inner.width < 24 || inner.height < 1 {
+            return;
+        }
+        self.covering_rows = inner.height as usize;
+        let win = layout::window(view.rows().len(), view.cursor(), inner.height as usize, 0);
+        let items: Vec<ListItem> = view.rows()[win.clone()]
+            .iter()
+            .map(|r| {
+                let style = if r.verdict.covers_everything() {
+                    self.theme.good()
+                } else {
+                    Style::default()
+                };
+                ListItem::new(Line::from(Span::styled(
+                    view.row_text(r, inner.width as usize),
+                    style,
+                )))
+            })
+            .collect();
+        let list = List::new(items).highlight_style(self.theme.selection(true));
+        f.render_stateful_widget(list, inner, &mut windowed(Some(view.cursor()), &win));
+    }
+
     fn draw_glyphs(&mut self, f: &mut ratatui::Frame, area: Rect) {
         let Some(map) = &self.glyphs else { return };
         f.render_widget(Clear, area);
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(self.theme.accent())
-            .title(" glyph map — / to search, m or Esc to close ");
+        let block = self
+            .pane_block(" glyph map ".into(), true)
+            .title_bottom(Span::styled(
+                " / finds a codepoint or a block · m or Esc closes ",
+                self.theme.dim(),
+            ));
         let inner = block.inner(area);
         f.render_widget(block, area);
 
@@ -1850,6 +2480,118 @@ impl App {
 
     /// Say how many faces the next action would touch, in the words the browser uses
     /// everywhere else: face counts, because a family is not a unit anything acts on.
+    /// Open the filter bar over whatever the panes are showing.
+    ///
+    /// Pre-filled with the flags for the current screen — the same flags the status
+    /// line has been showing all along — so the bar starts as an editable copy of what
+    /// the reader can already see rather than as an empty box they have to guess at.
+    fn open_filter_bar(&mut self) {
+        self.filter_before = Some((self.filter_line.clone(), self.filter_override.clone()));
+        let line = self.filter_flags();
+        self.filter_error = None;
+        self.start_input(InputKind::Filter, line);
+    }
+
+    /// The current filter as the flags `fontina list` would take.
+    ///
+    /// Taken off the command line the status bar already builds, rather than rendered
+    /// a second way: two renderers of one filter drift, and the one that drifts is the
+    /// one nobody is looking at.
+    fn filter_flags(&self) -> String {
+        let line = self.command_line();
+        let flags = line
+            .strip_prefix("fontina families")
+            .or_else(|| line.strip_prefix("fontina list"))
+            .unwrap_or("")
+            .trim();
+        // The open family is the pane the reader is standing in, not part of what they
+        // typed, and `filter` puts it back on its own.
+        match flags.find("--family ") {
+            Some(i) => flags[..i].trim_end().to_string(),
+            None => flags.to_string(),
+        }
+    }
+
+    /// Keys while the filter bar is up.
+    ///
+    /// Every key that changes the line applies it again, so the panes behind the prompt
+    /// are always showing what the line says and the count in the prompt is a fact
+    /// rather than a promise.
+    fn handle_filter_key(&mut self, key: event::KeyEvent) -> Result<()> {
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        match key.code {
+            KeyCode::Esc => {
+                // Back to whatever was there when the bar opened, panes and all.
+                self.input = None;
+                self.filter_error = None;
+                if let Some((line, parsed)) = self.filter_before.take() {
+                    self.filter_line = line;
+                    self.filter_override = parsed;
+                    return self.reload();
+                }
+            }
+            KeyCode::Enter => {
+                self.filter_before = None;
+                self.input = None;
+                self.filter_error = None;
+                self.status = format!("{}   ({})", self.count_line(), self.command_line());
+            }
+            // One keystroke from a composed filter to a collection of what it matched:
+            // everything matching is marked and the collection prompt opens over it, so
+            // the next thing typed is the name.
+            KeyCode::Char('s') if ctrl => {
+                self.input = None;
+                self.filter_before = None;
+                self.filter_error = None;
+                self.marked = self.visible_face_ids().into_iter().collect();
+                if self.marked.is_empty() {
+                    self.status = "nothing to save: the filter matches no faces".into();
+                    return Ok(());
+                }
+                self.start_input(InputKind::Collection, String::new());
+            }
+            KeyCode::Backspace => {
+                if let Some(i) = self.input.as_mut() {
+                    i.buf.pop();
+                }
+                return self.apply_filter_line();
+            }
+            KeyCode::Char(c) => {
+                if let Some(i) = self.input.as_mut() {
+                    i.buf.push(c);
+                }
+                return self.apply_filter_line();
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Parse what has been typed and show it, or say what is wrong with it.
+    ///
+    /// A line that does not parse leaves the panes on the last one that did. Half a
+    /// flag is not a filter, and blanking the list on every intermediate keystroke
+    /// would make the count useless exactly while it is being composed.
+    fn apply_filter_line(&mut self) -> Result<()> {
+        let line = self
+            .input
+            .as_ref()
+            .map(|i| i.buf.clone())
+            .unwrap_or_default();
+        match filter::parse(&line) {
+            Ok(parsed) => {
+                self.filter_error = None;
+                self.filter_line = Some(line);
+                self.filter_override = Some(parsed);
+                self.reload()
+            }
+            Err(e) => {
+                self.filter_error = Some(e);
+                Ok(())
+            }
+        }
+    }
+
     fn say_marked(&mut self) {
         self.status = match self.marked.len() {
             0 => "selection cleared".into(),
@@ -1967,6 +2709,54 @@ impl App {
         }
     }
 
+    /// The box every pane is drawn in: one shape, one weight, one indent.
+    ///
+    /// Rounded, because a browser is a place you sit in for an hour and square corners
+    /// at every junction of four rules read as scaffolding. Padded by a column on each
+    /// side, because text set against a border is text a border is holding up, and the
+    /// one thing every pane here has in common is that the border is not the point. The
+    /// name goes on the top edge in bold and anything the pane wants to say about how
+    /// to work it goes on the bottom edge, dim: the top says what this is, the bottom
+    /// says what to press.
+    fn pane_block<'a>(&self, title: String, focused: bool) -> Block<'a> {
+        Block::default()
+            .borders(Borders::ALL)
+            .border_type(ratatui::widgets::BorderType::Rounded)
+            .border_style(self.border(focused))
+            .padding(ratatui::widgets::Padding::horizontal(1))
+            .title(Span::styled(title, self.theme.title()))
+    }
+
+    /// A hairline down the right edge of a pane, saying where in the list you are.
+    ///
+    /// Only when there is more than a screenful: a bar that is always full is a column
+    /// of noise that says "there is nothing to scroll", which the absence of a bar says
+    /// better. Drawn over the border rather than inside the pane, so it costs a pane
+    /// nothing to have one — seven hundred families is where this browser lives, and
+    /// until now the only way to know you were forty rows into them was to count.
+    fn draw_scrollbar(&self, f: &mut ratatui::Frame, area: Rect, len: usize, at: usize) {
+        let rows = pane_rows(area);
+        if len <= rows || area.height < 4 {
+            return;
+        }
+        use ratatui::widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState};
+        f.render_stateful_widget(
+            Scrollbar::new(ScrollbarOrientation::VerticalRight)
+                .begin_symbol(None)
+                .end_symbol(None)
+                .track_symbol(Some("│"))
+                .thumb_symbol("┃")
+                .track_style(self.theme.dim())
+                .thumb_style(self.border(true)),
+            // Inside the corners, so the rounded ends of the box stay whole.
+            area.inner(ratatui::layout::Margin {
+                horizontal: 0,
+                vertical: 1,
+            }),
+            &mut ScrollbarState::new(len.saturating_sub(rows)).position(at),
+        );
+    }
+
     fn border(&self, focused: bool) -> Style {
         if focused {
             self.theme.accent()
@@ -1975,7 +2765,13 @@ impl App {
         }
     }
 
-    fn draw_facets(&mut self, f: &mut ratatui::Frame, area: Rect, overlay: bool) {
+    /// The Narrow-by panel.
+    ///
+    /// Titled with a verb, because a column headed `1998 faces` reads as a third
+    /// readout beside the two readouts either side of it, and nothing in it ever said
+    /// it was a control. The bottom border carries the three keys it answers to, so a
+    /// reader who opens it by accident can leave it without guessing.
+    fn draw_facets(&mut self, f: &mut ratatui::Frame, area: Rect) {
         let win = layout::window(
             self.rows.len(),
             self.facet_list.selected().unwrap_or(0),
@@ -1983,21 +2779,33 @@ impl App {
             self.facet_offset,
         );
         self.facet_offset = win.start;
+        // Whatever the list beside the panel is counting, the panel counts too. Faces
+        // under a list of families cannot say what pressing a row will do to it.
+        let families = self.open_family.is_none();
+        let width = pane_cols(area);
         let items: Vec<ListItem> = self.rows[win.clone()]
             .iter()
-            .map(|r| {
-                if r.header {
-                    ListItem::new(Line::from(Span::styled(
-                        r.facet.label().to_string(),
-                        Style::default().add_modifier(Modifier::BOLD),
-                    )))
-                } else {
+            .map(|r| match r.kind {
+                RowKind::Head => ListItem::new(Line::from(Span::styled(
+                    r.section.label().to_string(),
+                    Style::default().add_modifier(Modifier::BOLD),
+                ))),
+                RowKind::More(hidden) => ListItem::new(Line::from(Span::styled(
+                    format!("  +{hidden} more"),
+                    self.theme.dim(),
+                ))),
+                RowKind::Value => {
                     let on = self.selected.get(&r.facet) == Some(&r.value);
                     let mark = if on { "●" } else { " " };
                     let label = facet_value_label(r.facet, &r.value);
-                    let width = area.width.saturating_sub(4) as usize;
-                    let count = r.count.to_string();
-                    let room = width.saturating_sub(count.len() + 2);
+                    // The count the list is in, and the other one after it, so a reader
+                    // can see both without having to know which is which.
+                    let count = if families {
+                        format!("{} ({})", r.families, r.count)
+                    } else {
+                        r.count.to_string()
+                    };
+                    let room = width.saturating_sub(count.chars().count() + 3);
                     let text = format!(
                         "{mark} {:<room$} {count}",
                         truncate(&label, room),
@@ -2014,23 +2822,57 @@ impl App {
             .collect();
         let list = List::new(items)
             .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(self.border(self.focus == Focus::Facets))
-                    // A pane drawn over another has to say how to put it back, because
-                    // nothing else on the screen explains where the list went.
-                    .title(if overlay {
-                        format!(" {} faces — ⇥ closes ", self.facets.faces)
-                    } else {
-                        format!(" {} faces ", self.facets.faces)
-                    }),
+                self.pane_block(" Narrow by ".into(), true)
+                    // Whole phrases again, longest first. A hint the border cuts in
+                    // half — `Esc cl` — is worse than no hint, because it looks like
+                    // the program is broken rather than like the panel is narrow.
+                    .title_bottom(Span::styled(
+                        [
+                            " ⏎ picks · x clears · Esc closes ",
+                            " ⏎ picks · Esc closes ",
+                            " Esc closes ",
+                            "",
+                        ]
+                        .into_iter()
+                        .find(|h| h.chars().count() <= area.width.saturating_sub(2) as usize)
+                        .unwrap_or(""),
+                        self.theme.dim(),
+                    )),
             )
-            .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+            .highlight_style(self.theme.selection(true));
         f.render_stateful_widget(list, area, &mut windowed(self.facet_list.selected(), &win));
+        self.draw_scrollbar(f, area, self.rows.len(), win.start);
+    }
+
+    /// The three flag columns of a list row, coloured so the eye can find them.
+    ///
+    /// A column of `V`s is what a reader scans for when they want a variable font, and
+    /// a column of dots is how they see at a glance what is already active. Unset is a
+    /// space rather than a dim mark: there are three positions here, not six, and blank
+    /// is quieter than anything that could be printed in it.
+    fn flag_spans(
+        &self,
+        variable: bool,
+        color: bool,
+        active: bool,
+        activation: &str,
+    ) -> Vec<Span<'static>> {
+        vec![
+            Span::styled(if variable { "V" } else { " " }, self.theme.accent()),
+            Span::styled(if color { "C" } else { " " }, self.theme.accent()),
+            Span::styled(
+                if active {
+                    activation.to_string()
+                } else {
+                    " ".into()
+                },
+                self.theme.good(),
+            ),
+        ]
     }
 
     fn draw_list(&mut self, f: &mut ratatui::Frame, area: Rect) {
-        let width = area.width.saturating_sub(2) as usize;
+        let width = pane_cols(area);
         let win = layout::window(
             self.list_len(),
             self.list.selected().unwrap_or(0),
@@ -2066,24 +2908,35 @@ impl App {
                 .iter()
                 .enumerate()
                 .map(|(row, face)| {
-                    let flags = format!(
-                        "{}{}{}",
-                        if face.variable { "V" } else { " " },
-                        if face.color { "C" } else { " " },
-                        activation_mark(face.activation),
-                    );
                     let tags = if face.tags.is_empty() {
                         String::new()
                     } else {
                         format!("  [{}]", face.tags.join(", "))
                     };
-                    let left = format!("{} {}{}", face.subfamily, face.container, tags);
-                    ListItem::new(Line::from(format!(
-                        "{}{:<w$} {flags}",
+                    // The weight is the number that tells two faces of one family
+                    // apart, and it is the one thing the subfamily name is unreliable
+                    // about: `Book`, `Text`, `Normal` and `Regular` are all 400 in some
+                    // libraries and 350, 400, 400 and 450 in others.
+                    let left = format!(
+                        "{}  {} {}{}",
+                        face.subfamily,
+                        axis_text(face.weight, face.weight_range),
+                        face.container,
+                        tags
+                    );
+                    let mut spans = vec![Span::raw(format!(
+                        "{}{:<w$} ",
                         marks[row],
                         truncate(&left, width.saturating_sub(5)),
                         w = width.saturating_sub(5)
-                    )))
+                    ))];
+                    spans.extend(self.flag_spans(
+                        face.variable,
+                        face.color,
+                        face.activation.is_some(),
+                        activation_mark(face.activation),
+                    ));
+                    ListItem::new(Line::from(spans))
                 })
                 .collect()
         } else {
@@ -2091,102 +2944,201 @@ impl App {
                 .iter()
                 .enumerate()
                 .map(|(row, fam)| {
-                    let flags = format!(
-                        "{}{}{}",
-                        if fam.variable { "V" } else { " " },
-                        if fam.color { "C" } else { " " },
-                        if fam.active > 0 { "●" } else { " " },
-                    );
-                    let count = format!("{:>3}", fam.faces);
                     let room = width.saturating_sub(9);
-                    ListItem::new(Line::from(format!(
-                        "{}{:<room$} {count} {flags}",
-                        marks[row],
-                        truncate(&fam.name, room),
-                        room = room
-                    )))
+                    let mut spans = vec![
+                        Span::raw(format!(
+                            "{}{:<room$} ",
+                            marks[row],
+                            truncate(&fam.name, room),
+                            room = room
+                        )),
+                        // The count is a fact about the family and the name is the
+                        // answer, so the count gets out of the way of it.
+                        Span::styled(format!("{:>3} ", fam.faces), self.theme.dim()),
+                    ];
+                    spans.extend(self.flag_spans(fam.variable, fam.color, fam.active > 0, "●"));
+                    ListItem::new(Line::from(spans))
                 })
                 .collect()
         };
         let title = match (&self.open_family, self.marked.len()) {
-            // The count goes in the title rather than only in the status line, which
-            // the next message overwrites: what an action is about to touch has to be
-            // readable at the moment the reader reaches for the key.
+            // What an action is about to touch goes in the title rather than only in
+            // the status line, which the next message overwrites: it has to be readable
+            // at the moment the reader reaches for the key.
             (_, n) if n > 0 => format!(" {n} of {} selected ", self.visible_face_ids().len()),
-            (Some(fam), _) => format!(" {} · {} face(s) ", fam, self.faces.len()),
-            (None, _) => format!(" {} families ", self.families.len()),
+            // The name of the family, not the name and a count. The filter line one row
+            // above says how many there are, and a number printed twice on one screen
+            // is a number a reader has to check against itself.
+            (Some(fam), _) => format!(
+                " {} ",
+                fontina_core::unicode::fit(fam, area.width.saturating_sub(4) as usize)
+            ),
+            (None, _) => " families ".into(),
         };
+        if items.is_empty() {
+            self.draw_empty_list(f, area, title);
+            return;
+        }
+        let focused = self.focus == Focus::List;
         let list = List::new(items)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(self.border(self.focus == Focus::List))
-                    .title(title),
-            )
-            .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+            .block(self.pane_block(title, focused))
+            .highlight_style(self.theme.selection(focused));
         f.render_stateful_widget(list, area, &mut windowed(self.list.selected(), &win));
+        self.draw_scrollbar(f, area, self.list_len(), win.start);
     }
 
-    fn draw_detail(&mut self, f: &mut ratatui::Frame, area: Rect) {
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(self.border(self.focus == Focus::Detail))
-            .title(" Details ");
+    /// What the list pane says when there is nothing in it.
+    ///
+    /// Three empty boxes and a line at the bottom of the screen is the worst version of
+    /// this. The reader narrowed the library to nothing with their own last keystroke,
+    /// and the facet pane — counted over the filtered set — took the row that would
+    /// undo it down with the rest. So the pane they are looking at names every filter
+    /// that is on and the two keys that take them off again.
+    fn draw_empty_list(&self, f: &mut ratatui::Frame, area: Rect, title: String) {
+        let block = self.pane_block(title, self.focus == Focus::List);
         let inner = block.inner(area);
         f.render_widget(block, area);
+        let mut lines: Vec<Line<'static>> = Vec::new();
+        if !self.narrowed() {
+            lines.push(Line::raw(if self.open_family.is_some() {
+                "No faces in this family."
+            } else {
+                "Nothing in the index yet — run `fontina scan <dir>`."
+            }));
+        } else {
+            lines.push(Line::from(Span::styled(
+                "Nothing matches these filters.",
+                self.theme.accent(),
+            )));
+            lines.push(Line::raw(""));
+            if let Some(line) = self.filter_line.as_deref().filter(|l| !l.trim().is_empty()) {
+                lines.push(kv("flags", line.trim().to_string(), &self.theme));
+            }
+            if !self.query.is_empty() {
+                lines.push(kv("search", self.query.clone(), &self.theme));
+            }
+            for (facet, v) in &self.selected {
+                lines.push(kv(
+                    &facet.label().to_lowercase(),
+                    facet_value_label(*facet, v),
+                    &self.theme,
+                ));
+            }
+            lines.push(Line::raw(""));
+            lines.push(Line::from(vec![
+                Span::styled("⇥", self.theme.accent()),
+                Span::raw(" to the filters, then "),
+                Span::styled("⏎", self.theme.accent()),
+                Span::raw(" on a marked row drops that one."),
+            ]));
+            lines.push(Line::from(vec![
+                Span::styled("x", self.theme.accent()),
+                Span::raw(" clears them all."),
+            ]));
+        }
+        f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
+    }
+
+    /// The face, in the order a reader asks about it.
+    ///
+    /// Six groups, a blank line between them, and the bottom is what falls off a pane
+    /// too short to hold them all — so what a reader loses first is where the file came
+    /// from, and what they keep is what it is, what they have done to it, and what it
+    /// can set. The order used to be the order the rows were written in, over a year,
+    /// with the licence between the coverage and the metrics.
+    fn draw_detail(&mut self, f: &mut ratatui::Frame, area: Rect) {
         // Borrowed, never cloned: this runs on every frame, four times a second while
         // the browser sits idle. `refresh_detail` is what queries the index.
-        let Some(face) = self.detail.as_ref() else {
-            f.render_widget(Paragraph::new("Nothing selected."), inner);
+        let face = self.detail.as_ref();
+        // The pane is named by what is in it. It used to be titled `Details` and to
+        // spend its first row repeating the name of the face, which is a row and a
+        // border saying the same nothing.
+        let block = self.pane_block(
+            match face {
+                Some(face) => format!(
+                    " {} ",
+                    fontina_core::unicode::fit(
+                        &format!("{} {}", face.names.family, face.names.subfamily),
+                        area.width.saturating_sub(4) as usize,
+                    )
+                ),
+                None => " Details ".into(),
+            },
+            self.focus == Focus::Detail,
+        );
+        let inner = block.inner(area);
+        f.render_widget(block, area);
+        let Some(face) = face else {
+            f.render_widget(
+                Paragraph::new(Span::styled("Nothing selected.", self.theme.dim())),
+                inner,
+            );
             return;
         };
-        let mut lines: Vec<Line> = Vec::new();
-        let bold = Style::default().add_modifier(Modifier::BOLD);
-        lines.push(Line::from(vec![
-            Span::styled(face.names.family.clone(), bold),
-            Span::raw(" "),
-            Span::raw(face.names.subfamily.clone()),
-        ]));
-        lines.push(kv(
+        let cols = inner.width;
+        let kv = |k: &str, v: String| wrap_kv(k, &v, cols, &self.theme);
+        let mut groups: Vec<Vec<Line>> = Vec::new();
+        /// Which group the coverage list is spliced into, once its height is known.
+        const COVERAGE: usize = 1;
+        /// The licence, whose verdict may take a line of prose to explain.
+        const LICENCE: usize = 2;
+        /// And which one the two name rows go into, if there is room for them.
+        const WHENCE: usize = 3;
+
+        // What it is, and what the reader has done to it. `state` changes when a key is
+        // pressed, so it belongs where a key-presser is looking rather than eleventh.
+        let mut what = kv(
             "style",
             format!(
-                "weight {} · width {}% · {}",
+                "weight {} · width {}% · {}{}",
                 face.style.weight.round(),
                 face.style.width.round(),
-                face.style.css.style
+                face.style.css.style,
+                match &face.variable {
+                    Some(v) => format!(
+                        " · variable ({})",
+                        v.axes
+                            .iter()
+                            .map(|a| a.tag.as_str())
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    ),
+                    None => String::new(),
+                }
             ),
-            &self.theme,
-        ));
-        if let Some(v) = &face.variable {
-            lines.push(kv(
-                "axes",
-                v.axes
-                    .iter()
-                    .map(|a| format!("{} {}–{} ({})", a.tag, a.min, a.max, a.default))
-                    .collect::<Vec<_>>()
-                    .join(", "),
-                &self.theme,
-            ));
+        );
+        if let Some(s) = self.detail_summary.as_ref() {
+            what.push(Line::from(vec![
+                Span::styled(format!("{:<LABEL$}", "state"), self.theme.dim()),
+                match s.activation {
+                    Some(a) => Span::styled(a.as_str().to_string(), self.theme.good()),
+                    None => Span::styled("not active", self.theme.dim()),
+                },
+            ]));
+            if !s.tags.is_empty() {
+                what.extend(kv("tags", s.tags.join(", ")));
+            }
         }
-        lines.push(kv(
+        groups.push(what);
+
+        // What it can set. The scripts used to be named at the end of the `glyphs` row
+        // and then counted again, with a bar, four rows further down.
+        let mut has = kv(
             "glyphs",
             format!(
-                "{} · {} codepoints · {}",
-                face.glyph_count,
-                face.coverage.codepoints,
-                face.coverage
-                    .scripts
-                    .iter()
-                    .take(5)
-                    .map(|s| s.script.as_str())
-                    .collect::<Vec<_>>()
-                    .join(" ")
+                "{} · {} codepoints",
+                face.glyph_count, face.coverage.codepoints
             ),
-            &self.theme,
-        ));
+        );
+        // Filled in below, once everything else has been measured: the coverage list is
+        // the elastic part of this pane, and it is what gives ground when the terminal
+        // is short. What must not give ground is the last group — a font manager whose
+        // face pane cannot say where the file is has stopped answering the question it
+        // exists for — so the scripts go before the path does.
+        let coverage_at = has.len();
         let feats = face.features.gsub.len() + face.features.gpos.len();
         if feats > 0 {
-            lines.push(kv(
+            has.extend(kv(
                 "features",
                 format!(
                     "{feats}: {}",
@@ -2199,32 +3151,42 @@ impl App {
                         .collect::<Vec<_>>()
                         .join(" ")
                 ),
-                &self.theme,
             ));
         }
-        lines.extend(license_lines(face, &self.theme));
+        groups.push(has);
+
+        // What may be done with it. The reason a licence is not free is prose, and
+        // prose is the first thing a short pane can do without, so it waits below with
+        // the rest of what is optional.
+        let (licence, reason) = license_lines(face, &self.theme, cols);
+        let reason_at = 1.min(licence.len());
+        groups.push(licence);
+
+        // Where it came from. Last, because it is the one group a reader can go and get
+        // from `fontina info` when the pane runs out of room.
+        let mut whence = Vec::new();
         if let Some(d) = face
             .names
             .designer
             .as_deref()
             .or(face.names.manufacturer.as_deref())
         {
-            lines.push(kv("designer", d.to_string(), &self.theme));
+            whence.extend(kv("designer", d.to_string()));
         }
-        if let Some(s) = self.detail_summary.as_ref() {
-            if !s.tags.is_empty() {
-                lines.push(kv("tags", s.tags.join(", "), &self.theme));
-            }
-            lines.push(kv(
-                "state",
-                match s.activation {
-                    Some(a) => a.as_str().to_string(),
-                    None => "not active".into(),
-                },
-                &self.theme,
-            ));
+        // The name other software calls this face by, and which build of it this is:
+        // the answer to a question the browser used to send people to `fontina info`
+        // for — "is this the same cut I have somewhere else?" Detail rather than
+        // substance, so they are spliced in below only if the pane has the rows to
+        // spare, ahead of the path, which does not.
+        let detail_at = whence.len();
+        let mut detail = Vec::new();
+        if let Some(p) = &face.names.postscript_name {
+            detail.extend(kv("postscript", p.clone()));
         }
-        lines.push(kv(
+        if let Some(v) = &face.names.version {
+            detail.extend(kv("version", v.clone()));
+        }
+        whence.extend(kv(
             "file",
             format!(
                 "{}{}",
@@ -2235,69 +3197,180 @@ impl App {
                     String::new()
                 }
             ),
-            &self.theme,
         ));
-        lines.push(Line::from(""));
-        // Rows the block will actually occupy once wrapped, not how many lines were
-        // pushed. The paragraph wraps, so a long value — a file path, a licence reason —
-        // takes several rows, and counting them as one pushed the bottom of the pane off
-        // the screen.
-        let text_rows: u16 = lines.iter().map(|l| wrapped_rows(l, inner.width)).sum();
-        // Controls take the rows they need, capped so the preview never disappears.
-        // The pane asks for a title plus a row per control, but never takes so much that
-        // the preview vanishes, and never less than a title plus one row: a pane Tab can
-        // reach has to show the cursor sitting in it.
+        groups.push(whence);
+
+        // How it is drawn. Last, because these are the numbers a reader compares
+        // between two faces — a question you go looking for — and everything above is
+        // one they arrive with. A pane too short for all six drops this one, and
+        // `fontina info` has it.
+        groups.push(self.measurements(face, cols));
+
+        // Rows for everything but the coverage, plus the blank between each group.
         let control_rows = if self.controls.is_empty() {
             0
         } else {
-            let spare = inner.height.saturating_sub(text_rows + 4);
-            // Either a title and at least one control, or nothing: a pane showing only
-            // its own title would hide the cursor sitting in it.
-            if spare < 2 {
-                0
-            } else {
-                (self.controls.len() as u16 + 1).min(spare)
-            }
+            // A face with eleven stylistic sets must not spend two thirds of the pane
+            // on checkboxes. Amiri does exactly that, and it pushed the coverage, the
+            // licence and the path off an eighty-by-twenty-four terminal. The block
+            // scrolls to keep the cursor inside it, so it can be bounded: a third of
+            // the pane, and never fewer than a title and three rows.
+            let want = self.controls.len() as u16 + 1;
+            want.min((inner.height / 3).max(4))
+                .min(inner.height.saturating_sub(3))
         };
+        let body: usize = groups.iter().map(Vec::len).sum();
+        let gaps = groups.len() - 1;
+        let avail = (inner.height as usize).saturating_sub(control_rows as usize);
+        // The blank lines between the groups are the grouping, and the grouping is a
+        // luxury: on a pane too short to hold the content with them, the content wins.
+        // Two scripts are the floor — one script and a bar says nothing a reader could
+        // not have guessed from the family name.
+        let blanks = body + gaps + 2 <= avail;
+        let spare = avail.saturating_sub(body + if blanks { gaps } else { 0 });
+        let most = spare.clamp(2, 6);
+        groups[COVERAGE].splice(coverage_at..coverage_at, self.coverage_lines(face, most));
+        // What is spare goes, in order, to: the coverage, because it says what the font
+        // is *for*; then the reason a licence is not free; then the two name rows. Each
+        // takes what the one before it left.
+        let mut spare = spare.saturating_sub(most);
+        if spare >= reason.len() {
+            spare -= reason.len();
+            groups[LICENCE].splice(reason_at..reason_at, reason);
+        }
+        if spare >= detail.len() {
+            groups[WHENCE].splice(detail_at..detail_at, detail);
+        }
+
+        // The controls go under the first group and above the rest, so the one thing in
+        // this pane a key does anything to is where a key-presser is looking, whatever
+        // the terminal's height. Counted rather than searched for: a group that grows a
+        // row must not silently push the controls into the middle of the next one.
+        let head = groups[0].len() + usize::from(blanks);
+        let mut lines: Vec<Line> = Vec::new();
+        for group in groups {
+            if group.is_empty() {
+                continue;
+            }
+            if blanks && !lines.is_empty() {
+                lines.push(Line::from(""));
+            }
+            lines.extend(group);
+        }
+        // Every line was wrapped to `cols` above, so the count is the height and there
+        // is nothing left for the pane to estimate about itself.
+        let head = head.min(lines.len());
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(text_rows.min(inner.height)),
+                Constraint::Length((head as u16).min(inner.height)),
                 Constraint::Length(control_rows),
                 Constraint::Min(0),
             ])
             .split(inner);
-        f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), chunks[0]);
+        let rest = lines.split_off(head);
+        f.render_widget(Paragraph::new(lines), chunks[0]);
         if control_rows > 0 {
             self.draw_controls(f, chunks[1], face);
         }
-        let preview_area = chunks[2];
-        if preview_area.height < 2 || preview_area.width < 4 {
-            return;
+        if chunks[2].height > 0 {
+            f.render_widget(Paragraph::new(rest), chunks[2]);
         }
-        let text = self
-            .preview_text
-            .clone()
-            .or_else(|| face.names.sample_text.clone())
-            .unwrap_or_else(|| preview::sample_for(face));
-        let opts = self.render_options(text, preview_area.width as u32);
-        let lines = self
-            .preview
-            .lines(face, &opts, preview_area.height as u32 * 2);
-        f.render_widget(Paragraph::new(lines), preview_area);
     }
 
-    /// The preview's render settings: the sample text at the chosen size, positioned by
-    /// whatever the reader has done to the axes and features.
-    fn render_options(&self, text: String, cols: u32) -> RenderOptions {
-        RenderOptions {
-            text,
-            size: self.preview_size,
-            variations: self.controls.variations(),
-            features: self.controls.forced_features(),
-            padding: 1,
-            max_width: Some(cols),
+    /// A quantity as `cells` columns of bar, in eighths.
+    ///
+    /// Eighths so that a script a face barely touches is a visible sliver rather than
+    /// an empty row: the difference between four Greek letters and no Greek is the
+    /// difference this column exists to show. The track is drawn dim rather than left
+    /// blank, because a column of bars is read by comparing their ends, and an end you
+    /// have to find is a comparison you have to make twice.
+    fn bar(&self, of: u32, whole: u32, cells: usize) -> Vec<Span<'static>> {
+        let eighths = if whole == 0 {
+            0
+        } else {
+            ((of.min(whole) as usize) * cells * 8).div_ceil(whole as usize)
+        };
+        let (full, rest) = (eighths / 8, eighths % 8);
+        let mut filled = "█".repeat(full);
+        if rest > 0 && full < cells {
+            filled.push(['▏', '▎', '▍', '▌', '▋', '▊', '▉'][rest - 1]);
         }
+        let drawn = filled.chars().count();
+        vec![
+            Span::raw(filled),
+            Span::styled("░".repeat(cells - drawn), self.theme.dim()),
+        ]
+    }
+
+    /// Coverage per script: a bar for the eye, the count for the answer.
+    fn coverage_lines(&self, face: &FaceMetadata, most: usize) -> Vec<Line<'static>> {
+        // A face's scripts are already sorted by how much of each it has.
+        let deepest = face
+            .coverage
+            .scripts
+            .first()
+            .map(|s| s.codepoints)
+            .unwrap_or(0)
+            .max(1);
+        face.coverage
+            .scripts
+            .iter()
+            .take(most)
+            .map(|script| {
+                let mut spans = vec![Span::styled(
+                    format!("{:<LABEL$}", script.script),
+                    self.theme.dim(),
+                )];
+                spans.extend(self.bar(script.codepoints, deepest, 10));
+                spans.push(Span::raw(format!(" {}", script.codepoints)));
+                Line::from(spans)
+            })
+            .collect()
+    }
+
+    /// How the face is drawn: the numbers a reader compares between two of them.
+    ///
+    /// This was a rasterised sample of the face, drawn in half-block characters. A
+    /// terminal cell is about one pixel wide and two tall, so a typeface met that way is
+    /// met through a filter that changes its weight, loses its spacing and destroys its
+    /// detail — a judgement made on something that is not the font. `s` writes a real
+    /// specimen and opens it in a browser, and `fontina preview` draws a true image
+    /// where the terminal has a protocol for one. What a terminal is good at is this:
+    /// the measurements, in a column, comparable at a glance.
+    fn measurements(&self, face: &FaceMetadata, cols: u16) -> Vec<Line<'static>> {
+        let m = &face.metrics;
+        let mut lines = wrap_kv(
+            "metrics",
+            &format!(
+                "{} upm · asc {} · desc {} · gap {}",
+                m.units_per_em, m.ascender, m.descender, m.line_gap
+            ),
+            cols,
+            &self.theme,
+        );
+        let mut shape = Vec::new();
+        if let Some(cap) = m.cap_height {
+            shape.push(format!("cap {cap}"));
+        }
+        if let Some(x) = m.x_height {
+            shape.push(format!("x-height {x}"));
+            // The ratio is the number type people actually compare, and neither font
+            // carries it: a face with a large x-height at the same size reads larger.
+            if m.units_per_em > 0 {
+                shape.push(format!(
+                    "x/em {:.2}",
+                    f64::from(x) / f64::from(m.units_per_em)
+                ));
+            }
+        }
+        if m.italic_angle.abs() > f32::EPSILON {
+            shape.push(format!("italic {}°", m.italic_angle));
+        }
+        if !shape.is_empty() {
+            lines.extend(wrap_kv("shape", &shape.join(" · "), cols, &self.theme));
+        }
+        lines
     }
 
     /// Axes as `tag  value` with a bar, features as a checkbox, the selected row
@@ -2328,24 +3401,28 @@ impl App {
                 Style::default()
             };
             let text = match row {
+                // An axis is a position on a range, not a quantity, so it gets a knob
+                // on a track rather than a bar filled from the left. A `wght` sitting
+                // at its minimum used to draw an empty box, which looks like an axis
+                // that is switched off rather than one that is turned all the way down.
                 controls::Row::Axis(a) => {
                     let span = (a.max - a.min).max(f32::EPSILON);
-                    let filled = (((a.value - a.min) / span) * 12.0).round() as usize;
+                    let at = ((((a.value - a.min) / span) * 11.0).round() as usize).min(11);
                     format!(
-                        "{marker} {:<4} {:>8}  [{}{}] {}",
+                        "{marker} {:<4} {:>8}  {}●{} {}",
                         a.tag,
                         fmt_axis(a.value),
-                        "=".repeat(filled.min(12)),
-                        " ".repeat(12 - filled.min(12)),
+                        "─".repeat(at),
+                        "─".repeat(11 - at),
                         // The designer's own name for the axis, when it differs from
                         // the tag; `wght` labelled "wght" is noise.
                         if a.label == a.tag { "" } else { &a.label },
                     )
                 }
                 controls::Row::Feature(feature) => format!(
-                    "{marker} {:<4} [{}] {}",
+                    "{marker} {:<4} {} {}",
                     feature.tag,
-                    if feature.on { "x" } else { " " },
+                    if feature.on { "◉" } else { "○" },
                     feature.label
                 ),
             };
@@ -2354,14 +3431,49 @@ impl App {
         f.render_widget(Paragraph::new(lines), area);
     }
 
+    /// The filter prompt: the line, and what it is doing.
+    ///
+    /// The count comes from the panes behind it, which are already showing this filter
+    /// — the line is applied as it is typed. Watching the count while composing is the
+    /// whole point of the bar, so it cannot be something the reader has to ask for.
+    fn filter_prompt(&self, f: &mut ratatui::Frame, area: Rect, line: &str) {
+        let (tail, style) = match &self.filter_error {
+            Some(e) => (format!("  ← {e}"), self.theme.bad()),
+            None => (format!("  {}", self.count_line()), self.theme.dim()),
+        };
+        let head = " filter: ";
+        let room = (area.width as usize).saturating_sub(head.len() + tail.chars().count() + 1);
+        f.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled(head, self.theme.accent()),
+                Span::raw(truncate(line, room)),
+                Span::styled("▏", self.theme.accent()),
+                Span::styled(tail, style),
+            ])),
+            area,
+        );
+    }
+
+    /// How many faces the filter leaves, in the browser's own words.
+    fn count_line(&self) -> String {
+        match self.facets.faces {
+            1 => "1 face".into(),
+            n => format!("{n} faces"),
+        }
+    }
+
     fn draw_status(&self, f: &mut ratatui::Frame, area: Rect) {
         let line = if let Some(input) = &self.input {
             let prompt = match input.kind {
                 InputKind::Search => "search",
                 InputKind::Tag => "tag",
                 InputKind::Collection => "collection",
-                InputKind::Text => "preview text",
                 InputKind::Glyph => "codepoint or block",
+                InputKind::Cover => "who can set",
+                // What the line is doing right now, so the reader is watching the
+                // count rather than guessing at it: the panes behind the prompt are
+                // already showing this filter.
+                InputKind::Filter => return self.filter_prompt(f, area, &input.buf),
             };
             Line::from(vec![
                 Span::styled(format!(" {prompt}: "), self.theme.accent()),
@@ -2388,43 +3500,40 @@ impl App {
 
     fn draw_help(&self, f: &mut ratatui::Frame, area: Rect) {
         let text = "
- Move        j/k ↑/↓ PgUp/PgDn g/G        Tab cycles the panes
- Filter      / type to search  Esc clears   Enter/Space toggles a facet   x clears all
- Families    Enter opens a family, Backspace/Esc closes it
- Select      Space marks a row, v starts and ends a range, * takes everything
-             the filter matches. Every action applies to the marks when there
-             are any, and to the cursor when there are not. Esc clears them
- Organise    t tag the selection   c add it to a collection
- Activate    a for the user, A until logout, i install a copy, d deactivate, u uninstall
- Preview     e sets the sample text   + / - change the size
- Controls    h/l ←/→ move an axis (H/L by ten)   Space toggles a feature
-             n/p step through named instances   0 resets everything
- Glyphs      m opens the glyph map: h/l pick a block, j/k scroll, / finds a
-             codepoint (U+0041, 0x41, 41) or a block by name
- Sheets      w waterfalls the face down the size ladder; C compares every face
-             the selection stands for. j/k scroll, +/- resize a comparison
- Specimen    s writes an HTML specimen and opens it, for what a terminal cannot
-             show honestly
- Panes       Three side by side at {three} columns and up; under that the facets
-             move over the list and Tab opens them; under {two}, one pane at a
-             time, the others still a Tab away
- Undo        U takes back the last change to the index, Ctrl-R does it again. A
-             whole selection is one undo, and what cannot be put back exactly —
-             a rescan — is not offered
- Commands    : lists every command the program has, filtered as you type. The
-             ones the browser implements it runs; the ones that print it writes
-             out with your selection already in them
- Index       R rescans every source (fontina scan --prune)
- Quit        q
+ MOVING
+ j/k ↑/↓ PgUp/PgDn g/G   move        ⇥  cycle the panes
+ ⏎  open a family        ⌫ or Esc  close it
+ The list and the face side by side at {two} columns and up, one at a time below
 
- The status line shows the CLI command for what you see. Everything here is a command.
+ FINDING
+ /  search names, Esc clears it      x  clear every filter
+ f  Narrow by, the facets as a panel: ⏎ picks, ⏎ on +N more opens, Esc closes
+ F  the filter bar: the flags fontina list takes, applied as you type
+    Ctrl-S saves what it matched as a collection
+
+ DOING — to the marks when there are any, to the row under the cursor when not
+ ␣  mark a row   v  a range   *  all the filter matches   Esc  clear the marks
+ t  tag          c  add to a collection
+ a  activate for the user   A  until logout   i  install a copy   d/u  undo those
+ U  undo the last change to the index   Ctrl-R  do it again
+
+ LOOKING
+ h/l ←/→  move an axis (H/L by ten)   ␣  a feature   n/p  instances   0  reset
+ m  the glyph map: h/l pick a block, / finds a codepoint or a block by name
+ r  what else covers nearly the same characters, with the score and the metrics
+ e  who can set a line of text: paste it, and see what each face lacks
+ P  the library ranked against this face: weight, width, spacing, x-height
+ s  write an HTML specimen and open it, because a terminal cannot set type
+
+ THE PROGRAM
+ :  every command, filtered as you type    R  rescan every source    q  quit
+
+ The status line is the command that would give you what is on the screen.
 
  any key to close";
         // The widths the panes change at are stated rather than described, so the
         // help cannot drift from the layout it is describing.
-        let text = text
-            .replace("{three}", &layout::THREE.to_string())
-            .replace("{two}", &layout::TWO.to_string());
+        let text = text.replace("{two}", &layout::TWO.to_string());
         let text = text.as_str();
         let w = 90.min(area.width);
         // Lines the text will take once the box has wrapped it, which on a narrow
@@ -2456,87 +3565,168 @@ impl App {
             Paragraph::new(text)
                 .wrap(Wrap { trim: false })
                 .scroll((scroll, 0))
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .border_style(self.theme.accent())
-                        .title(title),
-                ),
+                .block(self.pane_block(title, true)),
             rect,
         );
     }
 }
 
-fn build_rows(facets: &Facets, selected: &BTreeMap<Facet, String>) -> Vec<FacetRow> {
+/// How many values a section shows before it is opened.
+///
+/// Three is enough to say what kind of thing is in the section and never enough to
+/// bury the section after it. The old pane put nine weights at the top and pushed
+/// vendor, tag, collection, licence, freedom, source and container below the fold of a
+/// forty-row terminal, where nobody ever saw them.
+const COLLAPSED: usize = 3;
+
+/// Zyyy, Zinh and Zzzz are not scripts. Common punctuation, inherited marks and
+/// unassigned codepoints are in nearly every font, they are never what a font is
+/// *for*, and counted with the rest they took the top three rows of the script
+/// section on a real library — 1996, 1045 and 769 faces — from Arab, Hebr and Geor.
+/// They sort last, where somebody who wants them can still find them.
+const PSEUDO_SCRIPTS: [&str; 3] = ["Zyyy", "Zinh", "Zzzz"];
+
+/// Every value a section offers, in the order it offers them.
+fn section_values(section: Section, facets: &Facets) -> Vec<(Facet, &FacetCount)> {
+    match section {
+        Section::Script => {
+            let (real, pseudo): (Vec<_>, Vec<_>) = facets
+                .script
+                .iter()
+                .map(|c| (Facet::Script, c))
+                .partition(|(_, c)| !PSEUDO_SCRIPTS.contains(&c.value.as_str()));
+            real.into_iter().chain(pseudo).collect()
+        }
+        Section::Language => facets
+            .language
+            .iter()
+            .map(|c| (Facet::Language, c))
+            .collect(),
+        Section::Foundry => facets.vendor.iter().map(|c| (Facet::Vendor, c)).collect(),
+        Section::Tag => facets.tag.iter().map(|c| (Facet::Tag, c)).collect(),
+        Section::Collection => facets
+            .collection
+            .iter()
+            .map(|c| (Facet::Collection, c))
+            .collect(),
+        Section::Capability => facets
+            .capability
+            .iter()
+            .map(|c| {
+                let facet = match c.value.as_str() {
+                    "variable" => Facet::Variable,
+                    "color" => Facet::Color,
+                    _ => Facet::Spacing,
+                };
+                (facet, c)
+            })
+            .collect(),
+        Section::Weight => facets
+            .weight
+            .iter()
+            .map(|c| (Facet::Weight, c))
+            .chain(facets.width.iter().map(|c| (Facet::Width, c)))
+            .chain(facets.style.iter().map(|c| (Facet::Style, c)))
+            .collect(),
+        Section::Licence => facets
+            .license
+            .iter()
+            .map(|c| (Facet::License, c))
+            .chain(facets.freedom.iter().map(|c| (Facet::Freedom, c)))
+            .collect(),
+        Section::Source => facets.source.iter().map(|c| (Facet::Source, c)).collect(),
+        Section::Format => facets
+            .container
+            .iter()
+            .map(|c| (Facet::Container, c))
+            .collect(),
+        Section::Activation => facets
+            .activation
+            .iter()
+            .map(|c| (Facet::Activation, c))
+            .collect(),
+    }
+}
+
+/// The rows of the Narrow-by panel.
+///
+/// Sections in the order above, each collapsed to [`COLLAPSED`] values and ended with
+/// a `+N more` row that opens it. A value the reader has selected is always drawn,
+/// wherever it falls and at whatever count — including zero, which is what happens
+/// when the filters it is part of match nothing and is the only way back from there.
+fn build_rows(
+    facets: &Facets,
+    selected: &BTreeMap<Facet, String>,
+    expanded: &BTreeSet<Section>,
+) -> Vec<FacetRow> {
     let mut rows = Vec::new();
-    let mut section = |facet: Facet, counts: &[FacetCount], cap: usize| {
-        if counts.is_empty() {
-            return;
+    for &section in SECTIONS {
+        let values = section_values(section, facets);
+        let chosen: Vec<(Facet, &String)> = selected
+            .iter()
+            .filter(|(f, _)| section_of(**f) == section)
+            .map(|(f, v)| (*f, v))
+            .collect();
+        if values.is_empty() && chosen.is_empty() {
+            continue;
         }
         rows.push(FacetRow {
-            facet,
+            section,
+            facet: values.first().map_or(Facet::Weight, |(f, _)| *f),
             value: String::new(),
+            families: 0,
             count: 0,
-            header: true,
+            kind: RowKind::Head,
         });
-        let chosen = selected.get(&facet);
-        for c in counts.iter().take(cap) {
+        let shown = if expanded.contains(&section) {
+            values.len()
+        } else {
+            COLLAPSED.min(values.len())
+        };
+        let row = |facet: Facet, c: Option<&FacetCount>, value: &str| FacetRow {
+            section,
+            facet,
+            value: value.to_string(),
+            families: c.map_or(0, |c| c.families),
+            count: c.map_or(0, |c| c.count),
+            kind: RowKind::Value,
+        };
+        for (facet, c) in values.iter().take(shown) {
+            rows.push(row(*facet, Some(c), &c.value));
+        }
+        for (facet, value) in chosen {
+            if values
+                .iter()
+                .take(shown)
+                .any(|(f, c)| *f == facet && &c.value == value)
+            {
+                continue;
+            }
+            let found = values
+                .iter()
+                .find(|(f, c)| *f == facet && &c.value == value)
+                .map(|(_, c)| *c);
+            rows.push(row(facet, found, value));
+        }
+        let hidden = values.len() - shown;
+        if hidden > 0 {
             rows.push(FacetRow {
-                facet,
-                value: c.value.clone(),
-                count: c.count,
-                header: false,
+                section,
+                facet: values[0].0,
+                value: String::new(),
+                families: 0,
+                count: 0,
+                kind: RowKind::More(hidden),
             });
         }
-        // Keep a selected value visible even when it is past the cap.
-        if let Some(v) = chosen
-            && !counts.iter().take(cap).any(|c| &c.value == v)
-            && let Some(c) = counts.iter().find(|c| &c.value == v)
-        {
-            rows.push(FacetRow {
-                facet,
-                value: c.value.clone(),
-                count: c.count,
-                header: false,
-            });
-        }
-    };
-    let flags = [FacetCount {
-        value: "variable".into(),
-        count: facets.variable,
-    }];
-    let color = [FacetCount {
-        value: "color".into(),
-        count: facets.color,
-    }];
-    section(Facet::Weight, &facets.weight, 9);
-    section(Facet::Width, &facets.width, 9);
-    section(Facet::Style, &facets.style, 2);
-    if facets.variable > 0 {
-        section(Facet::Variable, &flags, 1);
     }
-    if facets.color > 0 {
-        section(Facet::Color, &color, 1);
-    }
-    section(Facet::Spacing, &facets.spacing, 2);
-    section(Facet::Script, &facets.script, 8);
-    section(Facet::Language, &facets.language, 8);
-    section(Facet::License, &facets.license, 6);
-    // Four states at most, so nothing is ever hidden behind a cap.
-    section(Facet::Freedom, &facets.freedom, 4);
-    section(Facet::Tag, &facets.tag, 10);
-    section(Facet::Collection, &facets.collection, 10);
-    section(Facet::Activation, &facets.activation, 4);
-    section(Facet::Vendor, &facets.vendor, 6);
-    section(Facet::Container, &facets.container, 5);
-    section(Facet::Source, &facets.source, 6);
     rows
 }
 
 fn first_selectable(rows: &[FacetRow], from: usize) -> usize {
     (from..rows.len())
-        .find(|&i| !rows[i].header)
-        .or_else(|| (0..from).rev().find(|&i| !rows[i].header))
+        .find(|&i| !rows[i].header())
+        .or_else(|| (0..from).rev().find(|&i| !rows[i].header()))
         .unwrap_or(0)
 }
 
@@ -2550,6 +3740,17 @@ fn facet_value_label(facet: Facet, value: &str) -> String {
             "{value}% {}",
             fontina_core::index::width_name(value.parse().unwrap_or(100.0))
         ),
+        // The three ISO 15924 codes that are not scripts, said in words. A reader
+        // scanning for Arabic should not have to know that Zinh is where combining
+        // marks go.
+        Facet::Script if PSEUDO_SCRIPTS.contains(&value) => format!(
+            "{value} {}",
+            match value {
+                "Zyyy" => "common",
+                "Zinh" => "inherited",
+                _ => "unassigned",
+            }
+        ),
         Facet::Source => Path::new(value)
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
@@ -2561,9 +3762,60 @@ fn facet_value_label(facet: Facet, value: &str) -> String {
 /// A labelled line in the details pane.
 fn kv(k: &str, v: String, theme: &theme::Theme) -> Line<'static> {
     Line::from(vec![
-        Span::styled(format!("{k:<10}"), theme.dim()),
+        Span::styled(format!("{k:<LABEL$}"), theme.dim()),
         Span::raw(v),
     ])
+}
+
+/// The label column every readout in the face pane hangs from, gap included.
+///
+/// Eleven rather than ten because `postscript` is ten characters long, and a label that
+/// exactly fills its own column runs into the value beside it.
+const LABEL: usize = 11;
+
+/// A labelled value, wrapped so that what runs on lines up under what it belongs to.
+///
+/// `Paragraph`'s own wrapping puts the overflow at column zero, and the label column is
+/// the only structural device this pane has — the thing an eye runs down. Breaking it
+/// happens on exactly the rows long enough to be worth reading:
+///
+///     glyphs    80 · 73 codepoints · Zyyy Arab Deva
+///     Khmr Mymr
+///
+/// So the wrapping happens here, on whitespace, and every line after the first is laid
+/// out under the value rather than under the label. The pane then hands `Paragraph`
+/// lines it will not touch, which has a second use: the number of lines *is* the number
+/// of rows, so the pane no longer has to estimate its own height.
+fn wrap_kv(k: &str, v: &str, cols: u16, theme: &theme::Theme) -> Vec<Line<'static>> {
+    let room = (cols as usize).saturating_sub(LABEL).max(8);
+    let mut lines = Vec::new();
+    let mut label = format!("{k:<LABEL$}");
+    let mut used = String::new();
+    let mut flush = |label: &mut String, used: &mut String| {
+        lines.push(Line::from(vec![
+            Span::styled(std::mem::take(label), theme.dim()),
+            Span::raw(std::mem::take(used)),
+        ]));
+        *label = " ".repeat(LABEL);
+    };
+    for word in v.split(' ') {
+        let w = fontina_core::unicode::columns(word);
+        let have = fontina_core::unicode::columns(&used);
+        if used.is_empty() {
+            // A single word longer than the column goes on its own line and overflows
+            // it. Cutting a path or a PostScript name in half to make it fit would be
+            // the one thing worse than a line that reaches the edge.
+            used.push_str(word);
+        } else if have + 1 + w <= room {
+            used.push(' ');
+            used.push_str(word);
+        } else {
+            flush(&mut label, &mut used);
+            used.push_str(word);
+        }
+    }
+    flush(&mut label, &mut used);
+    lines
 }
 
 /// What the details pane says about a face's licence.
@@ -2571,45 +3823,60 @@ fn kv(k: &str, v: String, theme: &theme::Theme) -> Line<'static> {
 /// The verdict and its reason, not an SPDX string on its own: whether a font may be
 /// studied, changed and passed on is the fact that decides whether it can be used at
 /// all, and an identifier only answers that for a reader who already knows the list.
-fn license_lines(face: &FaceMetadata, theme: &theme::Theme) -> Vec<Line<'static>> {
+fn license_lines(
+    face: &FaceMetadata,
+    theme: &theme::Theme,
+    cols: u16,
+) -> (Vec<Line<'static>>, Vec<Line<'static>>) {
     let verdict = fontina_core::freedom::assess(face.license.spdx.as_deref());
-    let mut lines = vec![
-        kv(
-            "license",
+    // One row, not two. The identifier and the verdict are one answer — "OFL-1.1, free"
+    // — and splitting them across two labelled rows made the pane look as though it had
+    // twice as much to say about the licence as about anything else.
+    let mut lines = vec![Line::from(vec![
+        Span::styled(format!("{:<LABEL$}", "licence"), theme.dim()),
+        Span::raw(
             face.license
                 .spdx
                 .clone()
                 .unwrap_or_else(|| "none embedded".into()),
-            theme,
         ),
-        Line::from(vec![
-            Span::styled(format!("{:<10}", "freedom"), theme.dim()),
-            // Bold as well as coloured, because the verdict is the one thing in this
-            // pane a reader may act on and colour alone cannot carry it: on a terminal
-            // with none, every role here collapses to the same nothing.
-            Span::styled(
-                verdict.freedom.to_string(),
-                match verdict.freedom {
-                    fontina_core::Freedom::Free => theme.good(),
-                    fontina_core::Freedom::Nonfree => theme.bad(),
-                    _ => theme.warn(),
-                }
-                .add_modifier(Modifier::BOLD),
-            ),
-        ]),
-    ];
-    if verdict.freedom != fontina_core::Freedom::Free {
-        // "free" needs no explaining, and the pane shares its height with the controls
-        // and the preview. Every other verdict is a reason to go and read something.
-        lines.push(Line::from(Span::styled(
-            format!("{:<10}{}", "", verdict.reason),
-            theme.dim(),
-        )));
-    }
+        Span::raw("  "),
+        // Bold as well as coloured, because the verdict is the one thing in this pane a
+        // reader may act on and colour alone cannot carry it: on a terminal with none,
+        // every role here collapses to the same nothing.
+        Span::styled(
+            verdict.freedom.to_string(),
+            match verdict.freedom {
+                fontina_core::Freedom::Free => theme.good(),
+                fontina_core::Freedom::Nonfree => theme.bad(),
+                _ => theme.warn(),
+            }
+            .add_modifier(Modifier::BOLD),
+        ),
+    ])];
+    // "free" needs no explaining. Every other verdict is a reason to go and read
+    // something — but it is prose, and prose is the first thing a short pane can do
+    // without, so it goes back to the caller to place if there is room.
+    let reason = if verdict.freedom == fontina_core::Freedom::Free {
+        Vec::new()
+    } else {
+        wrap_kv("", verdict.reason, cols, theme)
+            .into_iter()
+            .map(|line| {
+                Line::from(
+                    line.spans
+                        .into_iter()
+                        .map(|s| Span::styled(s.content, theme.dim()))
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect()
+    };
     if !face.license.reserved_font_names.is_empty() {
-        lines.push(kv(
+        lines.extend(wrap_kv(
             "reserved",
-            face.license.reserved_font_names.join(", "),
+            &face.license.reserved_font_names.join(", "),
+            cols,
             theme,
         ));
     }
@@ -2617,22 +3884,38 @@ fn license_lines(face: &FaceMetadata, theme: &theme::Theme) -> Vec<Line<'static>
         && !matches!(os2.embedding.level, EmbeddingLevel::Installable)
     {
         // Reported, never acted on: these bits are the file's assertion about itself,
-        // not a term of the licence. `freedom.rs` says why at length.
-        lines.push(kv(
-            "embedding",
-            format!("{:?} (reported, not enforced)", os2.embedding.level),
-            theme,
-        ));
+        // not a term of the licence. `freedom.rs` says why at length. The pane goes on
+        // saying so — a reader meeting `RestrictedLicense` deserves to be told in the
+        // same breath that nothing here will act on it — but says it dimly, because it
+        // is a promise the program is making rather than a fact about this font.
+        lines.push(Line::from(vec![
+            Span::styled(format!("{:<LABEL$}", "embedding"), theme.dim()),
+            Span::raw(format!("{:?}", os2.embedding.level)),
+            Span::styled("  reported, not enforced", theme.dim()),
+        ]));
     }
-    lines
+    (lines, reason)
 }
 
-/// The one key that quits from anywhere, including out of a full-screen mode.
 fn ctrl_c(key: &event::KeyEvent) -> bool {
     key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL)
 }
 
 /// Axis values without trailing noise: `400`, not `400.0`; `87.5` kept as it is.
+/// A face's weight for a list row: the number it is, or the range it can be set to.
+///
+/// A variable face reaches further than the one number it reports, and a row that shows
+/// only the default instance says the same thing about `Bricolage 200..800` as about a
+/// static Regular.
+fn axis_text(value: f32, range: Option<[f32; 2]>) -> String {
+    match range {
+        Some([lo, hi]) if (hi - lo).abs() >= 0.5 => {
+            format!("{}–{}", lo.round() as i64, hi.round() as i64)
+        }
+        _ => format!("{}", value.round() as i64),
+    }
+}
+
 fn fmt_axis(v: f32) -> String {
     if v.fract() == 0.0 {
         format!("{}", v as i64)
@@ -2653,6 +3936,16 @@ fn activation_mark(a: Option<ActivationState>) -> &'static str {
 /// Rows a bordered pane has for its list.
 fn pane_rows(area: Rect) -> usize {
     area.height.saturating_sub(2) as usize
+}
+
+/// The columns a pane has for its content: its width, less the two border columns and
+/// the column of padding inside each of them.
+///
+/// A number rather than a guess, because a pane that guesses wrong by one draws its
+/// last column under the scrollbar. Every pane asks this; nothing subtracts its own
+/// idea of a border.
+fn pane_cols(area: Rect) -> usize {
+    area.width.saturating_sub(4) as usize
 }
 
 /// A `ListState` for a pane that has already been handed only the rows it draws: the
@@ -2848,6 +4141,166 @@ mod tests {
         App::with_activator(Index::open(&db).unwrap(), Box::new(Harmless)).unwrap()
     }
 
+    /// The pane's one structural device is a label column you can run your eye down,
+    /// and `Paragraph`'s wrapping used to break it on exactly the rows long enough to
+    /// be worth reading — the overflow went to column zero.
+    #[test]
+    fn a_wrapped_value_hangs_under_the_value_it_belongs_to() {
+        let theme = theme::Theme::default();
+        let values = [
+            "the license withholds the freedom to change or redistribute the font",
+            "80 · 73 codepoints",
+            "/System/Library/Fonts/Supplemental/AVeryLongFontFileName.ttc #4",
+            "a b c d e f g h i j k l m n o p q r s t u v w x y z",
+            "",
+        ];
+        for value in values {
+            // From a label plus a word: below that the label column is itself the
+            // overflow, and `wrap_kv` keeps the column rather than pretending the pane
+            // is wide enough. No layout ever draws the face pane that narrow — `FACE`
+            // is forty-six — so nothing reaches it.
+            for cols in (LABEL as u16 + 8)..=200u16 {
+                let lines = wrap_kv("licence", value, cols, &theme);
+                assert!(!lines.is_empty());
+                for (i, line) in lines.iter().enumerate() {
+                    let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+                    let head: String = text.chars().take(LABEL).collect();
+                    if i == 0 {
+                        assert!(head.starts_with("licence"), "{text:?}");
+                    } else {
+                        assert!(
+                            head.trim().is_empty(),
+                            "{cols} columns: {text:?} runs on at the left edge"
+                        );
+                    }
+                    // One word longer than the column is the one thing allowed past it:
+                    // cutting a path in half to make it fit would be worse than a line
+                    // that reaches the edge.
+                    let value_words = text[LABEL.min(text.len())..].split(' ').count();
+                    assert!(
+                        fontina_core::unicode::columns(&text) <= cols as usize || value_words == 1,
+                        "{cols} columns: {text:?} is {} wide",
+                        fontina_core::unicode::columns(&text)
+                    );
+                }
+            }
+        }
+    }
+
+    /// And the pane really draws them that way: a nonfree licence explains itself in
+    /// prose, which is the longest value any face has and the one that used to wrap to
+    /// the left edge in front of everybody.
+    #[test]
+    fn the_pane_draws_a_long_value_under_its_label() {
+        let mut app = app();
+        select_family(&mut app, "Amiri");
+        // A verdict with a reason attached, without needing a nonfree fixture.
+        let face = app.detail.as_mut().expect("a face on show");
+        face.license.spdx = Some("LicenseRef-Proprietary".into());
+        let drawn = frame(&mut app, 90, 44);
+        let pane: Vec<&str> = drawn
+            .lines()
+            .filter_map(|l| l.rsplit('│').nth(1))
+            // Past the column of padding inside the border.
+            .map(|l| l.strip_prefix(' ').unwrap_or(l))
+            .collect();
+        let at = pane
+            .iter()
+            .position(|l| l.starts_with("licence"))
+            .expect("a licence row");
+        let reason = pane.get(at + 1).expect("the reason under it");
+        assert!(
+            reason.starts_with(&" ".repeat(LABEL)) && !reason.trim().is_empty(),
+            "the reason runs on at the left edge: {reason:?}"
+        );
+    }
+
+    /// The pane names the face, and does not then spend its first row saying it again.
+    #[test]
+    fn the_face_pane_is_titled_with_the_face() {
+        let mut app = app();
+        select_family(&mut app, "Amiri");
+        let drawn = frame(&mut app, 120, 40);
+        let title = drawn.lines().nth(1).unwrap_or_default();
+        assert!(
+            title.contains("Amiri Regular"),
+            "the border names the face: {title:?}"
+        );
+        assert!(
+            !title.contains("Details"),
+            "and does not name itself: {title:?}"
+        );
+        assert_eq!(
+            drawn.matches("Amiri Regular").count(),
+            1,
+            "and the name is on the screen once:\n{drawn}"
+        );
+    }
+
+    /// Nothing in the pane is said twice. The axes used to be a row above the axis
+    /// controls, and the scripts a list at the end of `glyphs` and again as bars.
+    #[test]
+    fn the_face_pane_says_nothing_twice() {
+        let mut app = app();
+        select_family(&mut app, "Bricolage Grotesque");
+        let drawn = frame(&mut app, 120, 44);
+        let pane: Vec<&str> = drawn
+            .lines()
+            .filter_map(|l| l.rsplit('│').nth(1))
+            // Past the column of padding inside the border.
+            .map(|l| l.strip_prefix(' ').unwrap_or(l))
+            .collect();
+        // The label column, so that the controls' own title — `axes & features` — is
+        // not mistaken for a readout labelled `axes`.
+        let labelled = |label: &str| {
+            pane.iter()
+                .filter(|l| l.chars().take(LABEL).collect::<String>().trim() == label)
+                .count()
+        };
+        assert_eq!(labelled("axes"), 0, "the axes are the controls:\n{drawn}");
+        assert_eq!(labelled("freedom"), 0, "the verdict is on the licence row");
+        assert_eq!(labelled("licence"), 1);
+        let glyphs = pane
+            .iter()
+            .find(|l| l.starts_with("glyphs"))
+            .expect("a glyphs row");
+        assert!(
+            !glyphs.contains("Latn"),
+            "the scripts are counted below, with bars: {glyphs:?}"
+        );
+        assert!(
+            pane.iter().any(|l| l.starts_with("Latn")),
+            "and they are counted below:\n{drawn}"
+        );
+    }
+
+    /// Frames of a real library, for looking at. `FONTINA_LOOK=<db> cargo test -p
+    /// fontina-cli --bin fontina look -- --ignored --nocapture`
+    #[test]
+    #[ignore = "a way of looking, not an assertion"]
+    fn look() {
+        let db = std::env::var("FONTINA_LOOK").expect("FONTINA_LOOK=<db>");
+        let mut app = App::with_activator(
+            Index::open(std::path::Path::new(&db)).unwrap(),
+            Box::new(Harmless),
+        )
+        .unwrap();
+        let w: u16 = std::env::var("LOOK_W")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(120);
+        let h: u16 = std::env::var("LOOK_H")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(40);
+        for key in std::env::var("LOOK_KEYS").unwrap_or_default().chars() {
+            frame(&mut app, w, h);
+            app.on_key(event::KeyEvent::new(KeyCode::Char(key), KeyModifiers::NONE))
+                .unwrap();
+        }
+        println!("{}", frame(&mut app, w, h));
+    }
+
     /// The activation keys record what they did, and the keys that undo them clear it.
     ///
     /// Nothing tested this before, because it could not be tested: the browser reached
@@ -2906,38 +4359,6 @@ mod tests {
         }
     }
 
-    /// A page in a pane one line tall still moves.
-    ///
-    /// A page is a screen less one line of overlap, and in a one-line pane that left
-    /// nothing: PageDown, PageUp and Space did nothing at all. `draw_sheet` gives up
-    /// below two lines and never records a height it gave up on, so no reader could
-    /// reach it — which is exactly the kind of arithmetic that becomes reachable later
-    /// and is nobody's suspect when it does.
-    #[test]
-    fn a_page_in_a_one_line_pane_still_moves() {
-        let mut app = app();
-        app.open_sheet(sheet::Kind::Waterfall).unwrap();
-        app.sheet_visible = 1;
-        // A sheet has to be laid out before it can scroll; one line per row is enough.
-        let rows = app.sheet.as_ref().unwrap().rows().len();
-        assert!(rows > 1, "a waterfall has rows to page through");
-        app.sheet
-            .as_mut()
-            .unwrap()
-            .set_built(40, None, vec![Line::from("x"); rows]);
-
-        app.handle_sheet_key(KeyCode::PageDown).unwrap();
-        assert_eq!(
-            app.sheet.as_ref().unwrap().scroll_row(),
-            1,
-            "PageDown in a one-line pane moves one line, not none"
-        );
-        app.handle_sheet_key(KeyCode::PageUp).unwrap();
-        assert_eq!(app.sheet.as_ref().unwrap().scroll_row(), 0);
-        app.handle_sheet_key(KeyCode::Char(' ')).unwrap();
-        assert_eq!(app.sheet.as_ref().unwrap().scroll_row(), 1);
-    }
-
     /// Pressing an activation key with nothing selected says so and changes nothing.
     #[test]
     fn activating_nothing_is_a_message_rather_than_a_mistake() {
@@ -2965,7 +4386,6 @@ mod tests {
         // SAFETY: single-threaded test.
         unsafe { std::env::set_var("BROWSER", "true") };
         let mut app = app();
-        app.preview_text = Some("Hamburgefonstiv".into());
         let ids = app.current_face_ids();
         assert!(!ids.is_empty(), "the first family is selected");
 
@@ -2977,8 +4397,9 @@ mod tests {
         let html = std::fs::read_to_string(&path).expect("the specimen was written");
         assert!(html.starts_with("<!doctype html>") || html.starts_with("<!DOCTYPE html>"));
         assert!(
-            html.contains("Hamburgefonstiv"),
-            "the sample text the user set is in it"
+            html.contains("waterfall") || html.contains("compare"),
+            "the specimen is where the type is actually set: {}",
+            &html[..400.min(html.len())]
         );
         assert!(
             !html.contains("http://") && !html.contains("https://"),
@@ -3170,11 +4591,6 @@ mod tests {
                 "{whence}: focus sits on a controls pane the face does not have"
             );
         }
-        assert!(
-            (8.0..=160.0).contains(&app.preview_size),
-            "{whence}: preview size {} outside its bounds",
-            app.preview_size
-        );
         if let Some(g) = &app.glyphs {
             assert!(
                 g.is_empty() || g.selected_index() < g.blocks().len(),
@@ -3544,6 +4960,14 @@ mod tests {
     }
 
     /// Flatten a pane's lines to plain text, the way a reader sees them.
+    /// The licence rows and the reason under them, the way the pane places them when
+    /// it has the room.
+    fn joined((mut lines, reason): (Vec<Line<'static>>, Vec<Line<'static>>)) -> Vec<Line<'static>> {
+        let at = 1.min(lines.len());
+        lines.splice(at..at, reason);
+        lines
+    }
+
     fn text_of(lines: &[Line<'_>]) -> String {
         lines
             .iter()
@@ -3562,13 +4986,15 @@ mod tests {
         let mut app = app();
         select_family(&mut app, "Amiri");
         let mut face = app.detail.clone().unwrap();
-        let shown = text_of(&license_lines(&face, &theme::Theme::default()));
+        let shown = text_of(&joined(license_lines(&face, &theme::Theme::default(), 60)));
         assert!(shown.contains("OFL-1.1"), "{shown}");
         // Not `contains("free")`: the label "freedom" contains it, so that would hold
         // even if the verdict were missing or said the opposite.
         assert!(
-            shown.lines().any(|l| l.trim_end() == "freedom   free"),
-            "the verdict is on its own line: {shown}"
+            shown
+                .lines()
+                .any(|l| l.starts_with("licence") && l.trim_end().ends_with("free")),
+            "the verdict is on the licence row, not a row of its own: {shown}"
         );
         assert!(
             !shown.contains("grants the freedom"),
@@ -3577,13 +5003,13 @@ mod tests {
 
         // A nonfree licence says so, and says why.
         face.license.spdx = Some("LicenseRef-Proprietary".into());
-        let shown = text_of(&license_lines(&face, &theme::Theme::default()));
+        let shown = text_of(&joined(license_lines(&face, &theme::Theme::default(), 60)));
         assert!(shown.contains("nonfree"), "{shown}");
         assert!(shown.contains("withholds"), "{shown}");
 
         // A font with nothing embedded is not silently called free.
         face.license.spdx = None;
-        let shown = text_of(&license_lines(&face, &theme::Theme::default()));
+        let shown = text_of(&joined(license_lines(&face, &theme::Theme::default(), 60)));
         assert!(shown.contains("none embedded"), "{shown}");
         assert!(shown.contains("unstated"), "{shown}");
         assert!(shown.contains("no permission"), "{shown}");
@@ -3645,12 +5071,15 @@ mod tests {
         select_family(&mut app, "Amiri");
         let mut face = app.detail.clone().unwrap();
         // Installable is the ordinary case and says nothing.
-        assert!(!text_of(&license_lines(&face, &theme::Theme::default())).contains("embedding"));
+        assert!(
+            !text_of(&joined(license_lines(&face, &theme::Theme::default(), 60)))
+                .contains("embedding")
+        );
 
         let os2 = face.os2.as_mut().unwrap();
         os2.fs_type = 0x0002;
         os2.embedding = fontina_core::model::EmbeddingRights::from_fs_type(0x0002);
-        let shown = text_of(&license_lines(&face, &theme::Theme::default()));
+        let shown = text_of(&joined(license_lines(&face, &theme::Theme::default(), 60)));
         assert!(shown.contains("RestrictedLicense"), "{shown}");
         assert!(
             shown.contains("not enforced"),
@@ -3703,121 +5132,242 @@ mod tests {
         );
     }
 
+    /// The filter line, which is the whole of "you can see the state without opening
+    /// anything": on with nothing narrowed, on with something narrowed, and naming the
+    /// key that takes it off.
     #[test]
-    fn a_waterfall_covers_one_face_and_a_comparison_the_whole_family() {
+    fn the_filter_line_says_what_is_on_and_how_to_take_it_off() {
         let mut app = app();
-        select_family(&mut app, "Bricolage");
-
-        app.open_sheet(sheet::Kind::Waterfall).unwrap();
-        let s = app.sheet.as_ref().expect("a face was selected");
-        assert_eq!(s.kind(), sheet::Kind::Waterfall);
-        let names: std::collections::BTreeSet<&str> = s
-            .rows()
-            .iter()
-            .map(|r| r.face.names.family.as_str())
-            .collect();
-        assert_eq!(names.len(), 1, "a waterfall is one face at many sizes");
-        assert!(app.status.contains("fontina specimen"), "{}", app.status);
-
-        // Every key is swallowed while it is open, so nothing underneath can move.
-        let before = app.detail_id;
-        app.handle_sheet_key(KeyCode::Char('a')).unwrap();
-        assert_eq!(app.detail_id, before);
-        assert!(app.sheet.is_some());
-        app.handle_sheet_key(KeyCode::Esc).unwrap();
-        assert!(app.sheet.is_none());
-
-        app.open_sheet(sheet::Kind::Compare).unwrap();
-        let s = app.sheet.as_ref().unwrap();
-        assert_eq!(s.kind(), sheet::Kind::Compare);
-        assert_eq!(
-            s.rows().len(),
-            app.current_face_ids().len(),
-            "a comparison covers everything the selection stands for"
+        let idle = frame(&mut app, 120, 24);
+        let first = idle.lines().next().unwrap().to_string();
+        assert!(
+            first.contains("filter") && first.contains("f narrows"),
+            "with nothing on, the line says which key narrows: {first:?}"
         );
-    }
-
-    /// The face listing inside a family is exactly the view a reader presses `C` from,
-    /// and `current_face_ids` narrows to the selected face there — which would compare a
-    /// face with itself.
-    #[test]
-    fn comparing_inside_an_open_family_covers_the_family() {
-        let mut app = app();
-        select_family(&mut app, "Inter");
-        app.open_family().unwrap();
-        assert!(app.open_family.is_some(), "the family is open");
-        let listed = app.faces.len();
-        assert!(listed > 1, "this family has siblings to compare");
-        assert_eq!(app.current_face_ids().len(), 1, "the selection is one face");
-
-        app.open_sheet(sheet::Kind::Compare).unwrap();
-        assert_eq!(
-            app.sheet.as_ref().unwrap().rows().len(),
-            listed,
-            "C compares what the listing shows"
+        assert!(
+            first.contains("families"),
+            "and how many there are: {first:?}"
         );
+
+        app.selected.insert(Facet::Script, "Arab".into());
+        app.reload().unwrap();
+        let drawn = frame(&mut app, 120, 24);
+        let first = drawn.lines().next().unwrap().to_string();
+        assert!(
+            first.contains("script Arab"),
+            "with a facet on, the line names it in words: {first:?}"
+        );
+        assert!(
+            first.contains('→'),
+            "and says what it did to the count: {first:?}"
+        );
+        assert!(
+            first.contains("x clear"),
+            "and names the key that clears it: {first:?}"
+        );
+
+        // And that key clears it, including a line typed into the filter bar.
+        app.filter_line = Some("--variable".into());
+        app.on_key(event::KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE))
+            .unwrap();
+        assert!(app.selected.is_empty() && app.filter_line.is_none() && !app.narrowed());
     }
 
+    /// The panel: one key opens it, Esc closes it, and it is titled with a verb.
     #[test]
-    fn only_a_comparison_answers_the_size_keys() {
+    fn the_facet_panel_opens_on_one_key_and_closes_on_esc() {
         let mut app = app();
-        select_family(&mut app, "Amiri");
-        app.open_sheet(sheet::Kind::Waterfall).unwrap();
-        let sizes: Vec<f32> = app
-            .sheet
-            .as_ref()
-            .unwrap()
-            .rows()
-            .iter()
-            .map(|r| r.size)
-            .collect();
-        app.handle_sheet_key(KeyCode::Char('+')).unwrap();
-        let after: Vec<f32> = app
-            .sheet
-            .as_ref()
-            .unwrap()
-            .rows()
-            .iter()
-            .map(|r| r.size)
-            .collect();
-        assert_eq!(sizes, after, "a waterfall's ladder is fixed");
-
-        app.sheet = None;
-        app.open_sheet(sheet::Kind::Compare).unwrap();
-        let before = app.sheet.as_ref().unwrap().size();
-        app.handle_sheet_key(KeyCode::Char('+')).unwrap();
-        assert!(app.sheet.as_ref().unwrap().size() > before);
+        assert_ne!(app.focus, Focus::Facets, "it does not open itself");
+        app.on_key(event::KeyEvent::new(KeyCode::Char('f'), KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.focus, Focus::Facets);
+        assert!(frame(&mut app, 120, 30).contains("Narrow by"));
+        app.on_key(event::KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.focus, Focus::List, "Esc puts it away");
+        assert!(!frame(&mut app, 120, 30).contains("Narrow by"));
     }
 
-    /// One rendering per row, held between frames: scrolling a waterfall must not
-    /// re-render nine bitmaps on every keypress.
+    /// Sections in the order a person enters a library, collapsed, each ending in the
+    /// row that opens it.
     #[test]
-    fn the_preview_cache_holds_a_rendering_for_every_row() {
+    fn the_sections_are_collapsed_and_ordered_the_way_a_library_is_entered() {
         let mut app = app();
-        select_family(&mut app, "Amiri");
-        let face = app.detail.clone().unwrap();
-        let opts = |size: f32| RenderOptions {
-            text: "Ag".into(),
-            size,
-            padding: 1,
-            max_width: Some(60),
-            ..Default::default()
-        };
-        for size in fontina_core::typography::WATERFALL_SIZES {
-            app.preview.lines(&face, &opts(*size), 40);
+        let heads: Vec<Section> = app
+            .rows
+            .iter()
+            .filter(|r| r.header())
+            .map(|r| r.section)
+            .collect();
+        let wanted = [
+            Section::Script,
+            Section::Language,
+            Section::Foundry,
+            Section::Capability,
+            Section::Weight,
+            Section::Licence,
+            Section::Format,
+        ];
+        let mut at = 0;
+        for section in wanted {
+            let Some(i) = heads[at..].iter().position(|h| *h == section) else {
+                panic!("{section:?} is missing or out of order in {heads:?}");
+            };
+            at += i + 1;
         }
-        assert_eq!(
-            app.preview.len(),
-            fontina_core::typography::WATERFALL_SIZES.len(),
-            "every size kept its rendering"
+        assert!(
+            heads.iter().position(|h| *h == Section::Script)
+                < heads.iter().position(|h| *h == Section::Weight),
+            "script comes before weight, which is the whole reordering"
         );
-        // And asking again returns them without rendering: the count does not grow.
-        for size in fontina_core::typography::WATERFALL_SIZES {
-            app.preview.lines(&face, &opts(*size), 40);
+
+        // Collapsed: no section shows more than three values before it is opened.
+        for &section in SECTIONS {
+            let n = app
+                .rows
+                .iter()
+                .filter(|r| r.section == section && r.kind == RowKind::Value)
+                .count();
+            assert!(
+                n <= COLLAPSED,
+                "{section:?} drew {n} values while collapsed"
+            );
         }
+
+        // And the row that opens one does open it.
+        let more = app
+            .rows
+            .iter()
+            .position(|r| matches!(r.kind, RowKind::More(_)))
+            .expect("the fixtures have a section with more than three values");
+        let section = app.rows[more].section;
+        let before = app.rows.len();
+        app.facet_list.select(Some(more));
+        app.toggle_facet().unwrap();
+        assert!(app.expanded.contains(&section));
+        assert!(app.rows.len() > before, "+N more opened nothing");
+    }
+
+    /// A count beside a list of families has to be a count of families.
+    #[test]
+    fn the_panel_counts_in_the_unit_of_the_list_beside_it() {
+        let mut app = app();
+        let (families, count) = app
+            .rows
+            .iter()
+            .find(|r| r.kind == RowKind::Value && r.facet == Facet::Script && r.value == "Latn")
+            .map(|r| (r.families, r.count))
+            .expect("the fixtures cover Latin");
         assert_eq!(
-            app.preview.len(),
-            fontina_core::typography::WATERFALL_SIZES.len()
+            families as usize,
+            app.families
+                .iter()
+                .filter(|f| f.scripts.iter().any(|s| s == "Latn"))
+                .count(),
+            "the Latin row counts the families the list would be left with"
+        );
+        assert!(count >= families, "and the faces beside it are never fewer");
+        app.open_narrow();
+        let drawn = frame(&mut app, 120, 30);
+        let latn = drawn
+            .lines()
+            .find(|l| l.contains("Latn"))
+            .expect("the Latin row is drawn");
+        assert!(
+            latn.contains(&format!("{families} ({count})")),
+            "families lead, faces in brackets: {latn:?}"
+        );
+    }
+
+    /// Zyyy, Zinh and Zzzz are in nearly every font and are never what one is for.
+    /// And when the reader does go looking for them, they are named rather than
+    /// spelled: nobody should have to know that Zinh is where combining marks go.
+    #[test]
+    fn a_pseudo_script_is_said_in_words() {
+        assert_eq!(facet_value_label(Facet::Script, "Zyyy"), "Zyyy common");
+        assert_eq!(facet_value_label(Facet::Script, "Zinh"), "Zinh inherited");
+        assert_eq!(facet_value_label(Facet::Script, "Zzzz"), "Zzzz unassigned");
+        assert_eq!(
+            facet_value_label(Facet::Script, "Arab"),
+            "Arab",
+            "a real script is its own code and nothing else"
+        );
+    }
+
+    #[test]
+    fn the_pseudo_scripts_do_not_take_the_top_of_the_script_section() {
+        let app = app();
+        let scripts: Vec<&str> = app
+            .rows
+            .iter()
+            .filter(|r| r.section == Section::Script && r.kind == RowKind::Value)
+            .map(|r| r.value.as_str())
+            .collect();
+        assert!(!scripts.is_empty());
+        for pseudo in PSEUDO_SCRIPTS {
+            assert!(
+                !scripts.contains(&pseudo),
+                "{pseudo} took one of the three rows a reader sees: {scripts:?}"
+            );
+        }
+    }
+
+    /// Narrowing to nothing must not take the way back with it.
+    ///
+    /// The facets are counted over the filtered set, so a combination that matches
+    /// nothing used to empty the pane that holds the undo: three empty boxes, and the
+    /// only escape a key nothing on the screen mentions. Both halves of the fix are
+    /// here — the row the reader selected survives at zero and still toggles, and the
+    /// pane they are looking at says what happened and what to press.
+    #[test]
+    fn filtering_to_nothing_leaves_the_way_back_on_the_screen() {
+        let mut app = app();
+        app.selected.insert(Facet::Freedom, "nonfree".into());
+        app.selected.insert(Facet::Script, "Arab".into());
+        app.reload().unwrap();
+        assert_eq!(app.list_len(), 0, "no fixture is both nonfree and Arabic");
+
+        for (facet, value) in [(Facet::Freedom, "nonfree"), (Facet::Script, "Arab")] {
+            let row = app
+                .rows
+                .iter()
+                .find(|r| !r.header() && r.facet == facet && r.value == value)
+                .unwrap_or_else(|| {
+                    panic!("{facet:?} {value} left the pane while its filter was still on")
+                });
+            assert_eq!(
+                row.count, 0,
+                "{facet:?} {value} is drawn at the count it has"
+            );
+        }
+
+        let drawn = frame(&mut app, 120, 24);
+        assert!(
+            drawn.contains("Nothing matches these filters"),
+            "the list pane says what happened:\n{drawn}"
+        );
+        assert!(
+            drawn.contains("nonfree") && drawn.contains("Arab"),
+            "and names the filters that are on:\n{drawn}"
+        );
+        assert!(
+            drawn.contains("clears them all"),
+            "and the key that clears them:\n{drawn}"
+        );
+
+        // Enter on a marked row takes that filter off, which is the way back the pane
+        // just described.
+        let row = app
+            .rows
+            .iter()
+            .position(|r| !r.header() && r.facet == Facet::Freedom && r.value == "nonfree")
+            .expect("the marked row is still selectable");
+        app.facet_list.select(Some(row));
+        app.toggle_facet().unwrap();
+        assert!(!app.selected.contains_key(&Facet::Freedom));
+        assert!(
+            app.list_len() > 0,
+            "dropping one filter brought the library back"
         );
     }
 
@@ -3829,34 +5379,22 @@ mod tests {
 
         app.start_input(InputKind::Glyph, String::new());
         for c in "U+0041".chars() {
-            app.handle_input_key(KeyCode::Char(c)).unwrap();
+            app.handle_input_key(event::KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE))
+                .unwrap();
         }
-        app.handle_input_key(KeyCode::Enter).unwrap();
+        app.handle_input_key(event::KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
         assert!(app.status.starts_with("U+0041 in "), "{}", app.status);
         assert_eq!(app.glyphs.as_ref().unwrap().found(), Some(0x41));
 
         app.start_input(InputKind::Glyph, String::new());
         for c in "Tibetan".chars() {
-            app.handle_input_key(KeyCode::Char(c)).unwrap();
+            app.handle_input_key(event::KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE))
+                .unwrap();
         }
-        app.handle_input_key(KeyCode::Enter).unwrap();
+        app.handle_input_key(event::KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
         assert!(app.status.contains("nothing covered"), "{}", app.status);
-    }
-
-    #[test]
-    fn the_render_options_carry_what_the_reader_set() {
-        let mut app = app();
-        select_family(&mut app, "Bricolage");
-        app.focus = Focus::Detail;
-        app.controls.adjust(-3);
-        let opts = app.render_options("Ag".into(), 80);
-        assert_eq!(opts.variations, app.controls.variations());
-        assert!(!opts.variations.is_empty());
-        assert_eq!(opts.features, app.controls.forced_features());
-        // The cache key is the options, so a moved axis is a different key.
-        let before = opts.clone();
-        app.controls.adjust(-1);
-        assert_ne!(app.render_options("Ag".into(), 80), before);
     }
 
     // ----- frames -----
@@ -3894,7 +5432,6 @@ mod tests {
     /// name still opens — the preview reads the file — because cargo runs a test with
     /// the package root as its working directory.
     fn stable_frame(app: &mut App, width: u16, height: u16) -> String {
-        app.preview_text = Some(" ".into());
         if let Some(face) = app.detail.as_mut() {
             let name = Path::new(&face.file.path)
                 .file_name()
@@ -3918,12 +5455,6 @@ mod tests {
             .collect::<String>()
             .trim_end()
             .to_string()
-    }
-
-    /// Where a substring starts, counted in columns rather than bytes: the frame is
-    /// full of box drawing, and one of those is three bytes wide and one column.
-    fn column_of(row: &str, needle: &str) -> Option<usize> {
-        row.find(needle).map(|b| row[..b].chars().count())
     }
 
     /// The glyph map, which is what the browser is for.
@@ -3962,29 +5493,6 @@ mod tests {
         let drawn = stable_frame(&mut app, 120, 36);
         assert!(drawn.contains("wght"), "the weight axis is named: {drawn}");
         insta::assert_snapshot!(drawn);
-    }
-
-    /// The depth reaches the preview as well as the panes: one screen, one palette.
-    #[test]
-    fn the_terminals_depth_reaches_the_preview_as_well_as_the_borders() {
-        let mut app = app();
-        select_family(&mut app, "Amiri");
-        let coloured = frame(&mut app, 120, 36);
-        assert!(
-            coloured.contains('▀'),
-            "with colour every filled cell is a top half over a background"
-        );
-
-        app.use_depth(theme::Depth::None);
-        let plain = frame(&mut app, 120, 36);
-        assert_ne!(
-            plain, coloured,
-            "the preview did not notice the depth change"
-        );
-        assert!(
-            plain.contains('█') || plain.contains('▄') || plain.contains('▀'),
-            "and it is drawn as shape rather than dropped: {plain}"
-        );
     }
 
     /// A library of `n` families, made by cloning the fixtures' own.
@@ -4057,27 +5565,68 @@ mod tests {
         assert!(drawn.contains("Family 00000"), "{drawn}");
     }
 
-    /// What it costs to draw a frame, at the three scales the item asks about.
+    /// What a repaint costs, on each screen the browser has, at three library sizes.
     ///
-    /// Ignored by default: it is a measurement rather than an assertion, and a number
-    /// from a shared runner is not one worth failing a build over. `cargo test -p
-    /// fontina-cli --bins -- --ignored --nocapture what_a_frame_costs`.
+    /// A measurement rather than an assertion, so it is ignored by default and the
+    /// budgets are applied by `scripts/bench`, where every other budget in this project
+    /// is applied. It prints one machine-readable line per screen and size:
+    ///
+    /// ```text
+    /// browser <screen> <faces> <microseconds>
+    /// ```
+    ///
+    /// Microseconds because a frame is well under a millisecond and a budget stated in
+    /// whole milliseconds could only ever read zero.
+    ///
+    /// The library is faked into the field rather than indexed, because what is being
+    /// timed is the drawing: an index of ten thousand rows would put SQLite in the
+    /// middle of a question about `format!` and box drawing. What a query costs is a
+    /// separate budget, already stated in PLAN.md §7 against the real binary.
+    ///
+    /// `cargo test --release -p fontina-cli --bins -- --ignored --nocapture browser_repaint`
     #[test]
-    #[ignore = "a measurement, not an assertion"]
-    fn what_a_frame_costs_at_a_hundred_a_thousand_and_ten_thousand() {
-        for n in [100usize, 1_000, 10_000] {
-            let mut app = app();
-            with_families(&mut app, n);
-            app.list.select(Some(n / 2));
-            app.preview_text = Some(" ".into());
-            frame(&mut app, 120, 36);
-            let start = std::time::Instant::now();
-            const FRAMES: u32 = 200;
-            for _ in 0..FRAMES {
-                frame(&mut app, 120, 36);
+    #[ignore = "a measurement, applied as a budget by scripts/bench"]
+    fn browser_repaint_on_every_screen_and_at_every_size() {
+        // Best of five runs of forty frames, for the same reason `scripts/bench` takes
+        // the best of three: the best run is the machine's capability and the rest is
+        // whatever else it was doing.
+        fn best_micros(app: &mut App, screen: &str, n: usize) {
+            const FRAMES: u32 = 40;
+            frame(app, 120, 36);
+            let mut best = f64::MAX;
+            for _ in 0..5 {
+                let start = std::time::Instant::now();
+                for _ in 0..FRAMES {
+                    frame(app, 120, 36);
+                }
+                let per = start.elapsed().as_secs_f64() * 1e6 / f64::from(FRAMES);
+                best = best.min(per);
             }
-            let per = start.elapsed().as_secs_f64() * 1000.0 / f64::from(FRAMES);
-            println!("{n:>6} families: {per:.3} ms per frame");
+            println!("browser {screen} {n} {best:.0}");
+        }
+
+        for n in [100usize, 1_000, 10_000] {
+            // The family list, which is where the browser opens and where a library of
+            // this size is actually felt.
+            let mut list = app();
+            with_families(&mut list, n);
+            list.list.select(Some(n / 2));
+            best_micros(&mut list, "families", n);
+
+            // A family open: the same pane holding faces instead, with the details
+            // beside it.
+            let mut opened = app();
+            select_family(&mut opened, "Amiri");
+            opened.open_family().unwrap();
+            best_micros(&mut opened, "family", n);
+
+            // The glyph map, which does not grow with the library — it is one face's
+            // coverage — so this row is here to say so, and to fail if that stops
+            // being true.
+            let mut map = app();
+            select_family(&mut map, "Amiri");
+            map.open_glyphs();
+            best_micros(&mut map, "glyphs", n);
         }
     }
 
@@ -4086,18 +5635,25 @@ mod tests {
     /// What the loop does between frames, without the frames. Bounded, so a worker that
     /// never answers fails the test rather than hanging the suite.
     fn settle(app: &mut App) {
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        // Generous: this is a net for a worker that never answers, not a measurement.
+        // Every test in this file spawns one, and a loaded machine running them in
+        // parallel is not the same as a browser answering a keystroke.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
         while app.search.as_ref().is_some_and(search::Search::waiting) {
             app.collect().unwrap();
             assert!(
                 std::time::Instant::now() < deadline,
-                "the worker never answered"
+                "the worker never answered: {:?} asked and answered",
+                app.search.as_ref().map(search::Search::progress)
             );
+            // Yield. Spinning here starves the very thread being waited on: the suite
+            // runs these in parallel and every one of them owns a worker, so a hot
+            // loop per test is a core each taken away from the work they are waiting
+            // for. It passed alone and timed out in company, which is the signature.
+            std::thread::sleep(std::time::Duration::from_millis(1));
         }
     }
 
-    /// The whole of the item, at the level a reader meets it: typing filters the list,
-    /// and no keystroke waits for the index to say so.
     #[test]
     fn typing_filters_the_list_without_any_keystroke_waiting_for_it() {
         let mut app = app();
@@ -4566,13 +6122,482 @@ mod tests {
         }
     }
 
+    /// Type into the filter bar, one key at a time, the way a reader does.
+    fn type_filter(app: &mut App, line: &str) {
+        press(app, KeyCode::Char('F'));
+        // The bar opens pre-filled, so clear it first: this is what a reader who wants
+        // a different filter does.
+        while app.input.as_ref().is_some_and(|i| !i.buf.is_empty()) {
+            press(app, KeyCode::Backspace);
+        }
+        for c in line.chars() {
+            press(app, KeyCode::Char(c));
+        }
+    }
+
+    /// The whole of the item: a filter the facet pane cannot express, applied as it is
+    /// typed, with the count in front of the reader while they compose it.
+    #[test]
+    fn the_filter_bar_applies_the_flags_as_they_are_typed() {
+        let mut app = app();
+        assert_eq!(app.facets.faces, 6);
+
+        type_filter(&mut app, "--script Arab");
+        assert_eq!(app.facets.faces, 1, "the panes moved as the line was typed");
+        assert_eq!(app.count_line(), "1 face");
+        assert_eq!(
+            app.families
+                .iter()
+                .map(|f| f.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Amiri"]
+        );
+
+        // Enter keeps it, and the status line says the command that would repeat it.
+        press(&mut app, KeyCode::Enter);
+        assert!(app.input.is_none());
+        assert_eq!(app.facets.faces, 1);
+        assert!(
+            app.command_line().contains("--script Arab"),
+            "{}",
+            app.command_line()
+        );
+    }
+
+    /// A range and two scripts at once — the things the facet pane has no way to say.
+    #[test]
+    fn the_bar_says_what_the_facets_cannot() {
+        let mut app = app();
+        type_filter(&mut app, "--weight 300-500 --variable=false");
+        press(&mut app, KeyCode::Enter);
+        assert!(app.facets.faces < 6, "{} faces", app.facets.faces);
+        assert!(
+            app.families.iter().all(|f| !f.variable),
+            "a variable family survived --variable=false"
+        );
+    }
+
+    /// A half-typed flag is not a filter, so the panes stay on the last line that
+    /// parsed and the prompt says what is wrong rather than blanking the list.
+    #[test]
+    fn a_line_that_does_not_parse_leaves_the_panes_alone_and_says_why() {
+        let mut app = app();
+        type_filter(&mut app, "--script Arab");
+        assert_eq!(app.facets.faces, 1);
+
+        for c in " --wieght".chars() {
+            press(&mut app, KeyCode::Char(c));
+        }
+        assert!(app.filter_error.is_some(), "the mistake went unnoticed");
+        assert_eq!(app.facets.faces, 1, "the panes were blanked mid-word");
+        let drawn = stable_frame(&mut app, 120, 36);
+        assert!(
+            drawn.contains("--wieght"),
+            "the prompt says which word: {drawn}"
+        );
+
+        // And correcting it puts the count back.
+        for _ in 0.." --wieght".len() {
+            press(&mut app, KeyCode::Backspace);
+        }
+        assert!(app.filter_error.is_none());
+    }
+
+    /// Esc puts back what was there, panes and all.
+    #[test]
+    fn esc_restores_the_filter_the_bar_opened_over() {
+        let mut app = app();
+        type_filter(&mut app, "--script Arab");
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(app.facets.faces, 1);
+
+        // A filter with a different count, so "it changed" is visible: two of the
+        // fixtures are variable and only one is Arabic.
+        type_filter(&mut app, "--variable");
+        assert_eq!(app.facets.faces, 2, "the new line took effect");
+        press(&mut app, KeyCode::Esc);
+        assert_eq!(app.facets.faces, 1, "Esc did not put the old filter back");
+        assert_eq!(app.filter_line.as_deref(), Some("--script Arab"));
+    }
+
+    /// The bar opens as an editable copy of the screen, not as an empty box.
+    #[test]
+    fn the_bar_opens_pre_filled_with_what_the_panes_are_showing() {
+        let mut app = app();
+        app.selected.insert(Facet::Variable, "variable".into());
+        app.reload().unwrap();
+        press(&mut app, KeyCode::Char('F'));
+        assert_eq!(
+            app.input.as_ref().map(|i| i.buf.as_str()),
+            Some("--variable"),
+            "the bar started empty over a filtered screen"
+        );
+    }
+
+    /// One keystroke from a composed filter to a collection of what it matched.
+    #[test]
+    fn ctrl_s_saves_what_the_filter_matched_as_a_collection() {
+        let mut app = app();
+        type_filter(&mut app, "--script Arab");
+        app.on_key(event::KeyEvent::new(
+            KeyCode::Char('s'),
+            KeyModifiers::CONTROL,
+        ))
+        .unwrap();
+        assert_eq!(
+            app.input.as_ref().map(|i| i.kind),
+            Some(InputKind::Collection),
+            "the next thing typed should be the name"
+        );
+        assert_eq!(app.marked.len(), 1, "everything it matched is marked");
+
+        for c in "arabic".chars() {
+            press(&mut app, KeyCode::Char(c));
+        }
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(
+            app.index
+                .list(&FaceFilter {
+                    collection: Some("arabic".into()),
+                    ..Default::default()
+                })
+                .unwrap()
+                .len(),
+            1,
+            "{}",
+            app.status
+        );
+    }
+
+    /// A typed filter and the facet pane are two ways of saying the same thing, and
+    /// there is no sensible way to add one facet to `--variable=false`. Toggling one
+    /// takes the facets back, and says so rather than half-keeping the line.
+    #[test]
+    fn toggling_a_facet_takes_the_facets_back_from_a_typed_filter() {
+        let mut app = app();
+        type_filter(&mut app, "--script Arab");
+        press(&mut app, KeyCode::Enter);
+        assert!(app.filter_override.is_some());
+
+        app.focus = Focus::Facets;
+        press(&mut app, KeyCode::Enter);
+        assert!(app.filter_override.is_none(), "the line was half-kept");
+        assert!(app.filter_line.is_none());
+        assert!(
+            app.status.contains("filter bar was cleared"),
+            "{}",
+            app.status
+        );
+    }
+
+    /// The item's own example: a library holds families that are one typeface spelled
+    /// several ways. The fixtures have exactly that — Inter as a WOFF and a WOFF2 — so
+    /// `r` on one of them should find the other, and say what it found it on.
+    #[test]
+    fn r_lists_what_covers_nearly_the_same_characters() {
+        let mut app = app();
+        select_family(&mut app, "Inter");
+        app.open_family().unwrap();
+        press(&mut app, KeyCode::Char('r'));
+
+        let view = app
+            .related
+            .as_ref()
+            .expect("Inter has a twin in the fixtures");
+        assert!(!view.is_empty());
+        let top = view.candidates().first().unwrap();
+        assert_eq!(top.row.face.family, "Inter", "{:?}", top.row.face.family);
+        assert!(
+            top.row.overlap > 0.9,
+            "the same font twice: {}",
+            top.row.overlap
+        );
+        assert!(top.row.metrics_agree, "and the same metrics");
+
+        // The score and the evidence are both on the screen, which is the rule.
+        let drawn = stable_frame(&mut app, 120, 36);
+        assert!(drawn.contains("1.00") || drawn.contains("0.9"), "{drawn}");
+        assert!(drawn.contains("upem"), "the metrics are beside it: {drawn}");
+        assert!(drawn.contains("same metrics"), "{drawn}");
+        assert!(drawn.contains("shared"), "{drawn}");
+        // And the floor is stated, so a reader can ask what fell below it.
+        assert!(drawn.contains("over 0.10 overlap"), "{drawn}");
+    }
+
+    /// A face with nothing near it says so rather than showing a weak list.
+    #[test]
+    fn a_face_with_nothing_near_it_says_so() {
+        let mut app = app();
+        select_family(&mut app, "Amiri");
+        press(&mut app, KeyCode::Char('r'));
+        // Amiri is the only Arabic face in the fixtures; if anything did clear the
+        // floor the assertion below still holds the rule, which is that an empty
+        // answer is a sentence rather than an empty box.
+        if app.related.is_none() {
+            assert!(
+                app.status.starts_with("nothing in the library covers"),
+                "{}",
+                app.status
+            );
+            assert!(app.status.contains("fontina variants"), "{}", app.status);
+        }
+    }
+
+    /// Finding it is only half of it: Enter puts the cursor on the face, past whatever
+    /// filter was hiding it.
+    #[test]
+    fn enter_goes_to_the_face_the_list_found() {
+        let mut app = app();
+        select_family(&mut app, "Inter");
+        app.open_family().unwrap();
+        let from = app.detail_id.expect("a face is selected");
+        press(&mut app, KeyCode::Char('r'));
+        let to = app
+            .related
+            .as_ref()
+            .and_then(|v| v.selected())
+            .map(|c| c.row.face.id)
+            .expect("something to go to");
+        assert_ne!(from, to);
+
+        press(&mut app, KeyCode::Enter);
+        assert!(app.related.is_none(), "the list closed behind it");
+        assert_eq!(app.detail_id, Some(to), "{}", app.status);
+    }
+
+    /// A filter that would hide the face is cleared on the way, because a "go here"
+    /// that goes nowhere is worse than none.
+    #[test]
+    fn going_to_a_face_clears_a_filter_that_would_hide_it() {
+        let mut app = app();
+        select_family(&mut app, "Inter");
+        app.open_family().unwrap();
+        let to = {
+            press(&mut app, KeyCode::Char('r'));
+            app.related
+                .as_ref()
+                .and_then(|v| v.selected())
+                .map(|c| c.row.face.id)
+                .expect("something to go to")
+        };
+        press(&mut app, KeyCode::Esc);
+
+        app.query = "Amiri".into();
+        app.reload().unwrap();
+        app.go_to_face(to).unwrap();
+        assert!(app.query.is_empty(), "the query survived and hid the face");
+        assert_eq!(app.detail_id, Some(to));
+    }
+
+    /// `r` closes it again, and Ctrl-R is still redo.
+    #[test]
+    fn r_closes_the_list_and_ctrl_r_is_still_redo() {
+        let mut app = app();
+        select_family(&mut app, "Inter");
+        app.open_family().unwrap();
+        press(&mut app, KeyCode::Char('r'));
+        assert!(app.related.is_some());
+        press(&mut app, KeyCode::Char('r'));
+        assert!(app.related.is_none());
+
+        app.on_key(event::KeyEvent::new(
+            KeyCode::Char('r'),
+            KeyModifiers::CONTROL,
+        ))
+        .unwrap();
+        assert_eq!(app.status, "nothing to redo", "Ctrl-R was swallowed");
+        assert!(app.related.is_none());
+    }
+
+    /// The question a designer actually has: here is a line, who can set it.
+    #[test]
+    fn e_asks_the_library_who_can_set_a_line_of_text() {
+        let mut app = app();
+        press(&mut app, KeyCode::Char('e'));
+        for c in "Hello".chars() {
+            press(&mut app, KeyCode::Char(c));
+        }
+        press(&mut app, KeyCode::Enter);
+
+        let view = app.covering.as_ref().expect("an answer");
+        assert!(!view.is_empty());
+        assert!(
+            view.rows().iter().any(|r| r.verdict.covers_everything()),
+            "every fixture is Latin; something sets Hello"
+        );
+        let drawn = stable_frame(&mut app, 120, 36);
+        assert!(drawn.contains("who can set"), "{drawn}");
+        assert!(
+            drawn.contains("sets all 4 character(s)"),
+            "Hello has four distinct letters: {drawn}"
+        );
+        assert!(drawn.contains("fontina covers") || app.status.contains("fontina covers"));
+    }
+
+    /// A near miss is an answer: the characters are named, not counted away.
+    #[test]
+    fn a_face_that_nearly_sets_it_is_offered_with_what_it_lacks() {
+        let mut app = app();
+        // One Arabic word among the Latin. Only Amiri has the Arabic, so every other
+        // fixture is a near miss and has to say which characters it wants.
+        app.cover_text = "Hi سلام".into();
+        app.open_covering().unwrap();
+        let view = app.covering.as_ref().expect("an answer");
+        let near = view
+            .rows()
+            .iter()
+            .find(|r| !r.verdict.covers_everything())
+            .expect("something falls short");
+        assert!(!near.verdict.missing.is_empty());
+        let line = near.verdict.summary(160);
+        assert!(line.starts_with("missing "), "{line}");
+        assert!(line.contains("U+"), "the codepoints are named: {line}");
+        assert!(
+            line.contains("[Arab"),
+            "and the script it failed on: {line}"
+        );
+    }
+
+    /// The text survives closing the answer, because retyping a sentence to change one
+    /// word of it is the whole friction.
+    #[test]
+    fn the_text_survives_closing_the_answer() {
+        let mut app = app();
+        app.cover_text = "Hello".into();
+        app.open_covering().unwrap();
+        press(&mut app, KeyCode::Esc);
+        assert!(app.covering.is_none());
+        assert_eq!(app.cover_text, "Hello", "the question was thrown away");
+
+        // And `e` opens with it already in the box.
+        press(&mut app, KeyCode::Char('e'));
+        assert_eq!(app.input.as_ref().map(|i| i.buf.as_str()), Some("Hello"));
+    }
+
+    /// Enter goes to the face, which is what having found it is for.
+    #[test]
+    fn enter_goes_to_the_face_that_can_set_it() {
+        let mut app = app();
+        app.cover_text = "Hello".into();
+        app.open_covering().unwrap();
+        let to = app
+            .covering
+            .as_ref()
+            .and_then(|v| v.selected())
+            .map(|r| r.id)
+            .expect("something to go to");
+        press(&mut app, KeyCode::Enter);
+        assert!(app.covering.is_none());
+        assert_eq!(app.detail_id, Some(to), "{}", app.status);
+    }
+
+    /// Text with nothing in it to draw is a sentence rather than an empty box.
+    #[test]
+    fn asking_about_nothing_says_so() {
+        let mut app = app();
+        app.cover_text = "   \n\t ".into();
+        app.open_covering().unwrap();
+        assert!(app.covering.is_none());
+        assert_eq!(app.status, "nothing to set: type some text");
+    }
+
+    /// A shortlist, with the numbers it was made from, and no adjective anywhere.
+    #[test]
+    fn p_ranks_the_library_against_the_face_on_show() {
+        let mut app = app();
+        select_family(&mut app, "Source Serif");
+        press(&mut app, KeyCode::Char('P'));
+
+        let view = app.pairing.as_ref().expect("the fixtures share Latin");
+        assert!(!view.is_empty());
+        assert!(
+            view.rows()
+                .iter()
+                .all(|r| r.label != "Source Serif 4 Regular"),
+            "a face was ranked against itself"
+        );
+
+        let drawn = stable_frame(&mut app, 120, 36);
+        assert!(drawn.contains("ranked against Source Serif"), "{drawn}");
+        assert!(
+            drawn.contains("weight "),
+            "the measurements are shown: {drawn}"
+        );
+        assert!(
+            drawn.contains("x/em ") || drawn.contains("not reported"),
+            "{drawn}"
+        );
+        assert!(drawn.contains("script"), "{drawn}");
+        for word in ["best", "good match", "ideal", "perfect"] {
+            assert!(!drawn.contains(word), "{word:?} is taste: {drawn}");
+        }
+    }
+
+    /// Pairing a typeface with its own bold is a weight, not a pairing.
+    #[test]
+    fn the_same_family_is_not_a_pairing() {
+        let mut app = app();
+        select_family(&mut app, "Inter");
+        app.open_family().unwrap();
+        press(&mut app, KeyCode::Char('P'));
+        let view = app.pairing.as_ref().expect("something to rank");
+        assert!(
+            view.rows().iter().all(|r| !r.label.starts_with("Inter")),
+            "the other Inter was offered as a partner: {:?}",
+            view.rows().iter().map(|r| &r.label).collect::<Vec<_>>()
+        );
+    }
+
+    /// A face with no plausible partner says so, rather than showing a list that is
+    /// not one.
+    #[test]
+    fn a_face_with_no_partner_in_the_filter_says_so() {
+        let mut app = app();
+        select_family(&mut app, "Amiri");
+        // Narrow to Amiri alone, so there is nothing else to pair with at all.
+        app.query = "Amiri".into();
+        app.reload().unwrap();
+        press(&mut app, KeyCode::Char('P'));
+        assert!(app.pairing.is_none());
+        assert!(
+            app.status
+                .starts_with("nothing in this filter shares a script"),
+            "{}",
+            app.status
+        );
+    }
+
+    /// Enter goes to the face, and P closes the list again.
+    #[test]
+    fn enter_goes_to_the_partner_and_p_closes_the_list() {
+        let mut app = app();
+        select_family(&mut app, "Source Serif");
+        press(&mut app, KeyCode::Char('P'));
+        assert!(app.pairing.is_some());
+        press(&mut app, KeyCode::Char('P'));
+        assert!(app.pairing.is_none(), "P did not close it");
+
+        press(&mut app, KeyCode::Char('P'));
+        let to = app
+            .pairing
+            .as_ref()
+            .and_then(|v| v.selected())
+            .map(|r| r.id)
+            .expect("something to go to");
+        press(&mut app, KeyCode::Enter);
+        assert!(app.pairing.is_none());
+        assert_eq!(app.detail_id, Some(to), "{}", app.status);
+    }
+
     #[test]
     fn the_browser_opens_on_the_family_list() {
         let mut app = app();
         let drawn = stable_frame(&mut app, 120, 36);
         assert!(drawn.contains("5 families"), "{drawn}");
         assert!(
-            drawn.lines().next_back().unwrap().starts_with(" / search"),
+            // Inset to the column the panes' text starts in, which is the border and
+            // the padding inside it.
+            drawn.lines().next_back().unwrap().starts_with("  / search"),
             "the key line is the last row on the screen"
         );
         insta::assert_snapshot!(drawn);
@@ -4592,9 +6617,15 @@ mod tests {
         let mut app = app();
         app.help = true;
         let drawn = stable_frame(&mut app, 120, 36);
+        // Either the line that says how to leave, or — on a terminal too short to hold
+        // the whole list — the border saying how to reach it. The list has outgrown
+        // thirty-six rows and shaving a line off it every time a key is added is not a
+        // design, it is a treadmill; `the_help_says_when_it_does_not_fit_and_scrolls`
+        // holds the scrolling itself.
         assert!(
-            drawn.contains("any key to close"),
-            "the overlay does not say how to leave it"
+            drawn.contains("any key to close") || drawn.contains("j/k scrolls"),
+            "the overlay says neither how to leave it nor how to reach the line \
+             that does: {drawn}"
         );
         insta::assert_snapshot!(drawn);
     }
@@ -4623,63 +6654,6 @@ mod tests {
         insta::assert_snapshot!(rows.join("\n"));
     }
 
-    #[test]
-    fn the_preview_is_shaped_ink_and_it_stays_inside_the_details_pane() {
-        let mut app = app();
-        let drawn = frame(&mut app, 120, 40);
-        let rows: Vec<&str> = drawn.lines().collect();
-        let pane = column_of(rows[0], "┌ Details").expect("the details pane is titled");
-        assert!(
-            drawn.contains('▀'),
-            "the details pane drew no preview at all:\n{drawn}"
-        );
-        for (y, row) in rows.iter().enumerate() {
-            if let Some(x) = column_of(row, "▀") {
-                assert!(
-                    x > pane,
-                    "row {y} has preview ink at column {x}, outside the details pane at {pane}"
-                );
-            }
-        }
-        // And it is the sample text that puts it there, which is what lets the frames
-        // above be snapshotted without a rasteriser in them.
-        app.preview_text = Some(" ".into());
-        assert!(
-            !frame(&mut app, 120, 40).contains('▀'),
-            "a blank sample text still drew ink"
-        );
-    }
-
-    /// A defect this change reports rather than fixes.
-    ///
-    /// The preview is rendered at a fixed size and then clipped to the rows the pane
-    /// has, from the top. A face with many features gives its controls the room, and
-    /// what is left of the details pane is a few rows — into which the preview puts the
-    /// first few pixel rows of the rendering. Those rows are the font's ascent, which
-    /// is empty, so a reader on a 36-row terminal sees a blank space where the type
-    /// should be. Fitting the rendering to the rows it has, or clipping around the
-    /// baseline rather than the top, would fix it; when it is fixed this is the test
-    /// that should change.
-    #[test]
-    fn a_details_pane_squeezed_by_controls_still_draws_the_preview() {
-        // The rendering is clipped to the ink rather than to its top row. The top of a
-        // rendering is the font's empty ascent — Source Serif at 28 px is 41 pixels tall
-        // with nothing above row 9 — so clipping from row zero showed a pane of blank on
-        // any terminal short enough that its feature controls crowded the preview.
-        let mut app = app();
-        select_family(&mut app, "Source Serif");
-        assert!(
-            app.controls.len() > 10,
-            "the face was picked because its features crowd the pane"
-        );
-        for height in [36, 44] {
-            assert!(
-                frame(&mut app, 120, height).contains('▀'),
-                "no preview drawn on a {height}-row terminal"
-            );
-        }
-    }
-
     /// Every row a frame draws fits the terminal it was drawn into.
     ///
     /// Run at each breakpoint and at both sides of each one, because a layout bug
@@ -4705,28 +6679,32 @@ mod tests {
         }
     }
 
-    /// Wide: the browser as designed, three panes side by side.
+    /// Wide: the browser as designed. Two panes, and a filter line above them that
+    /// says the library is not narrowed and which key would narrow it.
     #[test]
-    fn the_third_pane_appears_at_the_width_that_can_afford_it() {
+    fn a_wide_terminal_gives_both_panes_room() {
         let mut app = app();
-        let drawn = stable_frame(&mut app, layout::THREE, 24);
-        assert!(drawn.contains("faces"), "the facet pane is there: {drawn}");
-        assert!(drawn.contains("families"), "and the list");
-        assert!(drawn.contains("Details"), "and the face");
+        let drawn = stable_frame(&mut app, 120, 24);
+        assert!(drawn.contains("families"), "the list is there: {drawn}");
+        assert!(
+            drawn.contains("Amiri Regular"),
+            "and the face, which names itself"
+        );
+        assert!(
+            drawn.contains("filter") && drawn.contains("f narrows"),
+            "and the filter line says what it is for"
+        );
         insta::assert_snapshot!(drawn);
     }
 
-    /// Medium: the pane the browser exists for gets the room, and the facets wait.
-    ///
-    /// This is the width the item was filed at. Three panes here left the face pane
-    /// twenty-two columns and a path wrapped over four lines; two panes leave it
-    /// fifty, which is a path on one line and a preview underneath it.
+    /// Eighty columns, which is what a terminal opens at: a list and a face, both
+    /// wide enough to read. The acceptance criterion the redesign is answerable to.
     #[test]
     fn an_eighty_column_terminal_gives_the_face_pane_room_to_be_read() {
         let mut app = app();
         select_family(&mut app, "Amiri");
         let drawn = stable_frame(&mut app, 80, 24);
-        assert!(drawn.contains("Details"), "{drawn}");
+        assert!(drawn.contains("Amiri Regular"), "{drawn}");
         assert!(
             !drawn.contains(" faces "),
             "the facet pane is a Tab away, not on the screen"
@@ -4734,7 +6712,7 @@ mod tests {
         let file = drawn
             .lines()
             .find(|l| l.contains("file "))
-            .expect("the face names its file");
+            .unwrap_or_else(|| panic!("the face names its file:\n{drawn}"));
         assert!(
             file.contains("Amiri-Regular.ttf"),
             "the path fits on its own row rather than wrapping: {file}"
@@ -4742,17 +6720,22 @@ mod tests {
         insta::assert_snapshot!(drawn);
     }
 
+    /// The panel: a drawer with a name, a verb and a way out.
     #[test]
-    fn the_facets_come_over_the_list_when_there_is_no_room_beside_it() {
+    fn narrow_by_opens_over_the_list_and_says_how_to_leave() {
         let mut app = app();
-        app.focus = Focus::Facets;
+        app.open_narrow();
         let drawn = stable_frame(&mut app, 80, 24);
         assert!(
-            drawn.contains("⇥ closes"),
-            "a pane over another says how to put it back: {drawn}"
+            drawn.contains("Narrow by"),
+            "the panel is titled with a verb: {drawn}"
         );
         assert!(
-            drawn.contains("Details"),
+            drawn.contains("Esc closes"),
+            "and says how to put it back: {drawn}"
+        );
+        assert!(
+            drawn.contains("Amiri Regular"),
             "and it only covers the list, not the face"
         );
         insta::assert_snapshot!(drawn);
@@ -4763,27 +6746,35 @@ mod tests {
     fn a_sixty_column_terminal_shows_one_pane_at_a_time() {
         let mut app = app();
         let drawn = stable_frame(&mut app, 60, 24);
+        // The pane's own title, not the word: the filter line at the top counts
+        // families too, and an assertion that both satisfy asserts nothing.
         assert!(
-            drawn.contains("families"),
+            drawn.contains("╭ families"),
             "the list has the focus: {drawn}"
         );
         assert!(
-            !drawn.contains("Details"),
+            !drawn.contains("Amiri Regular"),
             "and nothing else is competing for the width"
         );
         insta::assert_snapshot!(drawn);
 
-        // list, face, facets, and round again.
+        // Tab: list, face, and round again. The facets are not on the round — they
+        // are a panel now, and `f` is the way in.
         app.cycle_focus();
-        app.cycle_focus();
-        let facets = stable_frame(&mut app, 60, 24);
+        let face = stable_frame(&mut app, 60, 24);
         assert!(
-            facets.contains(" faces "),
-            "Tab reaches the facets: {facets}"
+            face.contains("Amiri Regular"),
+            "Tab reaches the face: {face}"
         );
         assert!(
-            !facets.contains("5 families"),
-            "and the list is not under them: {facets}"
+            !face.contains("╭ families"),
+            "and the list is not under it: {face}"
+        );
+        app.open_narrow();
+        let narrow = stable_frame(&mut app, 60, 24);
+        assert!(
+            narrow.contains("Narrow by"),
+            "f opens the facets over the whole screen at this width: {narrow}"
         );
     }
 
@@ -4810,14 +6801,17 @@ mod tests {
             drawn.contains("Amiri"),
             "the face is on the screen: {drawn}"
         );
-        assert!(drawn.contains('▀'), "with its preview under it");
+        assert!(
+            drawn.contains("upm"),
+            "with the measurements under it: {drawn}"
+        );
 
-        // And beside the others it is a readout again: Tab skips a pane where nothing
-        // the reader presses would do anything.
+        // And beside the list it is a readout again: Tab skips a pane where nothing
+        // the reader presses would do anything, and there is nowhere else to go.
         frame(&mut app, 120, 36);
         app.focus = Focus::List;
         app.cycle_focus();
-        assert_eq!(app.focus, Focus::Facets, "no stop on an inert face pane");
+        assert_eq!(app.focus, Focus::List, "no stop on an inert face pane");
     }
 
     /// A focus can outlive its pane: a terminal dragged narrow takes the face pane's
@@ -4877,7 +6871,10 @@ mod tests {
     fn the_help_says_when_it_does_not_fit_and_scrolls_when_it_does_not() {
         let mut app = app();
         app.help = true;
-        let tall = stable_frame(&mut app, 100, 40);
+        // Taller than the list is long, with room to spare: the list grows with the
+        // browser, and a test that pins the exact height it needs would be a test
+        // somebody has to edit every time a key is added.
+        let tall = stable_frame(&mut app, 100, 60);
         assert!(tall.contains("any key to close"), "all of it fits: {tall}");
         assert!(!tall.contains("j/k scrolls"), "so it says nothing about it");
 

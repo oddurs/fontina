@@ -2,10 +2,10 @@
 id: 2
 title: A specimen in the terminal that matches the HTML one
 type: feat
-status: backlog
+status: dropped
 milestone: tui-craft
 created: 2026-09-05
-updated: 2026-09-05
+updated: 2026-09-06
 priority: p1
 effort: l
 crate: ui
@@ -31,3 +31,11 @@ sample text or which features are worth offering.
 - [ ] the glyph grid already built for the glyph map, at specimen scale
 - [ ] axis sliders and feature toggles apply to everything on screen at once
 - [ ] the same font in `fontina specimen` and in this view makes the same choices
+
+## Dropped, 2026-09-06
+
+The browser no longer draws type at all: a terminal cell is one pixel wide and two
+tall, so what it drew was a picture of something that is not the font. See
+[ADR 0010](../../docs/adr/0010-the-browser-shows-structure.md). Making the terminal's
+rendering *match* the HTML specimen was the wrong direction — the answer was to stop
+rendering in the terminal and let `s` open the specimen that already does it properly.
