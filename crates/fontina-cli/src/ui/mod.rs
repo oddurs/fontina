@@ -6399,7 +6399,10 @@ mod tests {
     fn the_help_says_when_it_does_not_fit_and_scrolls_when_it_does_not() {
         let mut app = app();
         app.help = true;
-        let tall = stable_frame(&mut app, 100, 40);
+        // Taller than the list is long, with room to spare: the list grows with the
+        // browser, and a test that pins the exact height it needs would be a test
+        // somebody has to edit every time a key is added.
+        let tall = stable_frame(&mut app, 100, 60);
         assert!(tall.contains("any key to close"), "all of it fits: {tall}");
         assert!(!tall.contains("j/k scrolls"), "so it says nothing about it");
 
