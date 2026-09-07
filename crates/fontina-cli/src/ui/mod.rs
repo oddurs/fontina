@@ -1786,7 +1786,7 @@ impl App {
             self.draw_glyphs(f, body);
         }
         if self.related.is_some() {
-            self.draw_related(f, vertical[0]);
+            self.draw_related(f, body);
         }
         if self.palette.is_some() {
             self.draw_palette(f, area);
