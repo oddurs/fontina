@@ -27,22 +27,26 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use std::ops::Range;
 
-/// Which pane the reader is in. The browser's `Focus` has a fourth state — the
-/// controls — that lives *inside* the face pane; it maps to [`Pane::Detail`] here,
-/// because a layout cares where something is drawn and not what its keys do.
+/// Which pane the reader is in. The browser's `Focus` has states — the controls, and
+/// the Narrow-by panel — that live *inside* or *over* a pane rather than beside it;
+/// they map to the pane they are drawn on, because a layout cares where something is
+/// drawn and not what its keys do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Pane {
-    Facets,
     List,
     Detail,
 }
 
 /// How many panes fit.
+///
+/// Two of them, or one. There used to be a third — the facets, beside the list, at
+/// 112 columns and up — and it was the pane nobody could name. It is a panel now,
+/// opened on `f` and drawn over the others, which is what a control surface used in
+/// bursts should cost: the width while you are using it, and nothing the rest of the
+/// time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shape {
-    /// Facets, families and the face, side by side. The browser as designed.
-    Three,
-    /// Families and the face. Facets are still a Tab away, drawn over the top.
+    /// Families and the face, side by side.
     Two,
     /// One pane at a time, whichever has the focus.
     One,
@@ -57,18 +61,10 @@ pub enum Shape {
 /// bottom of the pane. Every breakpoint below is this number solved for the width.
 const FACE: u16 = 46;
 
-/// Columns the facet pane takes when it is beside the others. Wide enough for the
-/// longest label the facets produce — `87.5% SemiCondensed` — a mark and a count.
-const FACETS: u16 = 26;
-
-/// Below this a third pane costs the face pane more than it is worth.
-///
-/// Three panes leave the face `WIDTH - FACETS - 36%`, so `FACE` columns needs
-/// `0.64·WIDTH ≥ 72`. It is a wider breakpoint than a round number would have been,
-/// and that is the finding rather than a compromise: three panes were never free, and
-/// the old layout paid for the third one out of the pane a reader is actually looking
-/// at. At eighty columns it left the face twenty-two.
-pub const THREE: u16 = 112;
+/// Columns the Narrow-by panel takes. Wide enough for the longest label the facets
+/// produce — `87.5% SemiCondensed` — a mark, a family count and a face count in
+/// brackets.
+pub const PANEL: u16 = 38;
 
 /// Below this two panes cannot both hold what they carry.
 ///
@@ -79,13 +75,7 @@ pub const TWO: u16 = FACE + 30;
 
 impl Shape {
     pub fn for_width(width: u16) -> Shape {
-        if width >= THREE {
-            Shape::Three
-        } else if width >= TWO {
-            Shape::Two
-        } else {
-            Shape::One
-        }
+        if width >= TWO { Shape::Two } else { Shape::One }
     }
 
     /// Whether the face pane is a place the focus can rest.
@@ -103,57 +93,46 @@ impl Shape {
 /// Where each pane goes. `None` is a pane this width cannot carry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Panes {
-    pub facets: Option<Rect>,
     pub list: Option<Rect>,
     pub detail: Option<Rect>,
-    /// True when the facet pane is drawn over the others rather than beside them, so
-    /// the caller knows to clear beneath it and to say in the title that it is a
-    /// visitor.
-    pub overlay: bool,
 }
 
 /// Split the browser's body into panes.
 pub fn split(area: Rect, focus: Pane) -> Panes {
     match Shape::for_width(area.width) {
-        Shape::Three => {
-            let c = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([
-                    Constraint::Length(FACETS),
-                    Constraint::Percentage(36),
-                    Constraint::Min(FACE),
-                ])
-                .split(area);
-            Panes {
-                facets: Some(c[0]),
-                list: Some(c[1]),
-                detail: Some(c[2]),
-                overlay: false,
-            }
-        }
         Shape::Two => {
             let c = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([Constraint::Percentage(38), Constraint::Min(FACE)])
                 .split(area);
             Panes {
-                // Over the list exactly, and only when the reader asked: a narrower
-                // overlay would leave a stripe of the list showing down its right
-                // edge, which reads as a drawing bug rather than as one pane over
-                // another. The face pane is never covered — it is what the facets are
-                // being narrowed *for*.
-                facets: (focus == Pane::Facets).then_some(c[0]),
                 list: Some(c[0]),
                 detail: Some(c[1]),
-                overlay: true,
             }
         }
         Shape::One => Panes {
-            facets: (focus == Pane::Facets).then_some(area),
             list: (focus == Pane::List).then_some(area),
             detail: (focus == Pane::Detail).then_some(area),
-            overlay: false,
         },
+    }
+}
+
+/// Where the Narrow-by panel goes: a drawer down the left of the body.
+///
+/// Over the list rather than beside it, and never over the face, which is what the
+/// narrowing is *for*. Down the left because that is where the facets lived for a
+/// year and where a reader's eye already goes, and full height because a section with
+/// its values open is the tallest thing the browser draws.
+pub fn panel(area: Rect) -> Rect {
+    match Shape::for_width(area.width) {
+        // Nothing is beside it to protect, and a drawer with a stripe of the pane
+        // underneath showing down its edge reads as a drawing bug rather than as one
+        // thing over another.
+        Shape::One => area,
+        Shape::Two => {
+            let list = split(area, Pane::List).list.unwrap_or(area);
+            Rect::new(list.x, list.y, PANEL.min(list.width), list.height)
+        }
     }
 }
 
@@ -201,7 +180,9 @@ pub fn window(len: usize, selected: usize, height: usize, offset: usize) -> Rang
 /// for all the rest.
 const KEYS: &[(&str, &str)] = &[
     ("/", "search"),
-    ("F", "filter"),
+    ("f", "narrow"),
+    ("F", "flags"),
+    ("x", "clear"),
     ("⇥", "pane"),
     ("⏎", "open"),
     ("⌫", "back"),
@@ -256,14 +237,30 @@ mod tests {
     }
 
     #[test]
-    fn a_width_picks_a_shape_and_the_boundaries_belong_to_the_wider_one() {
-        assert_eq!(Shape::for_width(200), Shape::Three);
-        const { assert!(TWO < THREE, "the breakpoints are in order") };
-        assert_eq!(Shape::for_width(THREE), Shape::Three);
-        assert_eq!(Shape::for_width(THREE - 1), Shape::Two);
+    fn a_width_picks_a_shape_and_the_boundary_belongs_to_the_wider_one() {
+        assert_eq!(Shape::for_width(200), Shape::Two);
         assert_eq!(Shape::for_width(TWO), Shape::Two);
         assert_eq!(Shape::for_width(TWO - 1), Shape::One);
         assert_eq!(Shape::for_width(0), Shape::One);
+    }
+
+    /// The width an ordinary terminal opens at. Both panes, side by side, and neither
+    /// of them a stub: this is the assertion the redesign is answerable to.
+    #[test]
+    fn eighty_columns_still_shows_a_list_and_a_face() {
+        let panes = split(area(80), Pane::List);
+        let (list, detail) = (
+            panes.list.expect("a list at 80 columns"),
+            panes.detail.expect("and a face beside it"),
+        );
+        assert!(list.width >= 24, "the list got {} columns", list.width);
+        assert!(
+            detail.width >= FACE,
+            "the face got {} columns",
+            detail.width
+        );
+        assert_eq!(list.x + list.width, detail.x);
+        assert_eq!(detail.x + detail.width, 80);
     }
 
     /// The reason the breakpoints are where they are: at every width the face pane is
@@ -287,52 +284,19 @@ mod tests {
     }
 
     #[test]
-    fn three_panes_are_side_by_side_and_cover_the_width() {
+    fn two_panes_are_side_by_side_and_cover_the_width() {
         let panes = split(area(120), Pane::List);
-        assert!(!panes.overlay);
-        let (f, l, d) = (
-            panes.facets.unwrap(),
-            panes.list.unwrap(),
-            panes.detail.unwrap(),
-        );
-        assert_eq!(f.x, 0);
-        assert_eq!(f.x + f.width, l.x);
+        let (l, d) = (panes.list.unwrap(), panes.detail.unwrap());
+        assert_eq!(l.x, 0);
         assert_eq!(l.x + l.width, d.x);
         assert_eq!(d.x + d.width, 120);
     }
 
     #[test]
-    fn two_panes_keep_the_facets_a_keystroke_away() {
-        let resting = split(area(80), Pane::List);
-        assert!(
-            resting.facets.is_none(),
-            "facets are a pane you open, not one that opens itself"
-        );
-        assert!(resting.list.is_some() && resting.detail.is_some());
-
-        let asked = split(area(80), Pane::Facets);
-        let over = asked.facets.expect("Tab has to be able to reach them");
-        assert!(asked.overlay, "and they are drawn over, not beside");
-        assert_eq!(
-            Some(over),
-            asked.list,
-            "over the list exactly, so no stripe of it shows down the edge"
-        );
-        assert!(
-            asked.detail.is_some(),
-            "and never over the face, which is what the narrowing was for"
-        );
-    }
-
-    #[test]
     fn one_pane_shows_exactly_the_one_with_the_focus() {
-        for (focus, name) in [
-            (Pane::Facets, "facets"),
-            (Pane::List, "list"),
-            (Pane::Detail, "detail"),
-        ] {
+        for (focus, name) in [(Pane::List, "list"), (Pane::Detail, "detail")] {
             let p = split(area(60), focus);
-            let shown: Vec<_> = [("facets", p.facets), ("list", p.list), ("detail", p.detail)]
+            let shown: Vec<_> = [("list", p.list), ("detail", p.detail)]
                 .into_iter()
                 .filter_map(|(n, r)| r.map(|r| (n, r)))
                 .collect();
@@ -342,14 +306,44 @@ mod tests {
         }
     }
 
+    /// The panel is a drawer over the list, never over the face — and on a terminal
+    /// too narrow to hold both it takes what there is rather than drawing outside it.
+    #[test]
+    fn the_panel_is_a_drawer_that_never_covers_the_face() {
+        for width in 20..=200u16 {
+            let body = area(width);
+            let p = panel(body);
+            assert_eq!((p.x, p.y, p.height), (body.x, body.y, body.height));
+            assert!(p.width <= width, "{width}: the panel drew outside the body");
+            assert!(p.width > 0, "{width}: the panel has to be somewhere");
+            let panes = split(body, Pane::List);
+            if let Some(detail) = panes.detail {
+                assert!(
+                    p.x + p.width <= detail.x,
+                    "{width}: the panel reached into the face pane"
+                );
+                assert_eq!(
+                    p.width,
+                    PANEL.min(panes.list.unwrap().width),
+                    "{width}: it takes its width or the list's, whichever is less"
+                );
+            } else {
+                assert_eq!(p, body, "one pane: the drawer is the screen");
+            }
+        }
+        assert!(
+            panel(area(200)).width == PANEL,
+            "and never grows past its own width"
+        );
+    }
+
     /// The face pane is a readout beside the others and the only view of a face when
     /// it is alone, so whether Tab stops on it depends on the shape as well as on
     /// whether the face has anything to adjust.
     #[test]
     fn the_face_pane_takes_focus_when_it_is_the_only_way_to_see_a_face() {
-        assert!(!Shape::Three.detail_takes_focus(false));
-        assert!(Shape::Three.detail_takes_focus(true));
         assert!(!Shape::Two.detail_takes_focus(false));
+        assert!(Shape::Two.detail_takes_focus(true));
         assert!(Shape::One.detail_takes_focus(false));
         assert!(Shape::One.detail_takes_focus(true));
     }

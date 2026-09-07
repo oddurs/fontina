@@ -1,8 +1,8 @@
 ---
 source: crates/fontina-cli/src/ui/mod.rs
-assertion_line: 4774
 expression: drawn
 ---
+ filter  nothing narrowed — f narrows, / searches                  5 families
 ┌ 5 families ────────────────┐┌ Details ───────────────────────────────────────┐
 │Amiri                 1     ││Amiri Regular                                   │
 │Bricolage Grotesque   1 V   ││style     weight 400 · width 100% · normal      │
@@ -19,11 +19,10 @@ expression: drawn
 │                            ││features                                        │
 │                            ││  liga [ ] Standard ligatures                   │
 │                            ││  pnum [ ] Proportional figures                 │
-│                            ││  ss01 [ ] Stylistic set 1                      │
 │                            ││                                                │
 │                            ││metrics   1000 upm · asc 1124 · desc -634 · gap │
 │                            ││0                                               │
 │                            ││shape     cap 646 · x-height 433 · x/em 0.43    │
 └────────────────────────────┘└────────────────────────────────────────────────┘
  $ fontina families
- / search  F filter  ⇥ pane  ⏎ open  ⌫ back  ␣ select  t tag  ? help
+ / search  f narrow  F flags  x clear  ⇥ pane  ⏎ open  ⌫ back  ␣ select  ? help

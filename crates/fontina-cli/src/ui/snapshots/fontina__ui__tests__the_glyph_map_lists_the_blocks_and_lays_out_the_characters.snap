@@ -1,8 +1,8 @@
 ---
 source: crates/fontina-cli/src/ui/mod.rs
-assertion_line: 4175
 expression: drawn
 ---
+ filter  nothing narrowed — f narrows, / searches                                                          5 families
 ┌ glyph map — / to search, m or Esc to close ──────────────────────────────────────────────────────────────────────────┐
 │> Basic Latin              95/128 0020     ! " # $ % & ' ( ) * + , - . / 0 1 2 3 4 5 6 7 8 9 : ; < = > ? @ A B C D E  │
 │  Latin-1 Supplement       96/128 0046   F G H I J K L M N O P Q R S T U V W X Y Z [ \ ] ^ _ ` a b c d e f g h i j k  │
@@ -35,7 +35,6 @@ expression: drawn
 │                                                                                                                      │
 │                                                                                                                      │
 │                                                                                                                      │
-│                                                                                                                      │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
  1699 codepoints in 20 block(s)   (fontina glyphs 1)
- / search  F filter  ⇥ pane  ⏎ open  ⌫ back  ␣ select  t tag  c collection  a/A activate  d deactivate  ? help
+ / search  f narrow  F flags  x clear  ⇥ pane  ⏎ open  ⌫ back  ␣ select  t tag  c collection  a/A activate  ? help
