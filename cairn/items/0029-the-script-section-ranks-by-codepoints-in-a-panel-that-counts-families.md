@@ -1,5 +1,5 @@
 ---
-id: 27
+id: 29
 title: The script section ranks by codepoints, in a panel that counts families
 type: fix
 status: backlog
