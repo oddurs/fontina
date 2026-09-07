@@ -110,7 +110,7 @@ fontina/
 | Hashing | BLAKE3 of file bytes; plus a "font identity" hash of `name` + outlines | dedupe TTF vs OTF vs WOFF2 of the same face |
 | Parallelism | `rayon` for scans | 10k files in seconds |
 | Paths | `directories` crate | XDG on GNU/Linux, standard dirs on mac/win |
-| Config | TOML | human-editable, Rust-native |
+| Config | TOML | human-editable, Rust-native. `crates/fontina-cli/src/config.rs`; defaults only, every one of them overridable by the flag that sets the same thing |
 | Errors | `thiserror` in the library, `anyhow` at the edges | good diagnostics in the CLI |
 
 **Metadata extracted per face** (this is the schema in `schemas/face.json`):
@@ -246,6 +246,16 @@ path, or `family:<name>`.
 
 ## 5. Roadmap
 
+**The backlog lives in `cairn/items`, not here.** `ROADMAP.md` is generated from it and
+`cairn next` says what is ready to start. This section holds the milestones and the
+argument for them — what each is *for*, and why it is shaped that way — because that is
+the part a tracker holds badly and a reader needs first.
+
+The division, so it does not blur: if it explains a decision it belongs here; if it is a
+piece of work someone will claim, it belongs in an item. The delivered milestones keep
+their pull-request lists as a record of what was actually built.
+
+
 ### M0 — Foundations (done, 2026-09-03)
 - Workspace, CI matrix (ubuntu/macos/windows), fixtures, `cargo-deny`, clippy, release
   binaries with provenance and SBOM, release-please.
@@ -284,7 +294,10 @@ Laid out as pull requests in §10 and shipped in that order.
 3. **See the coverage** (#48). A glyph map by Unicode block with a codepoint search, and
    `unicode::cell_for`, which stopped `glyphs` printing U+202E raw into the terminal.
 4. **Compare** (#49). Waterfall and comparison as one scrolling sheet, laid out once per
-   width rather than per frame.
+   width rather than per frame. Both were removed again on 2026-09-06: a terminal cell
+   is one pixel wide and two tall, so what they drew was a picture of something that is
+   not the font (ADR 0010). The browser shows structure; `s` opens a real specimen and
+   `fontina preview` draws a true image where the terminal has a protocol for one.
 5. **Say whether it is free** (#55). The freedom verdict and its reason in the details
    pane, and a `freedom` facet, so `--free` is reachable from the browser.
 6. **Check more** (#60). `name/empty`, `name/whitespace`, `metrics/line-gap`,
@@ -327,9 +340,6 @@ shell yet** (the gap the TUI leaves is fidelity, and item 6 closes it without a 
 interface to maintain), and **no Google Fonts index in this tree** (discovery that cannot
 lead to acquisition is half a feature; items 7 and 8 make a catalogue an external program
 that pipes candidates in).
-
-Explicit non-goals, unchanged: font editing, format conversion/subsetting (point to
-`fonttools`), cloud sync, accounts, telemetry, an Electron shell.
 
 ### M4 — Ask — delivered 2026-09-05
 Laid out as pull requests in §12 and shipped in that order.
@@ -416,6 +426,74 @@ M4 does not depend on M3 and M3 does not depend on M4; the numbering is order of
 discovery, not order of work. Item 1 was closer to a bug than a milestone item and was
 pulled out and shipped first (#94).
 
+### M5 — Ship
+
+Four milestones in, fontina can be installed by a package manager on GNU/Linux and by
+nobody on macOS or Windows. The release workflow builds `.deb` and `.rpm`; everywhere
+else there is an archive to download and a binary to put on your `PATH` by hand.
+Principle 8 says every desktop is first class. On the evidence of how you install it,
+that is currently false.
+
+§11 already named the missing pieces — Homebrew, winget, Scoop and AUR — and said they
+"block a 1.0 rather than M3". Nothing has scheduled them since, because every milestone
+so far had something more interesting in it. This one does not, and that is the point.
+
+- Homebrew, winget, Scoop and AUR, updated by the release workflow rather than by
+  somebody remembering.
+- Installed for real and tested through the manager, the way `scripts/test-packages`
+  already tests the `.deb` and the `.rpm`.
+- The two budgets §7 marks *not measured* — idle RSS of the browser, and TUI repaint —
+  measured, which needs a harness that can hold a pty.
+- The path-filtered checks made able to block (#67).
+
+M5 adds no font capability at all. Every other milestone answered "what else can it do";
+this one answers "who can run it", which is the question four milestones of features have
+made worth asking.
+
+**It is also what makes the next real decision decidable.** §11 deferred the graphical
+shell and set an experiment in its place: use the specimen key for a month on a real
+library and write down what was reached for and not found. That evidence does not exist
+while installing fontina means downloading a tarball. Ship first, then decide with
+something other than a guess.
+
+Laid out as pull requests in §13.
+
+### M6 — The browser, properly (four sprints)
+
+M1 gave the browser its panes and M2 gave it typography. What it has never had is the
+thing a font manager exists for: showing you the fonts. Every row of the family list is
+set in the terminal's own face, so the one view built for choosing a typeface shows you
+none of them.
+
+Four sprints, tracked as items under the `tui-*` milestones in `cairn`:
+
+1. **Craft.** Every family set in the face it names, drawn through the image protocol the
+   terminal already supports — kitty, iTerm2 or sixel, falling back to what is drawn
+   today. A specimen view that agrees with the HTML one because both read `typography`.
+   One colour scheme defined at three colour depths. A layout that is usable at sixty
+   columns rather than merely drawn there.
+2. **Speed.** Instant on ten thousand faces rather than on six: only visible rows built,
+   search off the drawing thread and cancelled by the next keystroke, previews cached by
+   face and size and axes, and a frame budget in §7 that CI enforces the way it enforces
+   scan and list.
+3. **Depth.** Select many and act once, undo anything that changed the index, a command
+   palette generated from the clap tree so it cannot drift from the CLI, and filters
+   composed while watching the matching count.
+4. **Discovery.** Pin and compare at one size, "faces like this one" over the
+   `Index::related` M4 already shipped, paste text and see who can set it, and a pairing
+   ranking that shows its measurements and never calls anything good.
+
+Sprint 1 item 1 is the one that matters. The rest of that sprint exists to make it
+bearable, and sprints 2 to 4 are claims nobody can check until it is true.
+
+M6 comes after M5 deliberately. §11 deferred the graphical shell on the evidence of a
+month's real use, and M5 says that evidence cannot exist while installing fontina means
+downloading a tarball. It equally cannot exist while the browser still shows a list of
+names — a month spent with a font manager that cannot show fonts would answer a question
+nobody asked.
+
+Explicit non-goals, unchanged: font editing, format conversion/subsetting (point to
+`fonttools`), cloud sync, accounts, telemetry, an Electron shell.
 
 ---
 
@@ -449,8 +527,8 @@ pulled out and shipped first (#94).
 Stated for the machine they are enforced on: a GitHub-hosted runner, which is around two
 and a half times slower than a developer's laptop. `scripts/bench` measures these against
 a corpus of real font files and fails on a miss;
-`.github/workflows/perf.yml` runs it. The two marked *not measured* need a terminal, and
-a number produced without one would be a number about nothing; they are checked by hand
+`.github/workflows/perf.yml` runs it. The one marked *not measured* needs a terminal, and
+a number produced without one would be a number about nothing; it is checked by hand
 until there is a harness that can hold a pty.
 
 | Metric | Budget | Measured |
@@ -461,11 +539,23 @@ until there is a harness that can hold a pty.
 | Incremental rescan, 1 changed file | ≤ 50 ms | yes |
 | Search keystroke → a screenful of results | ≤ 30 ms | yes, at 10k faces |
 | Preview render, one face, 64 px, 40 characters | ≤ 30 ms | yes |
+| Browser repaint, worst screen, 10k faces | ≤ 16 ms | yes |
+| Browser repaint at 10k faces, against 100 | ≤ 150% | yes |
 | Idle RSS of `fontina ui`, 5k faces | ≤ 40 MB | not measured |
-| TUI repaint | ≤ 16 ms | not measured |
 
 The search budget is a screenful, not every match: the unbounded form measures the cost
 of printing ten thousand lines rather than of finding them.
+
+The browser has two budgets rather than one because a single number cannot say both
+things. The first is the promise a reader feels: a repaint inside 16 ms, on the worst of
+the browser's screens, at ten thousand faces. The second is the property behind it,
+that a repaint is the size of the pane and not of the library, stated as the cost at ten
+thousand against the same screen at a hundred. A regression to a frame built per item
+would sail under the first and fail the second: it was 890% before the panes started
+windowing their rows, and still well inside 16 ms. Both are measured one layer below the
+binary, through the browser's own drawing code against an in-memory terminal, because
+the browser needs a terminal to be in and every other budget here drives the real
+binary.
 
 ---
 
@@ -646,7 +736,7 @@ identically.
 ### Not M3, but before 1.0
 
 Homebrew, winget, Scoop and AUR manifests (§5, M1 item 6) are still outstanding. They are
-independent of everything above and block a 1.0 rather than M3.
+independent of everything above and block a 1.0 rather than M3. They are M5; see §13.
 
 ---
 
@@ -779,3 +869,97 @@ evidence rather than from convention, which is the only version of that idea thi
 can honestly ship. If it earns its place, the question to ask next is what else follows
 the same rule: which relationships between faces are measurable rather than declared, and
 what could be answered if they were.
+
+---
+
+## 13. M5, concretely
+
+One pull request per item. Items 1 to 3 are independent of each other and of everything
+else; 4 depends on all three; 5 depends on 4.
+
+Nothing here parses a font, queries the index, or draws a pane. That is what makes it
+easy to put off, and four milestones of putting it off is why a Windows user has no way
+to install this at all.
+
+### The desktops with no way in
+
+Each of these needs an account or a credential that only the maintainer has, and each
+publishes to somebody else's infrastructure. They are the first outward-facing actions
+this project takes, and none should be done by an agent on its own initiative.
+
+1. `chore(dist)`: a Homebrew tap, `oddurs/homebrew-fontina`, with a formula against the
+   tagged release archives and their checksums. A tap rather than homebrew-core: core has
+   notability requirements this project has not met yet, and a tap is `brew tap
+   oddurs/fontina && brew install fontina` today rather than after a review queue. Moving
+   to core later costs nothing that a tap has spent.
+2. `chore(dist)`: a Scoop bucket and a winget manifest. Scoop takes the same shape as the
+   tap — our own bucket first. winget is a pull request into `microsoft/winget-pkgs`, so
+   it is the one item here whose timing somebody else controls; `wingetcreate` generates
+   and submits the manifest from a release. Windows has had nothing since M1, and this is
+   the whole of the Windows story.
+3. `chore(dist)`: an AUR `PKGBUILD` and a `fontina-bin` beside it, source and binary the
+   way Arch expects both. GNU/Linux is the reference platform (principle 8) and it is the
+   one where a package manager is how software is actually installed.
+
+### Kept current, and proved to work
+
+4. `ci`: the release workflow updates all four on a tag — commit to the tap, commit to the
+   bucket, `wingetcreate submit`, `git push` to the AUR remote. A manifest that needs a
+   person to remember it is a manifest that will be a version behind by the second
+   release. The `.deb` and `.rpm` are already built on a tag; these join them.
+5. `test`: install through each manager and run `scripts/acceptance` against whatever it
+   put on `PATH` — the same discipline `scripts/test-packages` already applies to the
+   `.deb` and the `.rpm`, and the only test that answers the question a font manager
+   exists to answer: after `activate`, can another program see the font?
+
+   Note where these have to run. AUR fits the existing container pattern (an `arch` image
+   and `makepkg`). Homebrew and winget do not: they need `macos-latest` and
+   `windows-latest` runners, so this item adds jobs to the CI matrix rather than cases to
+   `scripts/test-distros`. Say so in the workflow, because the asymmetry looks like an
+   oversight otherwise.
+
+### Budgets that nothing measures
+
+6. `test(perf)`: a harness that can hold a pty, and the two rows of §7 that say *not
+   measured* — idle RSS of `fontina ui` at 5k faces, and TUI repaint. `scripts/bench`
+   currently prints them and shrugs, which is honest but is not a budget. A dev-dependency
+   on `portable-pty` is the cheap way in; measuring resident size is per-OS, so measure on
+   the runner §7 already names its budgets for and say that is what the number means.
+
+   A budget nothing measures is an aspiration with a table row. Either the harness lands
+   or those two rows should say so plainly instead.
+
+### Checks that cannot block
+
+7. `ci`: the gate-job pattern from #67, so `perf`, `fuzz`, `linux` and `site` can be
+   required. They are path-filtered, so GitHub never reports them on a pull request that
+   does not touch their paths, and an unreported required check is not a passing one —
+   adding them to branch protection as they stand deadlocks every docs-only change. A gate
+   job per workflow (`if: always()`, depending on the real job, treating a skip as a pass)
+   is what makes them blockable. The issue has the detail.
+
+### What M5 is not
+
+No new capability. No graphical shell — §11 decided that, and item 5 of §12's decisions is
+the experiment that would reopen it, which needs users M5 has not created yet. No
+catalogue. Nothing that changes a font file.
+
+The M4 leftovers stay leftovers: `features.gsub`, `capabilities.color` and
+`os2.codepage_ranges` are still documents queried as strings, and they are two or three
+pull requests whenever somebody wants them, not a milestone.
+
+### What follows
+
+§12 closed on the more interesting question and it is the one to pick up after M5:
+`related` is the first thing fontina works out for itself rather than being told, and the
+same rule extends further — weight and width **measured** from outlines against what
+`OS/2` claims, the `metrics/fixed-pitch` check §12 already named, family grouping derived
+from evidence where the declared families are wrong.
+
+The discipline that keeps that honest is the one `freedom.rs` already follows and
+principle 9 already states: **report the disagreement, never resolve it.** "This font's
+`usWeightClass` says 400 and its stems measure 600" is data about a font. "This font is
+really a semibold" is an opinion, and not one a font manager is entitled to.
+
+That work wants real libraries to be tested against, which is one more reason M5 comes
+first.

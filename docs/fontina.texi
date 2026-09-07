@@ -342,7 +342,8 @@ object is read for its @code{id}, or its @code{path} if it has no id --- which i
 what @code{fontina list --json} produces, so fontina's own output goes straight back in
 with nothing in between.  Bare numbers and strings are taken as written.
 @item otherwise, one target per line
-A face id, @code{family:@var{name}}, or a path.  Blank lines and lines beginning
+A face id, @code{family:@var{name}}, or a path --- with @code{@var{path}#@var{n}} for one
+face of a font collection.  Blank lines and lines beginning
 @samp{#} are ignored, so a list kept in a file works too.
 @end table
 

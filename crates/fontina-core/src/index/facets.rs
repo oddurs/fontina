@@ -26,7 +26,15 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 pub struct FacetCount {
     pub value: String,
+    /// Faces at this value.
     pub count: i64,
+    /// Families with at least one face at this value.
+    ///
+    /// The two are different questions and the browser asks the second one: a facet
+    /// pane beside a list of families that counts faces cannot say what pressing a row
+    /// will do to the list. `400 Regular 681` next to `341 families` is a number about
+    /// something else.
+    pub families: i64,
 }
 
 /// Counts of faces per facet value, for the faces matching a filter.
@@ -45,12 +53,21 @@ pub struct Facets {
     pub container: Vec<FacetCount>,
     /// ISO 15924 script codes.
     pub script: Vec<FacetCount>,
-    /// Languages the matched faces claim, most-claimed first. The value carries which
-    /// kind of claim it is, because the two are different questions: `TRK` is a shaping
-    /// rule, `tr` is a name record.
+    /// Languages the matched faces claim, most-claimed first.
+    ///
+    /// The value is the tag alone. Both kinds of claim are offered on the one list and
+    /// the tag is what tells them apart — `TRK` is an OpenType language system, `tr` a
+    /// BCP 47 name record — so a face claiming a language both ways appears twice, under
+    /// two tags. Ask `Index::languages` for the source of a particular claim.
     pub language: Vec<FacetCount>,
     /// `monospace` or `proportional`, from `post.isFixedPitch`.
     pub spacing: Vec<FacetCount>,
+    /// What the faces can do: `variable`, `color`, `monospace`, `proportional`.
+    ///
+    /// The same three questions as `variable`, `color` and `spacing`, gathered into one
+    /// list because that is how a person looks for them — "a variable monospace" is one
+    /// thought, not three sections of a filter pane.
+    pub capability: Vec<FacetCount>,
     pub license: Vec<FacetCount>,
     /// `free`, `nonfree`, `unknown` or `unstated`, derived from the license.
     pub freedom: Vec<FacetCount>,
@@ -160,15 +177,42 @@ pub fn width_buckets_in(lo: f32, hi: f32) -> Vec<f32> {
         .collect()
 }
 
-fn counts(map: BTreeMap<String, i64>) -> Vec<FacetCount> {
+/// Faces at a facet value, and which families they belong to.
+///
+/// Families are counted as a set of ids rather than of names: the row scan sees the
+/// name once per face, and at fifty thousand faces the difference between interning it
+/// and cloning it is the difference between a facet pass and a noticeable pause.
+#[derive(Default)]
+struct Tally {
+    faces: i64,
+    families: std::collections::HashSet<u32>,
+}
+
+impl Tally {
+    fn add(&mut self, family: u32) {
+        self.faces += 1;
+        self.families.insert(family);
+    }
+}
+
+fn counts(map: BTreeMap<String, Tally>) -> Vec<FacetCount> {
     map.into_iter()
-        .map(|(value, count)| FacetCount { value, count })
+        .map(|(value, t)| FacetCount {
+            value,
+            count: t.faces,
+            families: t.families.len() as i64,
+        })
         .collect()
 }
 
-fn counts_by_count(map: BTreeMap<String, i64>) -> Vec<FacetCount> {
+fn counts_by_count(map: BTreeMap<String, Tally>) -> Vec<FacetCount> {
     let mut v = counts(map);
-    v.sort_by(|a, b| b.count.cmp(&a.count).then(a.value.cmp(&b.value)));
+    v.sort_by(|a, b| {
+        b.families
+            .cmp(&a.families)
+            .then(b.count.cmp(&a.count))
+            .then(a.value.cmp(&b.value))
+    });
     v
 }
 
@@ -186,36 +230,26 @@ impl Index {
         let sql = format!(
             "SELECT f.family, f.weight_min, f.weight_max, f.width_min, f.width_max,
                     f.italic, f.is_variable, f.is_color, f.is_fixed_pitch, fi.container,
-                    f.scripts, f.license_spdx, f.vendor, a.scope, fi.path
+                    f.license_spdx, f.vendor, a.scope, fi.path
              FROM faces f JOIN files fi ON fi.id = f.file_id LEFT JOIN activations a ON a.face_id = f.id{}",
             w.sql()
         );
         let sources = self.sources()?;
         let mut out = Facets::default();
-        let mut families = std::collections::HashSet::new();
-        let (
-            mut weight,
-            mut width,
-            mut style,
-            mut container,
-            mut spacing,
-            mut license,
-            mut freedom,
-            mut vendor,
-            mut activation,
-            mut source,
-        ) = (
-            BTreeMap::new(),
-            BTreeMap::new(),
-            BTreeMap::new(),
-            BTreeMap::new(),
-            BTreeMap::new(),
-            BTreeMap::new(),
-            BTreeMap::new(),
-            BTreeMap::new(),
-            BTreeMap::new(),
-            BTreeMap::new(),
-        );
+        // Family name (lowercased) to a small id, so every tally below can hold a set
+        // of families without holding a copy of every name.
+        let mut families: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+        let mut weight: BTreeMap<String, Tally> = BTreeMap::new();
+        let mut width: BTreeMap<String, Tally> = BTreeMap::new();
+        let mut style: BTreeMap<String, Tally> = BTreeMap::new();
+        let mut container: BTreeMap<String, Tally> = BTreeMap::new();
+        let mut spacing: BTreeMap<String, Tally> = BTreeMap::new();
+        let mut license: BTreeMap<String, Tally> = BTreeMap::new();
+        let mut freedom: BTreeMap<String, Tally> = BTreeMap::new();
+        let mut vendor: BTreeMap<String, Tally> = BTreeMap::new();
+        let mut activation: BTreeMap<String, Tally> = BTreeMap::new();
+        let mut source: BTreeMap<String, Tally> = BTreeMap::new();
+        let mut capability: BTreeMap<String, Tally> = BTreeMap::new();
         let mut stmt = self.conn.prepare(&sql)?;
         let rows = stmt.query_map(rusqlite::params_from_iter(w.params()), |r| {
             Ok((
@@ -229,11 +263,10 @@ impl Index {
                 r.get::<_, bool>(7)?,
                 r.get::<_, bool>(8)?,
                 r.get::<_, String>(9)?,
-                r.get::<_, String>(10)?,
+                r.get::<_, Option<String>>(10)?,
                 r.get::<_, Option<String>>(11)?,
                 r.get::<_, Option<String>>(12)?,
-                r.get::<_, Option<String>>(13)?,
-                r.get::<_, String>(14)?,
+                r.get::<_, String>(13)?,
             ))
         })?;
         for row in rows {
@@ -248,35 +281,37 @@ impl Index {
                 color,
                 monospace,
                 cont,
-                scripts,
                 lic,
                 ven,
                 act,
                 path,
             ) = row?;
             out.faces += 1;
-            families.insert(family.to_lowercase());
+            let next = families.len() as u32;
+            let fam = *families.entry(family.to_lowercase()).or_insert(next);
             // A face that spans 200 to 800 belongs under every bucket in between, the
             // same way a face covering four scripts is counted under each of them.
             // Counting it only under its default instance made the facet disagree with
             // the filter beside it, which now finds it at all of them.
             for b in weight_buckets_in(wt_lo, wt_hi) {
-                *weight.entry(b.to_string()).or_default() += 1;
+                weight.entry(b.to_string()).or_default().add(fam);
             }
             for b in width_buckets_in(wd_lo, wd_hi) {
-                *width.entry(fmt_width(b)).or_default() += 1;
+                width.entry(fmt_width(b)).or_default().add(fam);
             }
-            *style
+            style
                 .entry(if italic { "italic" } else { "upright" }.to_string())
-                .or_default() += 1;
+                .or_default()
+                .add(fam);
             if variable {
                 out.variable += 1;
+                capability.entry("variable".into()).or_default().add(fam);
             }
             if color {
                 out.color += 1;
+                capability.entry("color".into()).or_default().add(fam);
             }
-            *container.entry(cont).or_default() += 1;
-            *spacing
+            capability
                 .entry(
                     if monospace {
                         "monospace"
@@ -285,23 +320,38 @@ impl Index {
                     }
                     .to_string(),
                 )
-                .or_default() += 1;
-            let _ = scripts;
-            *freedom
+                .or_default()
+                .add(fam);
+            container.entry(cont).or_default().add(fam);
+            spacing
+                .entry(
+                    if monospace {
+                        "monospace"
+                    } else {
+                        "proportional"
+                    }
+                    .to_string(),
+                )
+                .or_default()
+                .add(fam);
+            freedom
                 .entry(crate::freedom::classify(lic.as_deref()).to_string())
-                .or_default() += 1;
-            *license
+                .or_default()
+                .add(fam);
+            license
                 .entry(lic.unwrap_or_else(|| "none".into()))
-                .or_default() += 1;
+                .or_default()
+                .add(fam);
             if let Some(v) = ven.filter(|v| !v.trim().is_empty()) {
-                *vendor.entry(v.trim().to_string()).or_default() += 1;
+                vendor.entry(v.trim().to_string()).or_default().add(fam);
             }
-            *activation
+            activation
                 .entry(act.unwrap_or_else(|| "none".into()))
-                .or_default() += 1;
+                .or_default()
+                .add(fam);
             for s in &sources {
                 if path.starts_with(&s.path) {
-                    *source.entry(s.path.clone()).or_default() += 1;
+                    source.entry(s.path.clone()).or_default().add(fam);
                 }
             }
         }
@@ -321,6 +371,7 @@ impl Index {
         out.style = counts(style);
         out.container = counts_by_count(container);
         out.spacing = counts_by_count(spacing);
+        out.capability = counts_by_count(capability);
         out.license = counts_by_count(license);
         out.freedom = counts_by_count(freedom);
         out.vendor = counts_by_count(vendor);
@@ -338,7 +389,8 @@ impl Index {
         // counted it since M4 §12 item 3. The count stays "faces", which is what the
         // facet means and what clicking it returns.
         let mut stmt = self.conn.prepare(&format!(
-            "SELECT fs.script, COUNT(*), SUM(fs.codepoints) FROM face_scripts fs
+            "SELECT fs.script, COUNT(*), COUNT(DISTINCT lower(ff.family)), SUM(fs.codepoints)
+             FROM face_scripts fs JOIN faces ff ON ff.id = fs.face_id
              WHERE fs.face_id IN ({inner})
              GROUP BY fs.script ORDER BY SUM(fs.codepoints) DESC, fs.script"
         ))?;
@@ -346,6 +398,7 @@ impl Index {
             Ok(FacetCount {
                 value: r.get(0)?,
                 count: r.get(1)?,
+                families: r.get(2)?,
             })
         })?;
         out.script = rows.collect::<rusqlite::Result<Vec<_>>>()?;
@@ -353,34 +406,46 @@ impl Index {
         // list somebody is scanning to narrow a library down. Both kinds of claim are
         // offered, told apart by the tag namespace rather than merged.
         let mut stmt = self.conn.prepare(&format!(
-            "SELECT fl.tag, COUNT(DISTINCT fl.face_id) FROM face_languages fl
+            "SELECT fl.tag, COUNT(DISTINCT fl.face_id), COUNT(DISTINCT lower(ff.family))
+             FROM face_languages fl JOIN faces ff ON ff.id = fl.face_id
              WHERE fl.face_id IN ({inner})
-             GROUP BY fl.tag ORDER BY COUNT(DISTINCT fl.face_id) DESC, fl.tag"
+             GROUP BY fl.tag
+             ORDER BY COUNT(DISTINCT lower(ff.family)) DESC,
+                      COUNT(DISTINCT fl.face_id) DESC, fl.tag"
         ))?;
         let rows = stmt.query_map(rusqlite::params_from_iter(w.params()), |r| {
             Ok(FacetCount {
                 value: r.get(0)?,
                 count: r.get(1)?,
+                families: r.get(2)?,
             })
         })?;
         out.language = rows.collect::<rusqlite::Result<Vec<_>>>()?;
         let mut stmt = self.conn.prepare(&format!(
-            "SELECT t.name, COUNT(*) FROM face_tags ft JOIN tags t ON t.id = ft.tag_id WHERE ft.face_id IN ({inner}) GROUP BY t.id ORDER BY t.name COLLATE NOCASE"
+            "SELECT t.name, COUNT(*), COUNT(DISTINCT lower(ff.family))
+             FROM face_tags ft JOIN tags t ON t.id = ft.tag_id
+             JOIN faces ff ON ff.id = ft.face_id
+             WHERE ft.face_id IN ({inner}) GROUP BY t.id ORDER BY t.name COLLATE NOCASE"
         ))?;
         let rows = stmt.query_map(rusqlite::params_from_iter(w.params()), |r| {
             Ok(FacetCount {
                 value: r.get(0)?,
                 count: r.get(1)?,
+                families: r.get(2)?,
             })
         })?;
         out.tag = rows.collect::<rusqlite::Result<Vec<_>>>()?;
         let mut stmt = self.conn.prepare(&format!(
-            "SELECT c.name, COUNT(*) FROM collection_faces cf JOIN collections c ON c.id = cf.collection_id WHERE cf.face_id IN ({inner}) GROUP BY c.id ORDER BY c.name COLLATE NOCASE"
+            "SELECT c.name, COUNT(*), COUNT(DISTINCT lower(ff.family))
+             FROM collection_faces cf JOIN collections c ON c.id = cf.collection_id
+             JOIN faces ff ON ff.id = cf.face_id
+             WHERE cf.face_id IN ({inner}) GROUP BY c.id ORDER BY c.name COLLATE NOCASE"
         ))?;
         let rows = stmt.query_map(rusqlite::params_from_iter(w.params()), |r| {
             Ok(FacetCount {
                 value: r.get(0)?,
                 count: r.get(1)?,
+                families: r.get(2)?,
             })
         })?;
         out.collection = rows.collect::<rusqlite::Result<Vec<_>>>()?;

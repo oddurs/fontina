@@ -182,6 +182,16 @@ CREATE INDEX face_languages_tag ON face_languages(tag COLLATE NOCASE);
 ALTER TABLE faces ADD COLUMN is_fixed_pitch INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX faces_fixed_pitch ON faces(is_fixed_pitch);
 "#,
+    // 8: vendor ids with the padding taken off. `OS/2.achVendID` is four bytes and is
+    // padded with NUL in plenty of shipped fonts, which used to be stored as the escape
+    // `{0x00}` — so `--vendor FBI` matched nothing while `--vendor 'FBI{0x00}'` matched
+    // 128 faces of one real library. The parser strips it now; this is for every index
+    // built before it did. `backfill_vendor_ids` does the metadata JSON, which is what
+    // `info` prints.
+    r#"
+UPDATE faces SET vendor = trim(replace(replace(vendor, '{0x00}', ''), char(0), ''))
+WHERE vendor IS NOT NULL;
+"#,
 ];
 
 pub fn migrate(conn: &mut Connection) -> Result<()> {
@@ -232,12 +242,53 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
         if i == 6 {
             backfill_fixed_pitch(&tx)?;
         }
+        if i == 7 {
+            backfill_vendor_ids(&tx)?;
+        }
         tx.pragma_update(None, "user_version", (i + 1) as i64)?;
         tx.commit()?;
     }
 }
 
 /// Populate `face_ranges` from the stored metadata JSON of an index created before v2.
+/// Take the padding off the vendor id inside the stored metadata JSON.
+///
+/// The column is fixed by the migration's own `UPDATE`; this is the copy `info` prints
+/// and `get_face` returns. Nothing is parsed and nothing is rescanned: the value is
+/// already there, it just has an escape sequence where the padding was.
+fn backfill_vendor_ids(tx: &rusqlite::Transaction) -> Result<()> {
+    let rows: Vec<(i64, String)> = {
+        let mut stmt =
+            tx.prepare("SELECT id, metadata FROM faces WHERE metadata LIKE '%{0x00}%'")?;
+        let it = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        it.collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    let mut stmt = tx.prepare("UPDATE faces SET metadata = ?2 WHERE id = ?1")?;
+    for (id, json) in rows {
+        // A row whose metadata will not parse keeps what it has: the column is already
+        // right, and a face is worth more than its vendor id.
+        let Ok(mut face) = serde_json::from_str::<crate::model::FaceMetadata>(&json) else {
+            continue;
+        };
+        let Some(os2) = face.os2.as_mut() else {
+            continue;
+        };
+        let cleaned = os2
+            .vendor_id
+            .replace("{0x00}", "")
+            .trim_matches(|c: char| c == '\0' || c.is_whitespace())
+            .to_string();
+        if cleaned == os2.vendor_id {
+            continue;
+        }
+        os2.vendor_id = cleaned;
+        if let Ok(updated) = serde_json::to_string(&face) {
+            stmt.execute(rusqlite::params![id, updated])?;
+        }
+    }
+    Ok(())
+}
+
 fn backfill_ranges(tx: &rusqlite::Transaction) -> Result<()> {
     let rows: Vec<(i64, String)> = {
         let mut stmt = tx.prepare("SELECT id, metadata FROM faces")?;

@@ -438,6 +438,52 @@ fn specimen_is_self_contained_html() {
     assert!(!linked.contains("<section class=\"compare\">"));
 }
 
+/// A file name cannot close the specimen's `<style>` element.
+///
+/// `--link` writes the font's path into a URL inside `<style>`, and an HTML parser ends
+/// that element at the first `</style>` whatever it is nested in: a quoted CSS string
+/// does not protect it, because the string is CSS and the parser looking for the end tag
+/// is HTML. A directory called `</style><script>…` would then be running as markup in a
+/// document the person opened to look at a font. The path is percent-encoded, so there
+/// is no `<` left to find.
+#[test]
+fn a_hostile_path_cannot_escape_the_specimen_style_element() {
+    let (_, faces) = load_file(&fixture("Amiri-Regular.ttf")).unwrap();
+    let mut face = faces[0].clone();
+    face.file.path = "/fonts/</style><script>alert(1)</script>/Amiri.ttf".into();
+    let html = fontina_core::specimen::render(
+        std::slice::from_ref(&face),
+        &fontina_core::specimen::SpecimenOptions {
+            link: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        html.matches("</style>").count(),
+        1,
+        "the document has one style element and it ends where fontina ends it"
+    );
+    assert_eq!(
+        html.matches("<script>").count(),
+        1,
+        "the document has the one script element the specimen writes itself"
+    );
+    assert!(
+        !html.contains("alert(1)"),
+        "a path put its own code into the document"
+    );
+    // The slash stays a slash, because it separates path segments; the `<` and `>` are
+    // what an HTML parser looks for and they are gone.
+    assert!(
+        html.contains("%3C/style%3E"),
+        "the path is still there, encoded:\n{}",
+        html.lines()
+            .find(|l| l.contains("@font-face"))
+            .unwrap_or_default()
+    );
+}
+
 /// `parse_paths` hands work to a pool of threads that claim paths as they finish, so the
 /// order results come back in is not the order they were produced in. The scan report
 /// lists failures in the order the user gave the paths, so the restored order is part of
@@ -469,4 +515,98 @@ fn parse_paths_keeps_input_order_and_length() {
             if i % 4 == 3 { "not" } else { "" }
         );
     }
+}
+
+/// An index that is not a database fails at once, not after a retry budget.
+///
+/// `Index::open` switches a fresh index to WAL mode, and does it in a retry loop because
+/// two fontina processes opening the same new index race on that first write. The loop
+/// could not tell "another process holds the lock" from "this file will never be a
+/// database", so a `--db` with a typo in it — or an index that has been damaged — cost
+/// eight seconds on every command before anything said what was wrong.
+#[test]
+fn an_index_that_is_not_a_database_fails_at_once() {
+    let dir = std::env::temp_dir().join(format!("fontina-notadb-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("prose.db");
+    std::fs::write(&path, b"this is prose, not a database\n").unwrap();
+
+    let started = std::time::Instant::now();
+    // `Index` is not `Debug`, so the error comes out of a match rather than `expect_err`.
+    let err = match Index::open(&path) {
+        Ok(_) => panic!("a file that is not a database opened as one"),
+        Err(e) => e,
+    };
+    let took = started.elapsed();
+    assert!(
+        took < std::time::Duration::from_secs(2),
+        "it took {took:?} to say `{err}`"
+    );
+    assert!(
+        err.to_string().contains("not a database"),
+        "and it says what is wrong: {err}"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A vendor id padded with NUL is stored as text a person can type.
+///
+/// `OS/2.achVendID` is four bytes and shipped fonts pad it with NUL as often as with a
+/// space. `Tag`'s `Display` writes an unprintable byte as an escape, so `FBI\0` was
+/// stored as the eight characters `FBI{0x00}`: it showed that way in `list` and in the
+/// vendor facet, and `--vendor FBI` matched nothing while `--vendor 'FBI{0x00}'` matched
+/// 128 faces of one real library.
+///
+/// The second half is the index somebody already has. A row written before the fix keeps
+/// the escape until it is rescanned, so migration 8 takes the padding off the column and
+/// `backfill_vendor_ids` off the metadata JSON that `info` prints.
+#[test]
+fn a_vendor_id_padded_with_nul_is_readable_and_searchable() {
+    let dir = std::env::temp_dir().join(format!("fontina-vendor-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let db = dir.join("index.db");
+    {
+        let mut idx = Index::open(&db).unwrap();
+        fontina_core::scan::scan(
+            &mut idx,
+            &[fixture("Amiri-Regular.ttf")],
+            &ScanOptions::default(),
+        )
+        .unwrap();
+    }
+
+    // What an index written before the fix looks like: the escape in both places.
+    {
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        conn.execute_batch(
+            "UPDATE faces SET vendor = 'FBI{0x00}';
+             UPDATE faces SET metadata = replace(metadata, '\"vendor_id\":\"ALIF\"', '\"vendor_id\":\"FBI{0x00}\"');
+             PRAGMA user_version = 7;",
+        )
+        .unwrap();
+    }
+
+    let idx = Index::open(&db).unwrap();
+    let listed = idx
+        .list(&FaceFilter {
+            vendor: Some("FBI".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(
+        listed.len(),
+        1,
+        "an old index still answers `--vendor FBI` with nothing"
+    );
+    assert_eq!(listed[0].vendor.as_deref(), Some("FBI"));
+
+    let face = idx.get_face(listed[0].id).unwrap().expect("the face");
+    assert_eq!(
+        face.os2.as_ref().map(|o| o.vendor_id.as_str()),
+        Some("FBI"),
+        "the metadata `info` prints still carries the escape"
+    );
+    std::fs::remove_dir_all(&dir).ok();
 }

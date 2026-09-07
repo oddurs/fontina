@@ -45,7 +45,12 @@ Still to do before 1.0: a Homebrew formula, winget and Scoop manifests, an AUR
 ## M2, typography
 
 In the browser: axis sliders with named-instance snapping, feature toggles, a glyph
-map by block with codepoint search, compare and waterfall views, a license viewer.
+map by block with codepoint search, a license viewer. The compare and waterfall views
+were built and then removed: a terminal cell is one pixel wide and two tall, so type
+drawn into one is a picture of something that is not the font
+([ADR 0010](../adr/0010-the-browser-shows-structure/)). The browser shows what is in a
+font; `s` opens a real specimen in a browser and `fontina preview` draws a true image
+where the terminal has a protocol for one.
 `check` grows toward fontbakery parity where it is cheap; identifiers never change.
 Optional login-agent packaging (systemd user unit, LaunchAgent, Run key), off by
 default. An optional offline Google Fonts index, separately packaged, opt-in.
@@ -84,6 +89,26 @@ holds about eight typefaces. The answer is not a second kind of family the index
 and stores, which would mean encoding somebody else's naming convention as fact; it is a
 question you can ask of one face — what else here covers nearly the same characters — and
 answer from evidence the index already has.
+
+## M5, ship
+
+Four milestones in, you can install fontina with a package manager on Linux and with
+none on macOS or Windows. The release builds a `.deb` and an `.rpm`; everywhere else
+there is an archive to download and a binary to move onto your `PATH` by hand. Every
+desktop is meant to be first class, and on the evidence of how you install it, that is
+not yet true.
+
+So: a Homebrew tap, a Scoop bucket, a winget manifest, an AUR package — kept current by
+the release itself rather than by somebody remembering, and each one installed for real
+in a clean machine and tested there, the way the `.deb` and the `.rpm` already are.
+
+Two performance budgets are written down and not measured, because both need a real
+terminal to measure: how much memory the browser holds at rest, and how long it takes to
+repaint. A budget nothing measures is a wish with a table row, so either they get a
+harness or they stop being called budgets.
+
+Nothing here makes fontina do anything new with a font. It makes fontina something you
+can install, which after four milestones of features is the question worth asking.
 
 ## Never
 

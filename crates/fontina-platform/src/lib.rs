@@ -53,7 +53,7 @@ pub enum Scope {
     User,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SystemFontDir {
     pub path: PathBuf,
     /// True for the directory a per-user install writes to.
@@ -102,6 +102,33 @@ pub trait FontActivator {
     /// Font directories the OS reads, in precedence order.
     fn font_dirs(&self) -> Vec<SystemFontDir> {
         system_font_dirs()
+    }
+}
+
+/// Take back whatever an earlier activation registered, whichever kind it was.
+///
+/// A font is registered with the operating system in one of two ways: in place, by
+/// [`FontActivator::activate`], or as a copy in the per-user font directory, by
+/// [`FontActivator::install`]. The record of which is the `installed_path`: `Some` means
+/// there is a copy to remove, `None` means the file where it lies is registered.
+///
+/// This exists because moving between the two is two operations and only ever looked
+/// like one. Installing a font that was already activated used to copy it and record the
+/// copy, leaving the in-place registration behind with nothing pointing at it — the font
+/// stayed visible to every application on the machine and no later command could take it
+/// back. Activating one that was already installed did the mirror image, leaving the copy
+/// in the font directory as an orphan. Both are the same missing step, so both callers
+/// take it here.
+///
+/// `Ok(false)` means there was nothing registered to take back, which is not an error.
+pub fn withdraw(
+    activator: &dyn FontActivator,
+    file: &Path,
+    installed_path: Option<&Path>,
+) -> Result<bool> {
+    match installed_path {
+        Some(p) => activator.uninstall(p).map(|()| true),
+        None => activator.deactivate(file),
     }
 }
 

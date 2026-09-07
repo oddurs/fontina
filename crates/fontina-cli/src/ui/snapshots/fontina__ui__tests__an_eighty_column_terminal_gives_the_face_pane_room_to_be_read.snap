@@ -1,0 +1,28 @@
+---
+source: crates/fontina-cli/src/ui/mod.rs
+expression: drawn
+---
+  filter  nothing narrowed — f narrows, / searches                5 families
+╭ families ──────────────────╮╭ Amiri Regular ─────────────────────────────────╮
+│ Amiri               1      ││ style      weight 400 · width 100% · normal    │
+│ Bricolage Grotes…   1 V    ││ state      not active                          │
+│ Inter               2      ││ features                                       │
+│ Nabla               1 VC   ││   liga ○ Standard ligatures                    │
+│ Source Serif 4      1      ││   pnum ○ Proportional figures                  │
+│                            ││   ss01 ○ Stylistic set 1                       │
+│                            ││   ss02 ○ Stylistic set 2                       │
+│                            ││   ss03 ○ Stylistic set 3                       │
+│                            ││ glyphs     6710 · 1699 codepoints              │
+│                            ││ Arab       ██████████ 1217                     │
+│                            ││ Latn       ██▌░░░░░░░ 291                      │
+│                            ││ features   25: ccmp dnom fina init liga locl   │
+│                            ││            mark medi numr pnum rlig rtlm       │
+│                            ││ licence    OFL-1.1  free                       │
+│                            ││ designer   Khaled Hosny                        │
+│                            ││ file       ../../fixtures/Amiri-Regular.ttf    │
+│                            ││ metrics    1000 upm · asc 1124 · desc -634 ·   │
+│                            ││            gap 0                               │
+│                            ││ shape      cap 646 · x-height 433 · x/em 0.43  │
+╰────────────────────────────╯╰────────────────────────────────────────────────╯
+  $ fontina families
+  / search  f narrow  F flags  x clear  ⇥ pane  ⏎ open  ⌫ back  … ? help

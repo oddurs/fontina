@@ -5,28 +5,63 @@ import { current } from '../../releases';
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const u = (p: string) => `${base}${p}`;
 const docs = (await getCollection('docs')).sort((a, b) => a.data.order - b.data.order);
+const first = docs[0];
 ---
-<Base title="Manual" description="The fontina manual: installation, concepts, command reference, JSON output, health checks, specimens, platform notes." source="site/src/content/docs">
-  <h1>The fontina manual</h1>
-  <p class="smaller">For fontina {current?.version ?? "main"}. This manual is maintained in the repository under <code>site/src/content/docs</code>; corrections are pull requests.</p>
-  <p>
-    This manual describes the <code>fontina</code> command line and the concepts behind
-    it. It is written to be read in order once and consulted by chapter after that.
-  </p>
-  <div>
-    <h2>Table of contents</h2>
-    <ol>
-      {docs.map((d) => (
-        <li><a href={u(`/docs/${d.id}/`)}>{d.data.title}</a>: {d.data.description}</li>
-      ))}
-    </ol>
+<Base title="Manual" description="The fontina manual: getting started, concepts, activation, the terminal browser, the command reference, JSON output, health checks, specimens and platform notes." source="site/src/content/docs">
+  <header class="hero">
+    <h1>The fontina manual</h1>
+    <p class="tagline">Ten chapters, written to be read once in order and consulted by chapter after that.</p>
+    <p class="lead">
+      It covers the command line and the concepts behind it. Every chapter is a page in
+      this repository; corrections are pull requests, and each page links its own source.
+    </p>
+  </header>
+
+  {first && (
+    <div class="note">
+      <span class="label">New here</span>
+      <p>
+        Start with <a href={u(`/docs/${first.id}/`)}>{first.data.title}</a>: it installs
+        fontina, indexes your fonts and asks the first questions, in about ten minutes.
+      </p>
+    </div>
+  )}
+
+  <h2 id="chapters">Chapters</h2>
+  <div class="chapters">
+    {docs.map((d) => (
+      <div class="chapter">
+        <div class="num">{d.data.order}</div>
+        <div class="body">
+          <a href={u(`/docs/${d.id}/`)}>{d.data.title}</a>
+          <p>{d.data.description}</p>
+        </div>
+      </div>
+    ))}
   </div>
-  <h2>Other documentation</h2>
-  <ul>
-    <li><code>fontina help &lt;command&gt;</code> prints the reference for any command.</li>
-    <li>The JSON Schemas for every export live in
-      <a href="https://github.com/oddurs/fontina/tree/main/schemas"><code>schemas/</code></a>.</li>
-    <li>The <a href={u('/adr/')}>architecture decision records</a> explain the choices the manual takes for granted.</li>
-    <li>The <a href={u('/faq/')}>FAQ</a> answers the questions this manual does not.</li>
-  </ul>
+
+  <section class="section">
+    <h2 id="elsewhere">Documentation that is not here</h2>
+    <dl class="props">
+      <dt><code>fontina help &lt;command&gt;</code></dt>
+      <dd>The reference for any command, from the binary you are actually running. The
+      same text ships as a man page in every release archive.</dd>
+
+      <dt><a href="https://github.com/oddurs/fontina/tree/main/schemas">The JSON Schemas</a></dt>
+      <dd>What every <code>--json</code> output is guaranteed to contain. CI diffs them on
+      every pull request, so they cannot drift from the code that produces them.</dd>
+
+      <dt><a href={u('/adr/')}>Architecture decision records</a></dt>
+      <dd>Why the project is built the way it is: the parsing library, the index, the
+      licence, the deferred desktop shell. The manual takes these for granted.</dd>
+
+      <dt><a href={u('/faq/')}>The FAQ</a></dt>
+      <dd>The questions this manual does not answer, including several about what fontina
+      deliberately will not do.</dd>
+    </dl>
+  </section>
+
+  <p class="small soft">
+    This manual describes fontina {current?.version ?? 'main'}.
+  </p>
 </Base>

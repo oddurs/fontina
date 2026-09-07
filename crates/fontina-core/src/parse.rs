@@ -239,6 +239,44 @@ fn capabilities(font: &FontRef) -> Capabilities {
     }
 }
 
+/// `OS/2.achVendID` as text, with the padding taken off.
+///
+/// The field is four bytes and a vendor id is often shorter, so the rest is padding —
+/// spaces by the specification, but NUL in plenty of shipped fonts. `Tag`'s own
+/// `Display` writes a byte it cannot print as an escape, so `FBI\0` arrived as the
+/// eight characters `FBI{0x00}`: it showed that way in `list` and in the vendor facet,
+/// and `--vendor FBI` matched nothing at all while `--vendor 'FBI{0x00}'` matched 128
+/// faces. Font Bureau and FontShop both ship fonts padded this way.
+fn vendor_id(tag: read_fonts::types::Tag) -> String {
+    String::from_utf8_lossy(tag.into_bytes().as_slice())
+        .trim_matches(|c: char| c == '\0' || c.is_whitespace())
+        .to_string()
+}
+
+/// How many distinct non-zero advance widths a face has.
+///
+/// `hmtx` stores an advance for the first `numberOfHMetrics` glyphs, and every glyph
+/// after that repeats the last one — so the distinct set over the whole font is the
+/// distinct set over that slice, exactly, with no per-glyph walk. A monospaced font
+/// usually has a slice one entry long, which is why this costs nothing at scan time.
+///
+/// Zero advances are excluded. A combining mark occupies no space in a monospaced font
+/// either, and counting it would make every font that has one look inconsistent with
+/// itself.
+///
+/// Measured at the default instance. A variable font can vary advances along an axis,
+/// and the flag it carries is about the default too.
+fn distinct_advances(font: &FontRef) -> Option<u32> {
+    let hmtx = font.hmtx().ok()?;
+    let widths: BTreeSet<u16> = hmtx
+        .h_metrics()
+        .iter()
+        .map(|m| m.advance())
+        .filter(|a| *a != 0)
+        .collect();
+    Some(widths.len() as u32)
+}
+
 fn long_date_time_to_rfc3339(secs_since_1904: i64) -> Option<String> {
     if secs_since_1904 <= 0 {
         return None;
@@ -346,6 +384,7 @@ fn parse_one(font: &FontRef, index: u32, file: &FileInfo) -> Result<FaceMetadata
             .map(|p| p.italic_angle().to_f32())
             .unwrap_or(0.0),
         is_fixed_pitch: post.as_ref().is_some_and(|p| p.is_fixed_pitch() != 0),
+        distinct_advances: distinct_advances(font),
         revision: head.font_revision().to_f64(),
         created: long_date_time_to_rfc3339(head.created().as_secs()),
         modified: long_date_time_to_rfc3339(head.modified().as_secs()),
@@ -357,7 +396,7 @@ fn parse_one(font: &FontRef, index: u32, file: &FileInfo) -> Result<FaceMetadata
         width_class: o.us_width_class(),
         fs_type: o.fs_type(),
         embedding: EmbeddingRights::from_fs_type(o.fs_type()),
-        vendor_id: o.ach_vend_id().to_string().trim().to_string(),
+        vendor_id: vendor_id(o.ach_vend_id()),
         fs_selection: o.fs_selection().bits(),
         use_typo_metrics: o.fs_selection().bits() & 0x80 != 0,
         unicode_ranges: [

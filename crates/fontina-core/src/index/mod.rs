@@ -48,6 +48,25 @@ pub struct Index {
     conn: Connection,
 }
 
+/// Stops whatever the connection it came from is running.
+///
+/// Cheap to clone and safe to hold across threads, and harmless when the connection is
+/// idle: interrupting nothing does nothing.
+#[derive(Clone)]
+pub struct Interrupt(std::sync::Arc<rusqlite::InterruptHandle>);
+
+impl Interrupt {
+    pub fn cancel(&self) {
+        self.0.interrupt();
+    }
+}
+
+impl std::fmt::Debug for Interrupt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Interrupt")
+    }
+}
+
 /// Compact per-face row used by listings.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct FaceSummary {
@@ -224,14 +243,39 @@ const BUSY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 /// a single query. The one that loses only has to wait: whoever won is setting the very
 /// mode it wanted. If it never takes — an index on a filesystem that cannot do WAL —
 /// the rollback journal still works, so this is not a reason to refuse to open.
+/// Whether an error is one that waiting could resolve.
+///
+/// Busy and locked mean another connection holds what this one wants, and a moment later
+/// it may not. Every other code — not a database, read-only, corrupt, out of memory — is
+/// a fact about the file, and asking again only spends time.
+fn worth_retrying(e: &rusqlite::Error) -> bool {
+    matches!(
+        e,
+        rusqlite::Error::SqliteFailure(inner, _)
+            if inner.code == rusqlite::ErrorCode::DatabaseBusy
+                || inner.code == rusqlite::ErrorCode::DatabaseLocked
+    )
+}
+
 fn ensure_wal(conn: &Connection) {
     for _ in 0..50 {
-        let _ = conn.pragma_update(None, "journal_mode", "WAL");
-        let mode: String = conn
-            .pragma_query_value(None, "journal_mode", |r| r.get(0))
-            .unwrap_or_default();
-        if mode.eq_ignore_ascii_case("wal") {
-            return;
+        match conn.pragma_update(None, "journal_mode", "WAL") {
+            Ok(()) => {}
+            // Another process is switching the same fresh index; that is what the retry
+            // is for.
+            Err(e) if worth_retrying(&e) => {}
+            // Anything else will not change by being asked fifty times. Returning hands
+            // the real error to `migrate`, which is the caller that reports it. Spinning
+            // here instead cost eight seconds on every command whenever `--db` or
+            // `FONTINA_DB` pointed at a file that is not a database — a typo, or an
+            // index that has been damaged — before anything said so.
+            Err(_) => return,
+        }
+        match conn.pragma_query_value(None, "journal_mode", |r| r.get::<_, String>(0)) {
+            Ok(mode) if mode.eq_ignore_ascii_case("wal") => return,
+            Ok(_) => {}
+            Err(e) if worth_retrying(&e) => {}
+            Err(_) => return,
         }
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
@@ -276,6 +320,22 @@ impl Index {
 
     pub fn path(&self) -> String {
         self.conn.path().unwrap_or(":memory:").to_string()
+    }
+
+    /// A handle that can stop whatever this connection is running, from another thread.
+    ///
+    /// For a reader that has been superseded. The browser runs its listing queries on a
+    /// worker so that typing never blocks a frame, and a query whose answer nobody will
+    /// look at any more should stop rather than finish politely: at ten thousand faces
+    /// a six-letter family name is six queries, five of whose results are already stale
+    /// before they exist. Dropping the *pending* ones is bookkeeping the caller can do;
+    /// stopping the one already inside SQLite needs SQLite's own say-so, which is this.
+    ///
+    /// An interrupted statement fails with `SQLITE_INTERRUPT`. That is a cancellation
+    /// rather than a fault, and it is the caller — who knows whether it asked for one —
+    /// that can tell the difference.
+    pub fn interrupt_handle(&self) -> Interrupt {
+        Interrupt(std::sync::Arc::new(self.conn.get_interrupt_handle()))
     }
 
     /// Begin a write transaction.
@@ -447,6 +507,18 @@ impl Index {
         Ok(self.conn.execute(
             "DELETE FROM files WHERE path = ?1 OR path LIKE ?2 ESCAPE '\\'",
             params![root, like_prefix(root)],
+        )?)
+    }
+
+    /// Remove every file *inside* `dir`, leaving a row for `dir` itself alone.
+    ///
+    /// For a path that used to be a directory and is now a font: the fonts that were in
+    /// it are gone, but the row for the path itself is about to be rewritten by a scan,
+    /// and deleting it here would cascade away the tags and collections that carry over.
+    pub fn remove_inside(&mut self, dir: &str) -> Result<usize> {
+        Ok(self.conn.execute(
+            "DELETE FROM files WHERE path LIKE ?1 ESCAPE '\\'",
+            params![like_prefix(dir)],
         )?)
     }
 
@@ -742,8 +814,6 @@ impl Index {
         Ok(out)
     }
 
-    /// Faces that share an identity hash (same outlines and names across containers) or a
-    /// PostScript name (installing both would conflict).
     /// Faces whose character coverage overlaps `face_id` by at least `min`.
     ///
     /// The declared family is often the wrong unit for "these belong together", and there
@@ -820,7 +890,11 @@ impl Index {
                 continue;
             };
             out.push(Related {
-                metrics_agree: self.metrics_key(id)? == target_metrics,
+                // Two unknowns are not an agreement, so `None == None` must not count.
+                metrics_agree: match (self.metrics_key(id)?, target_metrics) {
+                    (Some(a), Some(b)) => a == b,
+                    _ => false,
+                },
                 face,
                 overlap: score,
                 shared,
@@ -837,20 +911,30 @@ impl Index {
         Ok(out)
     }
 
-    /// The four numbers that decide whether identical coverage means identical design.
-    fn metrics_key(&self, face_id: i64) -> Result<(u16, i16, i16, bool)> {
+    /// The four numbers that decide whether identical coverage means identical design,
+    /// or `None` for a row whose stored metadata this build cannot read.
+    ///
+    /// `None` rather than an error: every M4 backfill tolerates exactly this row, and
+    /// `list` keeps working on an index that holds one. Propagating here would let a
+    /// single unreadable face — very likely not even the one being asked about — fail the
+    /// whole of `related`, and so all of `fontina variants`. An unknown key compares
+    /// equal to nothing, so such a candidate is reported with `metrics_agree: false`,
+    /// which is the honest answer: fontina does not know that they agree.
+    fn metrics_key(&self, face_id: i64) -> Result<Option<(u16, i16, i16, bool)>> {
         let json: String = self.conn.query_row(
             "SELECT metadata FROM faces WHERE id = ?1",
             params![face_id],
             |r| r.get(0),
         )?;
-        let face: FaceMetadata = serde_json::from_str(&json)?;
-        Ok((
+        let Ok(face) = serde_json::from_str::<FaceMetadata>(&json) else {
+            return Ok(None);
+        };
+        Ok(Some((
             face.metrics.units_per_em,
             face.metrics.ascender,
             face.metrics.descender,
             face.metrics.is_fixed_pitch,
-        ))
+        )))
     }
 
     fn ranges_of(&self, face_id: i64) -> Result<Vec<[u32; 2]>> {
@@ -867,6 +951,8 @@ impl Index {
         Ok(self.summaries(&[face_id])?.into_iter().next())
     }
 
+    /// Faces that share an identity hash (same outlines and names across containers) or a
+    /// PostScript name (installing both would conflict).
     pub fn duplicates(&self) -> Result<Vec<DuplicateGroup>> {
         let mut groups = Vec::new();
         for (reason, column) in [
@@ -1116,11 +1202,18 @@ fn freedom_clause(want: Freedom) -> String {
     }
 }
 
-/// Whether a path is really gone, as opposed to merely unreadable. A dangling symlink
-/// counts as gone: `metadata` follows the link, and the font it named is what matters.
+/// Whether the font this row names is gone, as opposed to merely unreadable.
+///
+/// A dangling symlink counts as gone: `metadata` follows the link, and the font it named
+/// is what matters. So does a path that is no longer a regular file — unpacking an
+/// archive can leave a directory where a font used to be, and the face it held is as gone
+/// as if the file had been deleted. Anything else, including a permission error, is
+/// unreadable rather than absent and the row stays.
 fn is_gone(path: &str) -> bool {
-    matches!(std::fs::metadata(Path::new(path)),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound)
+    match std::fs::metadata(Path::new(path)) {
+        Ok(m) => !m.is_file(),
+        Err(e) => e.kind() == std::io::ErrorKind::NotFound,
+    }
 }
 
 fn like_prefix(root: &str) -> String {

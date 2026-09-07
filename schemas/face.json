@@ -397,7 +397,17 @@
           "minimum": -32768,
           "type": "integer"
         },
+        "distinct_advances": {
+          "description": "How many distinct non-zero advance widths the face has, at its default instance.\n\nThe fact `is_fixed_pitch` is a claim about. One means every glyph that occupies\nspace occupies the same amount. `None` when there is no `hmtx` to measure.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "is_fixed_pitch": {
+          "description": "What `post.isFixedPitch` claims.",
           "type": "boolean"
         },
         "italic_angle": {

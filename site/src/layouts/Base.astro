@@ -3,6 +3,7 @@
 // link groups on the right, and a copyright box across the bottom. See DESIGN.md.
 import '../styles/site.css';
 import { execSync } from 'node:child_process';
+import { current } from '../releases';
 
 interface Props {
   title: string;
@@ -81,12 +82,40 @@ const groups: [string, [string, string, boolean?][]][] = [
 <body>
 <a class="skip" href="#content">Skip to content</a>
 
+<header class="masthead">
+  <div class="inner">
+    <p class="wordmark">
+      {isHome ? (
+        <span class="lockup"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path d="M2.6 25.1V13.4c0-.73.45-1.38 1.13-1.63L26.6 3.4c1.12-.4 2.3.43 2.3 1.63v20.07c0 .96-.78 1.74-1.74 1.74H4.34a1.74 1.74 0 0 1-1.74-1.74z" fill="#f0c24b" stroke="#c9932a" stroke-width="1.3" stroke-linejoin="round"/><circle cx="9.4" cy="20.6" r="2.3" fill="#fffdf5"/><circle cx="19.2" cy="16.4" r="1.85" fill="#fffdf5"/><circle cx="24.6" cy="21.8" r="1.35" fill="#fffdf5"/></svg>fontina</span>
+      ) : (
+        <a class="lockup" href={u('/')}><svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path d="M2.6 25.1V13.4c0-.73.45-1.38 1.13-1.63L26.6 3.4c1.12-.4 2.3.43 2.3 1.63v20.07c0 .96-.78 1.74-1.74 1.74H4.34a1.74 1.74 0 0 1-1.74-1.74z" fill="#f0c24b" stroke="#c9932a" stroke-width="1.3" stroke-linejoin="round"/><circle cx="9.4" cy="20.6" r="2.3" fill="#fffdf5"/><circle cx="19.2" cy="16.4" r="1.85" fill="#fffdf5"/><circle cx="24.6" cy="21.8" r="1.35" fill="#fffdf5"/></svg>fontina</a>
+      )}
+      {current && <span class="version">{current.version}</span>}
+    </p>
+    <nav aria-label="Main">
+      {([
+        ['Manual', u('/docs/')],
+        ['Download', u('/download/')],
+        ['News', u('/news/')],
+        ['Free software', u('/license/')],
+        ['Source', repo],
+      ] as [string, string][]).map(([label, href]) => (
+        <a
+          href={href}
+          rel={href.startsWith('http') ? 'external' : undefined}
+          aria-current={href === Astro.url.pathname ? 'page' : undefined}
+        >{label}</a>
+      ))}
+    </nav>
+  </div>
+</header>
+
 <div class="frame">
   <main class="main" id="content">
     <slot />
   </main>
-  <nav class="navcol" aria-label="Site">
-    <p class="home">{isHome ? <span>fontina</span> : <a href={u('/')}>fontina</a>}</p>
+  {extraNav && (
+  <nav class="navcol" aria-label="On this manual">
     {extraNav && (
       <div class="navitem">
         <div class="navhead">{extraNav.head}</div>
@@ -97,32 +126,53 @@ const groups: [string, [string, string, boolean?][]][] = [
         </div>
       </div>
     )}
-    {groups.map(([head, links]) => (
-      <div class="navitem">
-        <div class="navhead">{head}</div>
-        <div class="navbody">
-          {links.map(([label, href, sub]) => (
-            <a
-              href={href}
-              class={sub ? 'sub' : undefined}
-              aria-current={href === Astro.url.pathname ? 'page' : undefined}
-            >{label}</a>
-          ))}
-        </div>
-      </div>
-    ))}
   </nav>
+  )}
 </div>
-<div class="notice">
-  <address set:html={`For questions about using fontina, please consult these pages and the <a href="${u('/docs/')}">manual</a>. If that fails, the <a href="${repo}/issues">bug tracker</a> is the place to ask. Comments on these pages are welcome as pull requests; every page links its source.`} />
-  <p>
-    Copyright &copy; 2026 Oddur Sigurdsson and the fontina contributors.
-    Verbatim copying and distribution of this entire article is permitted in any
-    medium, provided this notice is preserved.
-  </p>
-  <p>
-    These pages are maintained in the <a href={repo}>fontina repository</a>{source && <> (<a href={`${repo}/blob/main/${source}`}>this page's source</a>)</>}. Last modified {modified}.
-  </p>
-</div>
+<footer class="footer">
+  <div class="inner">
+    <nav class="sitemap" aria-label="Site">
+      {groups.map(([head, links]) => (
+        <div class="navitem">
+          <div class="navhead">{head}</div>
+          <div class="navbody">
+            {links.map(([label, href, sub]) => (
+              <a
+                href={href}
+                class={sub ? 'sub' : undefined}
+                aria-current={href === Astro.url.pathname ? 'page' : undefined}
+              >{label}</a>
+            ))}
+          </div>
+        </div>
+      ))}
+    </nav>
+
+    <div class="footer-note">
+      <div class="colophon">
+        <p>
+          <strong>fontina is free software.</strong> The program is under the
+          <a href={u('/license/')}>GNU General Public License, version 3 or later</a>;
+          these pages are under the GNU Free Documentation License, version 1.3 or later.
+        </p>
+        <p>
+          It makes no network connections, collects nothing, and never asks for
+          elevation.
+        </p>
+      </div>
+      <div class="notice">
+        <p set:html={`Questions go to the <a href="${u('/docs/')}">manual</a> first and the <a href="${repo}/issues">bug tracker</a> after. Corrections are pull requests; every page links its source.`} />
+        <p>
+          Copyright &copy; 2026 Oddur Sigurdsson and the fontina contributors. Verbatim
+          copying and distribution of this entire article is permitted in any medium,
+          provided this notice is preserved.
+        </p>
+        <p class="meta">
+          <a href={repo}>Repository</a>{source && <> &middot; <a href={`${repo}/blob/main/${source}`}>This page's source</a></>} &middot; <a href={u('/feed.xml')}>RSS</a> &middot; Last modified {modified}
+        </p>
+      </div>
+    </div>
+  </div>
+</footer>
 </body>
 </html>
