@@ -71,30 +71,30 @@ Helping someone find the right face rather than the one they asked for: comparis
 
 ## integrity — Integrity — what the file claims against what it is
 
-`··········` 0% · 0 of 2 done
+`##########` 100% · 2 of 2 done
 
 Every check today reads the metadata and asks whether it is sensible. None asks whether the file agrees with itself. The first tractable piece of PLAN.md §12's closing question: report the disagreement, never resolve it.
 
-### in review
+### done
 
-- [ ] [`0035`](https://github.com/oddurs/fontina/blob/main/cairn/items/0035-a-monospaced-font-whose-advances-are-not-all-equal.md) A monospaced font whose advances are not all equal <sup>feat · p1 · core</sup>
-- [ ] [`0037`](https://github.com/oddurs/fontina/blob/main/cairn/items/0037-two-files-claiming-to-be-the-same-font-with-different-bytes.md) Two files claiming to be the same font, with different bytes <sup>feat · p2 · cli</sup>
+- [x] [`0035`](https://github.com/oddurs/fontina/blob/main/cairn/items/0035-a-monospaced-font-whose-advances-are-not-all-equal.md) A monospaced font whose advances are not all equal <sup>feat · p1 · core</sup>
+- [x] [`0037`](https://github.com/oddurs/fontina/blob/main/cairn/items/0037-two-files-claiming-to-be-the-same-font-with-different-bytes.md) Two files claiming to be the same font, with different bytes <sup>feat · p2 · cli</sup>
 
 ## unfiled — Found, not yet scheduled
 
-`#####·····` 43% · 3 of 7 done
+`######····` 57% · 4 of 7 done
 
 Real findings with no milestone. Triage moves them or drops them; nothing sits here by default.
 
 ### backlog
 
-- [ ] [`0018`](https://github.com/oddurs/fontina/blob/main/cairn/items/0018-say-what-a-scan-skipped.md) Say what a scan skipped <sup>feat · p1 · core</sup>
 - [ ] [`0030`](https://github.com/oddurs/fontina/blob/main/cairn/items/0030-duplicates-are-found-and-then-nothing-can-be-done-about-them.md) Duplicates are found and then nothing can be done about them <sup>feat · p1 · cli</sup>
 - [ ] [`0031`](https://github.com/oddurs/fontina/blob/main/cairn/items/0031-variants-opens-with-the-family-you-are-already-looking-at.md) Variants opens with the family you are already looking at <sup>feat · p2 · cli</sup>
 - [ ] [`0042`](https://github.com/oddurs/fontina/blob/main/cairn/items/0042-two-thirds-of-the-published-json-fields-have-no-description.md) Two thirds of the published JSON fields have no description <sup>docs · p2 · workspace</sup>
 
 ### done
 
+- [x] [`0018`](https://github.com/oddurs/fontina/blob/main/cairn/items/0018-say-what-a-scan-skipped.md) Say what a scan skipped <sup>feat · p1 · core</sup>
 - [x] [`0019`](https://github.com/oddurs/fontina/blob/main/cairn/items/0019-write-down-which-font-formats-are-in-scope.md) Write down which font formats are in scope <sup>docs · p2 · workspace</sup>
 - [x] [`0023`](https://github.com/oddurs/fontina/blob/main/cairn/items/0023-filtering-to-nothing-removes-the-way-back.md) Filtering to nothing removes the way back <sup>fix · p0 · ui</sup>
 - [x] [`0027`](https://github.com/oddurs/fontina/blob/main/cairn/items/0027-parse-the-os-2-family-class-and-panose-into-the-face-model.md) Parse the OS/2 family class and PANOSE into the face model <sup>feat · p2</sup>
