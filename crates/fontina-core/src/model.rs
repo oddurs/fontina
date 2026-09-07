@@ -269,6 +269,18 @@ pub struct Os2Info {
     pub unicode_ranges: [u32; 4],
     #[serde(skip_serializing_if = "Option::is_none")]
     pub codepage_ranges: Option<[u32; 2]>,
+    /// `OS/2.sFamilyClass`: the IBM font class in the high byte, the subclass in the
+    /// low one. Zero means the font declined to classify itself, which a great many do.
+    #[serde(default)]
+    pub family_class: i16,
+    /// The ten PANOSE digits, as they are in the table.
+    ///
+    /// All zeroes is "any" and all ones is "no fit"; both mean the font is not saying.
+    /// Kept whole rather than interpreted here, because the digits mean different
+    /// things depending on the first of them, and a reader with the ten numbers can
+    /// look up what this program does not.
+    #[serde(default)]
+    pub panose: [u8; 10],
     #[serde(skip_serializing_if = "Option::is_none")]
     pub typo_ascender: Option<i16>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -336,6 +348,80 @@ pub struct Coverage {
     pub scripts: Vec<ScriptCoverage>,
     /// Inclusive codepoint ranges, merged, suitable for `unicode-range`.
     pub ranges: Vec<[u32; 2]>,
+}
+
+/// What kind of typeface a font says it is.
+///
+/// Derived on every read from `OS/2.sFamilyClass` and PANOSE, never stored — the same
+/// rule `freedom` follows, so the verdict tracks this code rather than the day the
+/// index was built.
+///
+/// It is what the font *claims*, which is not always what it is: plenty of faces leave
+/// both fields at zero, and a few fill them in wrongly. [`Classification::Unclassified`]
+/// is therefore a real and common answer, and must never be reported as "sans" because
+/// that is the commonest value among fonts that did answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum Classification {
+    Serif,
+    SansSerif,
+    Script,
+    Decorative,
+    Symbol,
+    /// The font said nothing, or said only "any" or "no fit".
+    #[default]
+    Unclassified,
+}
+
+impl Classification {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Classification::Serif => "serif",
+            Classification::SansSerif => "sans-serif",
+            Classification::Script => "script",
+            Classification::Decorative => "decorative",
+            Classification::Symbol => "symbol",
+            Classification::Unclassified => "unclassified",
+        }
+    }
+
+    /// Read the two fields the specification provides, in that order.
+    ///
+    /// `sFamilyClass` first, because it is the narrower claim: its high byte is the IBM
+    /// font class, and a font that filled it in has answered the question directly.
+    /// PANOSE second, because its first digit says which *kind* of thing the remaining
+    /// nine digits describe, so it can only be read once that is known.
+    ///
+    /// The IBM classes, from the OS/2 specification: 1 to 7 are serif designs (oldstyle,
+    /// transitional, modern, Clarendon, slab, a reserved slot, freeform), 8 is sans
+    /// serif, 9 ornamentals, 10 scripts, 12 symbolic. 0, 11, 13 and 14 say nothing.
+    ///
+    /// In PANOSE, the first digit is the family kind: 2 is Latin text, 3 Latin hand
+    /// written, 4 Latin decorative, 5 Latin symbol. For Latin text the second digit is
+    /// the serif style, where 11 to 13 are the sans values (normal, obtuse and
+    /// perpendicular sans) and 2 to 10 and 14 to 15 are serif ones. 0 and 1 are "any"
+    /// and "no fit" everywhere, and both mean the font is not saying.
+    pub fn of(family_class: i16, panose: &[u8; 10]) -> Classification {
+        match (family_class >> 8) & 0xff {
+            1..=5 | 7 => return Classification::Serif,
+            8 => return Classification::SansSerif,
+            9 => return Classification::Decorative,
+            10 => return Classification::Script,
+            12 => return Classification::Symbol,
+            _ => {}
+        }
+        match panose[0] {
+            2 => match panose[1] {
+                11..=13 => Classification::SansSerif,
+                2..=10 | 14..=15 => Classification::Serif,
+                _ => Classification::Unclassified,
+            },
+            3 => Classification::Script,
+            4 => Classification::Decorative,
+            5 => Classification::Symbol,
+            _ => Classification::Unclassified,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -413,6 +499,19 @@ pub struct FaceMetadata {
 }
 
 impl FaceMetadata {
+    /// What kind of typeface the font says it is.
+    ///
+    /// Derived on every read rather than stored, the same rule `freedom` follows: the
+    /// verdict then tracks the mapping in [`Classification::of`] rather than the day
+    /// the index was built. A font with no `OS/2` table at all is unclassified, which
+    /// is the honest answer and not the same as "sans".
+    pub fn classification(&self) -> Classification {
+        match &self.os2 {
+            Some(os2) => Classification::of(os2.family_class, &os2.panose),
+            None => Classification::Unclassified,
+        }
+    }
+
     pub fn is_variable(&self) -> bool {
         self.variable.as_ref().is_some_and(|v| !v.axes.is_empty())
     }
