@@ -51,6 +51,136 @@ fn snapshot_view(f: &FaceMetadata) -> serde_json::Value {
     })
 }
 
+/// The two fields a font uses to say what kind of typeface it is, and the verdict they
+/// produce. Both are read from the fixtures rather than asserted in the abstract,
+/// because the point of parsing them is what real fonts put in them.
+#[test]
+fn a_font_says_what_kind_of_typeface_it_is_or_says_nothing() {
+    use fontina_core::model::Classification;
+
+    // What the fixtures actually claim, which is worth writing down: not one of them
+    // fills in `sFamilyClass`, three of the five decline to classify themselves at all,
+    // and the one chromatic display face calls itself a normal sans. This is a report
+    // of what fonts say, and fonts mostly do not say.
+    for (file, want) in [
+        // PANOSE [2, 4, ...]: Latin text, cove serifs.
+        ("SourceSerif4-Regular.otf", Classification::Serif),
+        // PANOSE [0, 0, ...]: "any". A serif Arabic face that declines to say so.
+        ("Amiri-Regular.ttf", Classification::Unclassified),
+        // PANOSE [2, 0, ...]: Latin text, serif style "any". A sans that does not say.
+        ("inter-latin-400-normal.woff2", Classification::Unclassified),
+        // PANOSE [2, 11, ...]: normal sans, from a chromatic display face.
+        ("Nabla[EDPT,EHLT].ttf", Classification::SansSerif),
+        (
+            "BricolageGrotesque[opsz,wdth,wght].ttf",
+            Classification::SansSerif,
+        ),
+    ] {
+        let (_, faces) = load_file(&fixture(file)).unwrap();
+        let face = &faces[0];
+        let os2 = face.os2.as_ref().expect("every fixture has an OS/2 table");
+        assert_eq!(
+            face.classification(),
+            want,
+            "{file}: family_class {:#06x}, panose {:?}",
+            os2.family_class,
+            os2.panose
+        );
+    }
+}
+
+/// The mapping itself, over the values the specification defines, so a wrong constant
+/// is caught here rather than in a font somebody happens to own.
+#[test]
+fn the_classification_reads_the_family_class_first_and_panose_second() {
+    use fontina_core::model::Classification;
+    let none = [0u8; 10];
+
+    // The IBM classes, in the high byte.
+    for class in [1, 2, 3, 4, 5, 7] {
+        assert_eq!(
+            Classification::of(class << 8, &none),
+            Classification::Serif,
+            "IBM class {class} is a serif design"
+        );
+    }
+    assert_eq!(Classification::of(8 << 8, &none), Classification::SansSerif);
+    assert_eq!(
+        Classification::of(9 << 8, &none),
+        Classification::Decorative
+    );
+    assert_eq!(Classification::of(10 << 8, &none), Classification::Script);
+    assert_eq!(Classification::of(12 << 8, &none), Classification::Symbol);
+    // The classes that say nothing, including the reserved ones.
+    for class in [0, 6, 11, 13, 14] {
+        assert_eq!(
+            Classification::of(class << 8, &none),
+            Classification::Unclassified,
+            "IBM class {class} says nothing"
+        );
+    }
+
+    // The subclass in the low byte is not the class and must not be read as one.
+    assert_eq!(
+        Classification::of(0x0008, &none),
+        Classification::Unclassified,
+        "the low byte is the subclass"
+    );
+
+    // PANOSE, only when the family class said nothing.
+    let panose = |kind: u8, serif: u8| {
+        let mut p = [0u8; 10];
+        p[0] = kind;
+        p[1] = serif;
+        p
+    };
+    for serif in [11, 12, 13] {
+        assert_eq!(
+            Classification::of(0, &panose(2, serif)),
+            Classification::SansSerif,
+            "PANOSE serif style {serif} is a sans"
+        );
+    }
+    for serif in [2, 6, 10, 14, 15] {
+        assert_eq!(
+            Classification::of(0, &panose(2, serif)),
+            Classification::Serif,
+            "PANOSE serif style {serif} is a serif"
+        );
+    }
+    assert_eq!(Classification::of(0, &panose(3, 0)), Classification::Script);
+    assert_eq!(
+        Classification::of(0, &panose(4, 0)),
+        Classification::Decorative
+    );
+    assert_eq!(Classification::of(0, &panose(5, 0)), Classification::Symbol);
+    // "Any" and "no fit" are the font declining to answer, in both digits.
+    assert_eq!(
+        Classification::of(0, &panose(0, 0)),
+        Classification::Unclassified
+    );
+    assert_eq!(
+        Classification::of(0, &panose(1, 1)),
+        Classification::Unclassified
+    );
+    assert_eq!(
+        Classification::of(0, &panose(2, 0)),
+        Classification::Unclassified
+    );
+    assert_eq!(
+        Classification::of(0, &panose(2, 1)),
+        Classification::Unclassified
+    );
+
+    // And the family class wins when both are filled in, because it is the narrower
+    // claim: a font saying "sans" there and "serif" in PANOSE is answering the
+    // question directly in one place and describing shapes in the other.
+    assert_eq!(
+        Classification::of(8 << 8, &panose(2, 2)),
+        Classification::SansSerif
+    );
+}
+
 #[test]
 fn amiri_is_arabic_ofl_static() {
     let (file, faces) = load_file(&fixture("Amiri-Regular.ttf")).unwrap();
