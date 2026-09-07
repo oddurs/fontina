@@ -334,12 +334,12 @@ Nothing is called a good pairing. Every row says what was measured and what was 
 in the words of the measurement:
 
 ```
-Inter Regular                 weight +100 · spacing differs · x/em 0.48 vs 0.55 · 2 scripts shared
+Inter Regular            weight +100 · spacing differs · serif vs sans-serif · x/em 0.48 vs 0.55 · 2 scripts shared
 ```
 
-Four things are measured, all of them already in the index: contrast in weight,
-contrast in width, whether the spacing class differs, and how close the x-heights are
-at a common size. Plus one gate — scripts in common — because two faces that cannot set
+Five things are measured, all of them in the index: contrast in weight, contrast in
+width, whether the spacing class differs, how close the x-heights are at a common size,
+and whether the two are different kinds of typeface. Plus one gate — scripts in common — because two faces that cannot set
 the same text are not a pair whatever else is true of them. The pseudo-scripts (`Zyyy`,
 `Zinh`) do not count, or every pair would look compatible.
 
@@ -348,11 +348,17 @@ weight, not a pairing. The ranking looks at the whole library rather than the pa
 are on, because a partner is by definition something you do not already have in front
 of you. A face with nothing sharing a script says so.
 
-One thing is deliberately missing. The item behind this asked for "a different outline
-class", meaning serif against sans — and **the index does not store that**. There is no
-PANOSE and no `OS/2.sFamilyClass` in the model, so rather than dress a `glyf`-versus-`CFF`
-difference up as a typographic one, it is left out and said so here. The nearest thing
-the index does hold is the spacing class, which is a real signal on its own.
+A fifth thing is measured now that `OS/2.sFamilyClass` and PANOSE are parsed: whether
+the two are different kinds of typeface, serif against sans. It is the axis a person
+would name first and the weakest of the five, because it is a report of what the font
+*claims*. Of the five fonts this repository tests against, not one fills in
+`sFamilyClass`, three decline to classify themselves at all, and the chromatic display
+face calls itself a normal sans.
+
+So a face that did not say is not scored on it either way, and the row says "kind not
+stated" rather than guessing. A ranking that treated silence as sans-serif — the
+commonest answer among fonts that did answer — would be inventing the very fact it was
+ranking on.
 
 ### The keys
 
