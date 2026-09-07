@@ -22,6 +22,7 @@
 //! preview, so the screen looks native in any theme.
 
 mod controls;
+mod covering;
 mod filter;
 mod glyphs;
 mod history;
@@ -227,6 +228,8 @@ enum InputKind {
     Collection,
     /// A codepoint or a block name, in the glyph map.
     Glyph,
+    /// Text to ask the library about: who can set this?
+    Cover,
     /// The flags `fontina list` takes, applied to the panes as they are typed.
     Filter,
 }
@@ -317,6 +320,16 @@ pub struct App {
     related: Option<related::View>,
     /// Rows the related list had on the last frame, so a PageDown moves by a screen.
     related_rows: usize,
+    /// Who can set the pasted text, while the answer is on the screen.
+    covering: Option<covering::View>,
+    /// Rows the coverage answer had on the last frame, so a PageDown moves by a screen.
+    covering_rows: usize,
+    /// The text the reader last asked about.
+    ///
+    /// Kept on the browser rather than in the view, because retyping it is the whole
+    /// friction the item is about: closing the answer to go and look at a face has to
+    /// leave the question intact, and `e` has to open pre-filled with it.
+    cover_text: String,
     /// Columns the glyph grid used when it was last drawn, so a PageDown moves by what
     /// the reader can see rather than by a guess.
     glyph_cols: usize,
@@ -408,6 +421,9 @@ impl App {
             glyphs: None,
             related: None,
             related_rows: 0,
+            covering: None,
+            covering_rows: 0,
+            cover_text: String::new(),
             glyph_cols: 16,
             shape: layout::Shape::Two,
             activator,
@@ -925,6 +941,10 @@ impl App {
         }
         // Ctrl-C still quits from anywhere; a full-screen mode takes every other key,
         // so nothing underneath can move while it covers the panes.
+        if !ctrl_c(&key) && self.covering.is_some() {
+            self.handle_covering_key(key.code)?;
+            return Ok(Flow::Continue);
+        }
         if !ctrl_c(&key) && self.glyphs.is_some() {
             self.handle_glyph_key(key.code)?;
             return Ok(Flow::Continue);
@@ -1006,6 +1026,9 @@ impl App {
             KeyCode::Char('m') => self.open_glyphs(),
             // Guarded, because Ctrl-R is redo and an unguarded arm would swallow it.
             KeyCode::Char('r') if !ctrl => self.open_related()?,
+            // Pre-filled with the last question, because retyping a sentence to change
+            // one word in it is the friction this is here to remove.
+            KeyCode::Char('e') => self.start_input(InputKind::Cover, self.cover_text.clone()),
             KeyCode::Char('s') => self.open_specimen()?,
             KeyCode::Tab => self.cycle_focus(),
             KeyCode::Char('/') => self.start_input(InputKind::Search, self.query.clone()),
@@ -1181,6 +1204,106 @@ impl App {
             self.refresh_detail()?;
         }
         self.status = format!("{} {}", face.names.family, face.names.subfamily);
+        Ok(())
+    }
+
+    /// How many faces the coverage answer will read the metadata of.
+    ///
+    /// The list of faces that cover everything comes out of SQLite in one query and is
+    /// not bounded by this. The near misses are: naming the codepoints a face lacks
+    /// needs that face's own ranges, which is a row and a JSON parse each, and doing
+    /// that for ten thousand faces to answer a keystroke is not an answer, it is a
+    /// pause. Two hundred of whatever the reader has already filtered to is a screenful
+    /// many times over, and the title says when the number is a floor.
+    const COVER_CAP: usize = 200;
+
+    /// Ask the library who can set the text.
+    fn open_covering(&mut self) -> Result<()> {
+        let text = self.cover_text.clone();
+        let want = covering::wanted(&text);
+        if want.is_empty() {
+            self.covering = None;
+            self.status = "nothing to set: type some text".into();
+            return Ok(());
+        }
+
+        // Two questions, because they have different costs. Which faces cover all of
+        // it is one query over the whole library; which faces nearly do needs each
+        // candidate's own coverage, so it is asked of what the reader has filtered to.
+        let filter = self.filter();
+        let complete: BTreeSet<i64> = self
+            .index
+            .covering(&text, &filter)?
+            .into_iter()
+            .map(|f| f.id)
+            .collect();
+        let listed = self.index.list(&filter)?;
+        let capped = listed.len() > Self::COVER_CAP;
+        let considered = listed.len();
+
+        let mut rows = Vec::new();
+        for summary in listed.into_iter().take(Self::COVER_CAP) {
+            let label = format!("{} {}", summary.family, summary.subfamily);
+            // A face the query already said covers everything needs no second opinion,
+            // and skipping it is most of the work saved on an ordinary question.
+            let verdict = if complete.contains(&summary.id) {
+                covering::Verdict {
+                    missing: Vec::new(),
+                    per_script: covering::judge_scripts(&want),
+                    wanted: want.len(),
+                }
+            } else {
+                let Some(face) = self.index.get_face(summary.id)? else {
+                    continue;
+                };
+                covering::judge(&face, &want)
+            };
+            rows.push(covering::Row {
+                id: summary.id,
+                label,
+                verdict,
+            });
+        }
+        let view = covering::View::new(&text, rows, considered, capped);
+        if view.is_empty() {
+            self.status = format!("no face in this filter to ask about {text:?}");
+            self.covering = None;
+            return Ok(());
+        }
+        self.status = format!("{}   (fontina covers {})", view.title(), shell_quote(&text));
+        self.covering = Some(view);
+        Ok(())
+    }
+
+    /// Keys while the coverage answer is up.
+    fn handle_covering_key(&mut self, code: KeyCode) -> Result<()> {
+        let page = self.covering_rows.max(1) as i32;
+        let Some(view) = self.covering.as_mut() else {
+            return Ok(());
+        };
+        match code {
+            KeyCode::Esc | KeyCode::Char('q') => self.covering = None,
+            // `e` from inside asks a new question with the old one in the box, which is
+            // what a reader changing one word of a sentence wants.
+            KeyCode::Char('e') => {
+                self.covering = None;
+                self.start_input(InputKind::Cover, self.cover_text.clone());
+            }
+            KeyCode::Down | KeyCode::Char('j') => view.move_cursor(1),
+            KeyCode::Up | KeyCode::Char('k') => view.move_cursor(-1),
+            KeyCode::PageDown => view.move_cursor(page),
+            KeyCode::PageUp => view.move_cursor(-page),
+            KeyCode::Home | KeyCode::Char('g') => view.jump(0),
+            KeyCode::End | KeyCode::Char('G') => view.jump(usize::MAX),
+            KeyCode::Enter => {
+                let Some(id) = view.selected().map(|r| r.id) else {
+                    return Ok(());
+                };
+                self.covering = None;
+                return self.go_to_face(id);
+            }
+            _ => {}
+        }
         Ok(())
     }
 
@@ -1381,6 +1504,10 @@ impl App {
                                 format!("nothing covered matches {value:?}")
                             };
                         }
+                    }
+                    InputKind::Cover => {
+                        self.cover_text = value;
+                        self.open_covering()?;
                     }
                     InputKind::Tag => {
                         if !value.is_empty() {
@@ -1788,6 +1915,9 @@ impl App {
         if self.related.is_some() {
             self.draw_related(f, body);
         }
+        if self.covering.is_some() {
+            self.draw_covering(f, body);
+        }
         if self.palette.is_some() {
             self.draw_palette(f, area);
         }
@@ -2001,6 +2131,43 @@ impl App {
         let items: Vec<ListItem> = view.candidates()[win.clone()]
             .iter()
             .map(|c| ListItem::new(Line::from(view.row_text(c, inner.width as usize))))
+            .collect();
+        let list =
+            List::new(items).highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+        f.render_stateful_widget(list, inner, &mut windowed(Some(view.cursor()), &win));
+    }
+
+    /// Who can set the text: a mark, a name, and what is missing.
+    fn draw_covering(&mut self, f: &mut ratatui::Frame, area: Rect) {
+        let Some(view) = &self.covering else { return };
+        f.render_widget(Clear, area);
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(self.theme.accent())
+            .title(format!(
+                " {} — e asks again, ⏎ goes to it, Esc closes ",
+                view.title()
+            ));
+        let inner = block.inner(area);
+        f.render_widget(block, area);
+        if inner.width < 24 || inner.height < 1 {
+            return;
+        }
+        self.covering_rows = inner.height as usize;
+        let win = layout::window(view.rows().len(), view.cursor(), inner.height as usize, 0);
+        let items: Vec<ListItem> = view.rows()[win.clone()]
+            .iter()
+            .map(|r| {
+                let style = if r.verdict.covers_everything() {
+                    self.theme.good()
+                } else {
+                    Style::default()
+                };
+                ListItem::new(Line::from(Span::styled(
+                    view.row_text(r, inner.width as usize),
+                    style,
+                )))
+            })
             .collect();
         let list =
             List::new(items).highlight_style(Style::default().add_modifier(Modifier::REVERSED));
@@ -2974,6 +3141,7 @@ impl App {
                 InputKind::Tag => "tag",
                 InputKind::Collection => "collection",
                 InputKind::Glyph => "codepoint or block",
+                InputKind::Cover => "who can set",
                 // What the line is doing right now, so the reader is watching the
                 // count rather than guessing at it: the panes behind the prompt are
                 // already showing this filter.
@@ -3022,6 +3190,8 @@ impl App {
              the command that draws what you have set
  Alike       r lists what else covers nearly the same characters, with the score
              and the metrics that say whether that means one design. ⏎ goes to it
+ Who sets    e asks who can set a line of text: paste it and the answer names,
+             per face, the characters and scripts it lacks. The text is kept
  Glyphs      m opens the glyph map: h/l pick a block, / finds a codepoint
              (U+0041, 0x41, 41) or a block by name
  Specimen    s writes an HTML specimen and opens it. A terminal cannot show a
@@ -5654,6 +5824,98 @@ mod tests {
         .unwrap();
         assert_eq!(app.status, "nothing to redo", "Ctrl-R was swallowed");
         assert!(app.related.is_none());
+    }
+
+    /// The question a designer actually has: here is a line, who can set it.
+    #[test]
+    fn e_asks_the_library_who_can_set_a_line_of_text() {
+        let mut app = app();
+        press(&mut app, KeyCode::Char('e'));
+        for c in "Hello".chars() {
+            press(&mut app, KeyCode::Char(c));
+        }
+        press(&mut app, KeyCode::Enter);
+
+        let view = app.covering.as_ref().expect("an answer");
+        assert!(!view.is_empty());
+        assert!(
+            view.rows().iter().any(|r| r.verdict.covers_everything()),
+            "every fixture is Latin; something sets Hello"
+        );
+        let drawn = stable_frame(&mut app, 120, 36);
+        assert!(drawn.contains("who can set"), "{drawn}");
+        assert!(
+            drawn.contains("sets all 4 character(s)"),
+            "Hello has four distinct letters: {drawn}"
+        );
+        assert!(drawn.contains("fontina covers") || app.status.contains("fontina covers"));
+    }
+
+    /// A near miss is an answer: the characters are named, not counted away.
+    #[test]
+    fn a_face_that_nearly_sets_it_is_offered_with_what_it_lacks() {
+        let mut app = app();
+        // One Arabic word among the Latin. Only Amiri has the Arabic, so every other
+        // fixture is a near miss and has to say which characters it wants.
+        app.cover_text = "Hi سلام".into();
+        app.open_covering().unwrap();
+        let view = app.covering.as_ref().expect("an answer");
+        let near = view
+            .rows()
+            .iter()
+            .find(|r| !r.verdict.covers_everything())
+            .expect("something falls short");
+        assert!(!near.verdict.missing.is_empty());
+        let line = near.verdict.summary(160);
+        assert!(line.starts_with("missing "), "{line}");
+        assert!(line.contains("U+"), "the codepoints are named: {line}");
+        assert!(
+            line.contains("[Arab"),
+            "and the script it failed on: {line}"
+        );
+    }
+
+    /// The text survives closing the answer, because retyping a sentence to change one
+    /// word of it is the whole friction.
+    #[test]
+    fn the_text_survives_closing_the_answer() {
+        let mut app = app();
+        app.cover_text = "Hello".into();
+        app.open_covering().unwrap();
+        press(&mut app, KeyCode::Esc);
+        assert!(app.covering.is_none());
+        assert_eq!(app.cover_text, "Hello", "the question was thrown away");
+
+        // And `e` opens with it already in the box.
+        press(&mut app, KeyCode::Char('e'));
+        assert_eq!(app.input.as_ref().map(|i| i.buf.as_str()), Some("Hello"));
+    }
+
+    /// Enter goes to the face, which is what having found it is for.
+    #[test]
+    fn enter_goes_to_the_face_that_can_set_it() {
+        let mut app = app();
+        app.cover_text = "Hello".into();
+        app.open_covering().unwrap();
+        let to = app
+            .covering
+            .as_ref()
+            .and_then(|v| v.selected())
+            .map(|r| r.id)
+            .expect("something to go to");
+        press(&mut app, KeyCode::Enter);
+        assert!(app.covering.is_none());
+        assert_eq!(app.detail_id, Some(to), "{}", app.status);
+    }
+
+    /// Text with nothing in it to draw is a sentence rather than an empty box.
+    #[test]
+    fn asking_about_nothing_says_so() {
+        let mut app = app();
+        app.cover_text = "   \n\t ".into();
+        app.open_covering().unwrap();
+        assert!(app.covering.is_none());
+        assert_eq!(app.status, "nothing to set: type some text");
     }
 
     #[test]
