@@ -194,6 +194,7 @@ const KEYS: &[(&str, &str)] = &[
     ("i", "install"),
     ("u", "uninstall"),
     ("r", "alike"),
+    ("e", "who sets"),
     ("m", "glyphs"),
     ("s", "specimen"),
     ("U", "undo"),

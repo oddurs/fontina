@@ -278,6 +278,29 @@ looking for. The floor the query used is in the title, so if you see six answers
 can ask what the seventh was. Enter goes to the face; a face with nothing near it says
 so rather than showing a weak list.
 
+### Can anything I own set this?
+
+Coverage shown per face, as scripts and counts, answers a question about fonts. The
+question a designer actually has is about *text*: here is a line, who can set it.
+
+`e` takes a line — paste it — and answers per face. A face that sets the whole thing is
+marked; a face that nearly does is offered **with the characters it lacks named**, by
+codepoint and by the character itself, because "no" tells you nothing you can act on
+and "missing U+0641 ف" tells you whether to subset, pair, or look elsewhere.
+
+A mixed-script line fails per script rather than as a whole. A line of English with one
+Arabic word is two questions, and a face that answers the first and not the second has
+said something useful.
+
+The text is kept when you close the answer, and `e` opens with it already in the box —
+retyping a sentence to change one word of it is the friction this exists to remove.
+Enter goes to the face.
+
+Which faces cover the whole line comes out of one query over the whole library. The
+near misses need each candidate's own coverage, so they are asked of what you have
+already filtered to, up to two hundred faces; when the answer is bounded, the title
+says so.
+
 ### The keys
 
 `?` puts this list over whatever you are looking at.
@@ -305,6 +328,7 @@ so rather than showing a weak list.
 | `n` / `p` | step through named instances |
 | `0` | reset the axes and features |
 | `r` | what else covers nearly the same characters |
+| `e` | who can set this text |
 | `m` | the glyph map |
 | `s` | write an HTML specimen and open it |
 | `U` / Ctrl-R | undo the last change to the index / do it again |

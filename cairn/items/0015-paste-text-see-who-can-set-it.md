@@ -2,10 +2,10 @@
 id: 15
 title: Paste text, see who can set it
 type: feat
-status: backlog
+status: done
 milestone: tui-discovery
 created: 2026-09-05
-updated: 2026-09-05
+updated: 2026-09-06
 priority: p1
 effort: m
 crate: ui
