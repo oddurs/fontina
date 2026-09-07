@@ -140,6 +140,16 @@ no_large_files() {
 }
 run "no large files added" no_large_files
 
+# A workflow file that does not parse produces no run at all, so the check that would
+# have told you never appears — the pull request just goes quiet. Four workflows sat
+# broken on main that way. actionlint knows the expression language, which neither a YAML
+# parser nor `bash -n` does.
+if command -v actionlint >/dev/null; then
+  run "workflows are valid" actionlint
+else
+  skip "workflows are valid" "brew install actionlint"
+fi
+
 if command -v cargo-deny >/dev/null; then
   run "cargo deny" cargo deny check
 else

@@ -43,6 +43,32 @@ mod macos;
 #[cfg(target_os = "windows")]
 mod windows;
 
+/// The one lock every test that touches the environment takes.
+///
+/// `cargo test` runs a crate's tests as threads in a single process, and environment
+/// variables belong to the process. So a test that sets `XDG_CONFIG_HOME` is not only
+/// setting it for itself — it is setting it for whatever else is running at that
+/// instant, including a test that never mentions the variable and only asks
+/// `directories` where the user's configuration lives.
+///
+/// That is not hypothetical. `agent::tests::the_plan_stays_in_the_users_own_directory`
+/// failed on Linux in CI comparing its plan against `/tmp/fontina-linux-activate-5005/
+/// config` — a sandbox belonging to a test in `linux.rs`, which had the variable set at
+/// the moment it looked. `linux.rs` had a lock of its own; the reader had no way to take
+/// it. A private lock only serialises the tests that know about it, so this one lives
+/// where every module can reach it.
+///
+/// Take it to **set** an environment variable, and take it to **read** anything derived
+/// from one.
+#[cfg(test)]
+pub(crate) fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+    static ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    // A poisoned lock means some other test panicked while holding it. That test has
+    // already failed and said why; turning its failure into a panic in every test that
+    // comes after would only bury it.
+    ENV.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// How long an activation should last.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
