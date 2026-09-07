@@ -68,7 +68,7 @@ Helping someone find the right face rather than the one they asked for: comparis
 
 ## unfiled — Found, not yet scheduled
 
-`#####·····` 50% · 2 of 4 done
+`####······` 33% · 2 of 6 done
 
 Real findings with no milestone. Triage moves them or drops them; nothing sits here by default.
 
@@ -76,6 +76,8 @@ Real findings with no milestone. Triage moves them or drops them; nothing sits h
 
 - [ ] [`0018`](https://github.com/oddurs/fontina/blob/main/cairn/items/0018-say-what-a-scan-skipped.md) Say what a scan skipped <sup>feat · p1 · core</sup>
 - [ ] [`0027`](https://github.com/oddurs/fontina/blob/main/cairn/items/0027-parse-the-os-2-family-class-and-panose-into-the-face-model.md) Parse the OS/2 family class and PANOSE into the face model <sup>feat · p2</sup>
+- [ ] [`0030`](https://github.com/oddurs/fontina/blob/main/cairn/items/0030-duplicates-are-found-and-then-nothing-can-be-done-about-them.md) Duplicates are found and then nothing can be done about them <sup>feat · p1 · cli</sup>
+- [ ] [`0031`](https://github.com/oddurs/fontina/blob/main/cairn/items/0031-variants-opens-with-the-family-you-are-already-looking-at.md) Variants opens with the family you are already looking at <sup>feat · p2 · cli</sup>
 
 ### done
 
@@ -84,11 +86,12 @@ Real findings with no milestone. Triage moves them or drops them; nothing sits h
 
 ## m5-ship — M5 — Ship
 
-`··········` 0% · 0 of 1 done
+`··········` 0% · 0 of 2 done
 
 Who can run it, rather than what else it can do. Package managers on every desktop, the two unmeasured budgets measured. PLAN.md §5.
 
 ### backlog
 
 - [ ] [`0022`](https://github.com/oddurs/fontina/blob/main/cairn/items/0022-ship-through-the-package-managers-people-actually-use.md) Ship through the package managers people actually use <sup>chore · p1 · workspace</sup>
+- [ ] [`0032`](https://github.com/oddurs/fontina/blob/main/cairn/items/0032-a-first-scan-cannot-see-the-fonts-the-machine-is-already-using.md) A first scan cannot see the fonts the machine is already using <sup>feat · p1 · cli</sup>
 
