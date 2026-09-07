@@ -36,6 +36,15 @@ const { Content, headings } = await render(entry);
 // component is the path every chapter without a frame marker takes.
 const rendered = (entry as unknown as { rendered?: { html?: string } }).rendered?.html;
 const framed = rendered?.includes('<!--frame:');
+// A marker that is not rendered is invisible: it is an HTML comment, so a chapter that
+// asked for a frame and did not get one looks like a chapter that never asked. If Astro
+// ever stops handing back the rendered HTML, this says so instead of quietly dropping
+// every frame in the manual.
+if (!framed && entry.body?.includes('<!--frame:')) {
+  throw new Error(
+    `${entry.id} asks for a browser frame and the rendered HTML this page splits on is not available, so the frame would be dropped silently. See the frame marker in site/src/pages/docs/[id].astro.`,
+  );
+}
 // Depth-2 only: a chapter's own sections. The command reference runs to eleven of
 // them, and arriving at the top of that with no map is why people give up on a
 // manual and go back to `--help`.

@@ -37,6 +37,11 @@ jobs:
         env:
           SITE_URL: https://${{ github.repository_owner }}.github.io
           SITE_BASE: /${{ github.event.repository.name }}
+      # The demos animate with CSS and nothing else, which means a step count that
+      # disagrees with its string, a frame with no delay, or a class the reduced-motion
+      # block forgets are all silent: the page builds, deploys and looks nearly right.
+      - run: npm run check:demos
+        working-directory: site
       # upload-pages-artifact drops every dot-directory, which loses .well-known/security.txt,
       # so the artifact is packed by hand. deploy-pages only needs it named github-pages.
       - run: tar --dereference --hard-dereference -cf "$RUNNER_TEMP/artifact.tar" -C site/dist .
