@@ -2800,7 +2800,6 @@ mod tests {
         }
     }
 
-
     /// Pressing an activation key with nothing selected says so and changes nothing.
     #[test]
     fn activating_nothing_is_a_message_rather_than_a_mistake() {
@@ -3561,10 +3560,6 @@ mod tests {
         );
     }
 
-
-
-
-
     #[test]
     fn searching_the_map_reports_what_it_found_or_did_not() {
         let mut app = app();
@@ -3586,7 +3581,6 @@ mod tests {
         app.handle_input_key(KeyCode::Enter).unwrap();
         assert!(app.status.contains("nothing covered"), "{}", app.status);
     }
-
 
     // ----- frames -----
     //
@@ -3648,7 +3642,6 @@ mod tests {
             .to_string()
     }
 
-
     /// The glyph map, which is what the browser is for.
     ///
     /// A mode rather than a pane: it covers the screen, because reading a font's coverage
@@ -3686,7 +3679,6 @@ mod tests {
         assert!(drawn.contains("wght"), "the weight axis is named: {drawn}");
         insta::assert_snapshot!(drawn);
     }
-
 
     /// A library of `n` families, made by cloning the fixtures' own.
     ///
@@ -3770,7 +3762,7 @@ mod tests {
             let mut app = app();
             with_families(&mut app, n);
             app.list.select(Some(n / 2));
-                frame(&mut app, 120, 36);
+            frame(&mut app, 120, 36);
             let start = std::time::Instant::now();
             const FRAMES: u32 = 200;
             for _ in 0..FRAMES {
@@ -4322,8 +4314,6 @@ mod tests {
 
         insta::assert_snapshot!(rows.join("\n"));
     }
-
-
 
     /// Every row a frame draws fits the terminal it was drawn into.
     ///

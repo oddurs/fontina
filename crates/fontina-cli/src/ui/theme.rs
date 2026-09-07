@@ -146,9 +146,7 @@ impl Theme {
             _ => Style::default().fg(Color::Green),
         }
     }
-
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -187,12 +185,6 @@ mod tests {
         assert_eq!(Depth::from_env(false, None, Some("dumb")), Depth::None);
         assert_eq!(Depth::from_env(false, None, None), Depth::None);
     }
-
-
-    #[test]
-    fn no_colour_has_no_ink_and_says_so() {
-    }
-
 
     /// Every role has to survive its own absence, because colour carries hierarchy here
     /// and never meaning on its own. Under `NO_COLOR` a role either takes a modifier or
