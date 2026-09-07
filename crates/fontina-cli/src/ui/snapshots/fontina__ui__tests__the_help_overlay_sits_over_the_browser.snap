@@ -1,40 +1,41 @@
 ---
 source: crates/fontina-cli/src/ui/mod.rs
+assertion_line: 4688
 expression: drawn
 ---
 ┌ 6 faces ───────────────┐┌ 5 families ─────────────────────────────┐┌ Details ────────────────────────────────────────┐
 │Weight        ┌ fontina ui ────────────────────────────────────────────────────────────────────────────┐              │
 │  200 ExtraLig│                                                                                        │ normal       │
 │  300 Light   │ Move        j/k ↑/↓ PgUp/PgDn g/G        Tab cycles the panes                          │Arab Latn Zyyy│
-│  400 Regular │ Filter      / type to search  Esc clears   Enter/Space toggles a facet   x clears all  │              │
-│  500 Medium  │ Families    Enter opens a family, Backspace/Esc closes it                              │iga locl mark │
-│  600 SemiBold│ Select      Space marks a row, v starts and ends a range, * takes everything           │              │
-│  700 Bold    │             the filter matches. Every action applies to the marks when there           │              │
-│  800 ExtraBol│             are any, and to the cursor when there are not. Esc clears them             │              │
-│Width         │ Organise    t tag the selection   c add it to a collection                             │              │
-│  75% Condense│ Activate    a for the user, A until logout, i install a copy, d deactivate, u uninstall│              │
-│  87.5% SemiCo│ Controls    h/l ←/→ move an axis (H/L by ten)   Space toggles a feature                │lar.ttf       │
-│  100% Normal │             n/p step through named instances   0 resets everything. The status         │              │
-│Style         │             line carries the command that draws what you have set                      │              │
-│  upright     │ Glyphs      m opens the glyph map: h/l pick a block, j/k scroll, / finds a             │              │
-│Variable      │             codepoint (U+0041, 0x41, 41) or a block by name                            │              │
-│  variable    │ Specimen    s writes an HTML specimen and opens it. A terminal cannot show a           │              │
-│Color         │             typeface honestly, so this program does not try: it shows what is          │              │
-│  color       │             in one, and hands the looking to something that can draw                   │              │
-│Spacing       │ Panes       Three side by side at 112 columns and up; under that the facets            │              │
-│  proportional│             move over the list and Tab opens them; under 76, one pane at a             │              │
-│Script        │             time, the others still a Tab away                                          │              │
-│  Latn        │ Undo        U takes back the last change to the index, Ctrl-R does it again. A         │              │
-│  Arab        │             whole selection is one undo, and what cannot be put back exactly —         │              │
-│  Zyyy        │             a rescan — is not offered                                                  │              │
-│  Cyrl        │ Commands    : lists every command the program has, filtered as you type. The           │c -634 · gap 0│
-│  Zinh        │             ones the browser implements it runs; the ones that print it writes         │x/em 0.43     │
-│  Grek        │             out with your selection already in them                                    │              │
-│Language      │ Index       R rescans every source (fontina scan --prune)                              │              │
-│  en          │ Quit        q                                                                          │              │
+│  400 Regular │ Search      / types a query, Esc clears it, x clears every filter                      │              │
+│  500 Medium  │ Filter bar  F takes the flags fontina list takes — ranges, two scripts at once,        │iga locl mark │
+│  600 SemiBold│             --variable=false — applied as you type, with the count beside them.        │              │
+│  700 Bold    │             Ctrl-S saves what it matched as a collection                               │              │
+│  800 ExtraBol│ Facets      Enter or Space toggles the value under the cursor                          │              │
+│Width         │ Families    Enter opens a family, Backspace or Esc closes it                           │              │
+│  75% Condense│ Select      Space marks a row, v starts and ends a range, * takes everything the       │              │
+│  87.5% SemiCo│             filter matches. Actions below apply to the marks when there are any,       │lar.ttf       │
+│  100% Normal │             to the cursor when there are not; Esc clears them                          │              │
+│Style         │ Organise    t tags the selection, c adds it to a collection                            │              │
+│  upright     │ Activate    a for the user, A until logout, i installs a copy, d and u undo those      │              │
+│Variable      │ Controls    h/l ←/→ move an axis (H/L by ten), Space toggles a feature, n/p step       │              │
+│  variable    │             through named instances, 0 resets everything. The status line carries      │              │
+│Color         │             the command that draws what you have set                                   │              │
+│  color       │ Glyphs      m opens the glyph map: h/l pick a block, / finds a codepoint               │              │
+│Spacing       │             (U+0041, 0x41, 41) or a block by name                                      │              │
+│  proportional│ Specimen    s writes an HTML specimen and opens it. A terminal cannot show a           │              │
+│Script        │             typeface honestly, so this program does not try: it shows what is in       │              │
+│  Latn        │             one, and hands the looking to something that can draw                      │              │
+│  Arab        │ Panes       Three side by side at 112 columns and up; under that the facets            │              │
+│  Zyyy        │             move over the list; under 76, one pane at a time. Tab reaches all          │              │
+│  Cyrl        │ Undo        U takes back the last change to the index, Ctrl-R does it again. A         │c -634 · gap 0│
+│  Zinh        │             whole selection is one undo; what cannot be put back exactly is not        │x/em 0.43     │
+│  Grek        │ Commands    : lists every command the program has, filtered as you type. What the      │              │
+│Language      │             browser implements it runs; what prints, it writes out for you             │              │
+│  en          │ Index       R rescans every source (fontina scan --prune)          Quit  q             │              │
 │  CAT         │                                                                                        │              │
 │  TRK         │ The status line shows the CLI command for what you see. Everything here is a command.  │              │
 │  AZE         │                                                                                        │              │
 └──────────────│ any key to close                                                                       │──────────────┘
  $ fontina fami└────────────────────────────────────────────────────────────────────────────────────────┘
- / search  ⇥ pane  ⏎ open  ⌫ back  ␣ select  t tag  c collection  a/A activate  d deactivate  i install  ? help
+ / search  F filter  ⇥ pane  ⏎ open  ⌫ back  ␣ select  t tag  c collection  a/A activate  d deactivate  ? help

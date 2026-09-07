@@ -1,5 +1,6 @@
 ---
 source: crates/fontina-cli/src/ui/mod.rs
+assertion_line: 4748
 expression: drawn
 ---
 ┌ 6 faces ───────────────┐┌ 5 families ──────────────────────────┐┌ Details ───────────────────────────────────┐
@@ -25,4 +26,4 @@ expression: drawn
 │  proportional        6 ││                                      ││shape     cap 646 · x-height 433 · x/em 0.43│
 └────────────────────────┘└──────────────────────────────────────┘└────────────────────────────────────────────┘
  $ fontina families
- / search  ⇥ pane  ⏎ open  ⌫ back  ␣ select  t tag  c collection  a/A activate  d deactivate  i install  ? help
+ / search  F filter  ⇥ pane  ⏎ open  ⌫ back  ␣ select  t tag  c collection  a/A activate  d deactivate  ? help

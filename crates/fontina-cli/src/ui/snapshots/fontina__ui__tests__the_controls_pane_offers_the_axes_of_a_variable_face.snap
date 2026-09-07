@@ -1,5 +1,6 @@
 ---
 source: crates/fontina-cli/src/ui/mod.rs
+assertion_line: 3906
 expression: drawn
 ---
 ┌ 6 faces ───────────────┐┌ 5 families ─────────────────────────────┐┌ Details ────────────────────────────────────────┐
@@ -37,4 +38,4 @@ expression: drawn
 │  AZE                 2 ││                                         ││Latn      ██████████ 327                         │
 └────────────────────────┘└─────────────────────────────────────────┘└─────────────────────────────────────────────────┘
  $ fontina families
- / search  ⇥ pane  ⏎ open  ⌫ back  ␣ select  t tag  c collection  a/A activate  d deactivate  i install  ? help
+ / search  F filter  ⇥ pane  ⏎ open  ⌫ back  ␣ select  t tag  c collection  a/A activate  d deactivate  ? help

@@ -1,5 +1,6 @@
 ---
 source: crates/fontina-cli/src/ui/mod.rs
+assertion_line: 4676
 expression: "stable_frame(&mut app, 120, 36)"
 ---
 ┌ 6 faces ───────────────┐┌ Inter · 2 face(s) ──────────────────────┐┌ Details ────────────────────────────────────────┐
@@ -37,4 +38,4 @@ expression: "stable_frame(&mut app, 120, 36)"
 │  AZE                 2 ││                                         ││                                                 │
 └────────────────────────┘└─────────────────────────────────────────┘└─────────────────────────────────────────────────┘
  $ fontina list --family "Inter"
- / search  ⇥ pane  ⏎ open  ⌫ back  ␣ select  t tag  c collection  a/A activate  d deactivate  i install  ? help
+ / search  F filter  ⇥ pane  ⏎ open  ⌫ back  ␣ select  t tag  c collection  a/A activate  d deactivate  ? help

@@ -213,6 +213,33 @@ written into the status line instead, ready to paste into another window: the br
 is using the screen they would print to. Anything that writes to the disk asks first,
 and anything but `y` is a no.
 
+### Filters the facets cannot express
+
+The facet pane shows what the library contains and lets one value be chosen from each
+heading. A weight *range*, two scripts at once, a coverage threshold, "not variable" —
+none of those fit that shape, and the only way to find out how many faces a filter
+would leave was to run it in another window.
+
+`F` opens a filter bar that takes the flags `fontina list` takes, and takes them by
+handing them to `fontina list`'s own parser. Nothing lists the fields twice: a flag
+added to the command line is a flag the browser understands the same day.
+
+```
+--weight 300-500 --script Cyrl --script Grek --script-min 200 --variable=false
+```
+
+It is applied as you type, so the panes behind the prompt are already showing the
+answer and the count sits beside the line. A half-typed flag is not a filter, so the
+panes stay on the last line that parsed and the prompt says which word is wrong, in the
+command line's own words. Enter keeps it, Esc puts back what was there, and `Ctrl-S`
+saves everything it matched as a collection.
+
+The bar opens pre-filled with the flags for the screen you are already on, so it starts
+as an editable copy of what you can see rather than an empty box. Toggling a facet
+afterwards hands control back to the facets and says so: a typed filter and the facet
+pane are two ways of saying the same thing, and there is no sensible way to add one
+facet to `--variable=false`.
+
 ### The keys
 
 `?` puts this list over whatever you are looking at.
@@ -224,6 +251,7 @@ and anything but `y` is a no.
 | `j` `k`, arrows, PageUp, PageDown, `g`, `G` | move |
 | Tab | cycle the panes this width has |
 | `/` | search; type, then Enter. Esc clears |
+| `F` | the filter bar: `fontina list` flags, applied as you type |
 | Enter | open a family, or toggle a facet |
 | Space | mark the row under the cursor |
 | `v` | start a range; `v` again ends it |
