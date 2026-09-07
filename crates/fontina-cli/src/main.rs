@@ -15,6 +15,7 @@
 // program. If not, see <https://www.gnu.org/licenses/>.
 
 mod config;
+mod term;
 mod ui;
 
 use anyhow::{Context, Result, bail};
@@ -85,8 +86,19 @@ enum Command {
         json: bool,
     },
     /// List indexed faces, optionally filtered.
+    ///
+    /// The `flags` column is six positions, and a `·` is one that is not set:
+    ///
+    ///   V  a variable font        C  colour (COLR, SVG, sbix or CBDT)
+    ///   I  italic or oblique      M  the font calls itself monospaced
+    ///   s  active for this login session, u for the user, i installed as a copy
+    ///   F  a free licence, N a nonfree one, ? a licence nobody has ruled on
+    #[command(verbatim_doc_comment)]
     List(ListArgs),
     /// List families (faces grouped by typographic family name), optionally filtered.
+    ///
+    /// The `flags` column is four positions, and a `·` is one that is not set:
+    /// V a variable font, C colour, I an italic among the faces, A one that is active.
     Families(ListArgs),
     /// Count faces per weight, width, style, script, license, vendor, tag, collection,
     /// activation state and source, for the faces matching the filters.
@@ -758,6 +770,10 @@ fn open_index(cli: &Cli) -> Result<Index> {
 
 fn run() -> Result<()> {
     let cli = Cli::parse();
+    // Before anything prints. Both facts — the colour depth and the width — are about
+    // the process, so they are resolved once here and read from `term::term()` by every
+    // printer rather than passed down through fifteen of them.
+    term::set(term::Term::detect());
     match &cli.command {
         Command::Scan {
             paths,
@@ -829,18 +845,24 @@ fn run() -> Result<()> {
             if *json {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {
+                let t = term::term();
                 println!(
-                    "scanned {} candidates in {:.2}s: {} parsed ({} faces), {} unchanged, {} removed, {} failed",
-                    report.candidates,
-                    started.elapsed().as_secs_f64(),
-                    report.parsed,
-                    report.faces,
-                    report.unchanged,
-                    report.removed,
-                    report.failed.len()
+                    "{} {} {} {} {} {} {}",
+                    t.dim(&format!("scanned {} candidates in", report.candidates)),
+                    t.dim(&format!("{:.2}s:", started.elapsed().as_secs_f64())),
+                    format_args!("{} parsed", report.parsed),
+                    t.dim(&format!("({} faces),", report.faces)),
+                    t.dim(&format!("{} unchanged,", report.unchanged)),
+                    t.dim(&format!("{} removed,", report.removed)),
+                    if report.failed.is_empty() {
+                        t.dim("0 failed").to_string()
+                    } else {
+                        t.bad(&format!("{} failed", report.failed.len()))
+                            .to_string()
+                    }
                 );
                 for f in &report.failed {
-                    eprintln!("  ! {}: {}", f.path, f.error);
+                    eprintln!("  {} {}: {}", t.bad("!"), f.path, t.dim(&f.error));
                 }
             }
         }
@@ -914,19 +936,23 @@ fn run() -> Result<()> {
             if *json {
                 println!("{}", serde_json::to_string_pretty(&records)?);
             } else if records.is_empty() {
-                println!("nothing activated or installed through fontina");
+                println!(
+                    "{}",
+                    term::term().dim("nothing activated or installed through fontina")
+                );
             } else {
+                let t = term::term();
                 for r in &records {
                     println!(
-                        "{:<10} [{}] {} {}  {}",
-                        r.state.as_str(),
-                        r.face.id,
+                        "{} {} {} {}  {}",
+                        t.good(&format!("{:<10}", r.state.as_str())),
+                        t.dim(&format!("[{}]", r.face.id)),
                         r.face.family,
-                        r.face.subfamily,
-                        r.installed_path.as_deref().unwrap_or(&r.face.path)
+                        t.dim(&r.face.subfamily),
+                        t.dim(r.installed_path.as_deref().unwrap_or(&r.face.path))
                     );
                 }
-                println!("{} face(s)", records.len());
+                println!("{}", t.dim(&format!("{} face(s)", records.len())));
             }
         }
         Command::Restore { json } => run_restore(&cli, *json)?,
@@ -1011,7 +1037,10 @@ fn run() -> Result<()> {
             if *json {
                 println!("{}", serde_json::to_string_pretty(&related)?);
             } else if related.is_empty() {
-                println!("nothing overlaps it by {min} or more");
+                println!(
+                    "{}",
+                    term::term().dim(&format!("nothing overlaps it by {min} or more"))
+                );
             } else {
                 print_variants(&index, id, &related)?;
             }
@@ -1022,18 +1051,29 @@ fn run() -> Result<()> {
             if *json {
                 println!("{}", serde_json::to_string_pretty(&groups)?);
             } else if groups.is_empty() {
-                println!("no duplicates");
+                println!("{}", term::term().good("no duplicates"));
             } else {
+                let t = term::term();
                 for g in &groups {
                     println!(
-                        "{} ({}):",
-                        g.reason,
-                        g.key.chars().take(16).collect::<String>()
+                        "{} {}",
+                        t.head(&g.reason),
+                        t.dim(&format!("({})", g.key.chars().take(16).collect::<String>()))
                     );
                     for f in &g.faces {
+                        let path = format!("{}#{}", f.path, f.index);
+                        let (dir, file) = path_cell(
+                            &path,
+                            "",
+                            t.width().map_or(usize::MAX, |w| w.saturating_sub(40)),
+                        );
                         println!(
-                            "  [{}] {} {}  {}#{}",
-                            f.id, f.family, f.subfamily, f.path, f.index
+                            "  {} {} {}  {}{}",
+                            t.dim(&format!("[{}]", f.id)),
+                            f.family,
+                            t.dim(&f.subfamily),
+                            t.dim(&dir),
+                            file
                         );
                     }
                 }
@@ -1068,19 +1108,37 @@ fn run() -> Result<()> {
             if *json {
                 println!("{}", serde_json::to_string_pretty(&stats)?);
             } else {
-                println!("index:     {}", stats.db_path);
-                println!("files:     {}", stats.files);
-                println!("faces:     {}", stats.faces);
-                println!("families:  {}", stats.families);
-                println!("variable:  {}", stats.variable_faces);
-                println!("color:     {}", stats.color_faces);
-                println!("failed:    {}", stats.failed_files);
-                println!("tags:      {}", stats.tags);
-                println!("collections: {}", stats.collections);
-                println!("sources:   {}", stats.sources);
-                println!("active:    {}", stats.activations);
+                let t = term::term();
+                // One label column, wide enough for the longest label there is:
+                // `collections` used to run past its own column and take the number
+                // with it, so the one table in the program with eleven rows and two
+                // columns was the one that did not line up.
+                let row = |label: &str, value: String| {
+                    println!("{} {value}", t.dim(&format!("{label:>12}")))
+                };
+                row("index", stats.db_path.clone());
+                row("files", stats.files.to_string());
+                row("faces", stats.faces.to_string());
+                row("families", stats.families.to_string());
+                row("variable", stats.variable_faces.to_string());
+                row("color", stats.color_faces.to_string());
+                row("tags", stats.tags.to_string());
+                row("collections", stats.collections.to_string());
+                row("sources", stats.sources.to_string());
+                row("active", stats.activations.to_string());
+                // Last, and in the colour of a thing that went wrong, because it is the
+                // one number here that is a call to do something.
+                println!(
+                    "{} {}",
+                    t.dim(&format!("{:>12}", "failed")),
+                    if stats.failed_files > 0 {
+                        t.bad(&stats.failed_files.to_string()).to_string()
+                    } else {
+                        stats.failed_files.to_string()
+                    }
+                );
                 for (p, e) in index.failures()?.iter().take(20) {
-                    println!("  ! {p}: {e}");
+                    println!("{} {p}: {}", t.bad("            !"), t.dim(e));
                 }
             }
         }
@@ -1089,15 +1147,16 @@ fn run() -> Result<()> {
             if *json {
                 println!("{}", serde_json::to_string_pretty(&dirs)?);
             } else {
+                let t = term::term();
                 for d in dirs {
                     println!(
                         "{} {}{}",
                         pad(&d.path.display().to_string(), 60),
-                        d.description,
+                        t.dim(d.description),
                         if d.user_writable {
-                            " (install target)"
+                            t.good(" (install target)").to_string()
                         } else {
-                            ""
+                            String::new()
                         }
                     );
                 }
@@ -1130,22 +1189,40 @@ fn run() -> Result<()> {
             if *json {
                 println!("{}", serde_json::to_string_pretty(&reports)?);
             } else {
+                let t = term::term();
                 for r in &reports {
-                    let status = if r.passed(*strict) { "PASS" } else { "FAIL" };
+                    let passed = r.passed(*strict);
+                    let status = if passed {
+                        t.good("PASS").to_string()
+                    } else {
+                        t.bad("FAIL").to_string()
+                    };
                     println!(
-                        "{status}  {} {}  ({}#{})  {} error(s), {} warning(s)",
-                        r.family, r.subfamily, r.path, r.index, r.errors, r.warnings
+                        "{status}  {} {}  {}  {}",
+                        r.family,
+                        t.dim(&r.subfamily),
+                        t.dim(&format!("({}#{})", r.path, r.index)),
+                        t.dim(&format!("{} error(s), {} warning(s)", r.errors, r.warnings))
                     );
                     for f in &r.findings {
+                        // The tag says what it is and the colour says how to find it,
+                        // which is the rule the whole palette follows: nothing here
+                        // needs the colour to be read.
                         let tag = match f.severity {
-                            fontina_core::Severity::Error => "ERROR",
-                            fontina_core::Severity::Warn => "WARN ",
-                            fontina_core::Severity::Info => "info ",
+                            fontina_core::Severity::Error => t.bad("ERROR").to_string(),
+                            fontina_core::Severity::Warn => t.warn("WARN ").to_string(),
+                            fontina_core::Severity::Info => t.dim("info ").to_string(),
                         };
-                        println!("  {tag} {:<22} {}", f.id, f.message);
+                        println!("  {tag} {} {}", t.dim(&format!("{:<22}", f.id)), f.message);
                     }
                 }
-                println!("{} face(s) checked, {} failed", reports.len(), failed);
+                println!(
+                    "{}",
+                    t.dim(&format!(
+                        "{} face(s) checked, {failed} failed",
+                        reports.len()
+                    ))
+                );
             }
             if failed > 0 {
                 std::process::exit(1);
@@ -1174,7 +1251,10 @@ fn run() -> Result<()> {
                     .filter(|c| !c.is_whitespace() && !c.is_control())
                     .collect::<std::collections::BTreeSet<_>>()
                     .len();
-                println!("{} distinct character(s)", n);
+                println!(
+                    "{}",
+                    term::term().dim(&format!("{n} distinct character(s)"))
+                );
                 print_table(&faces);
             }
         }
@@ -1198,14 +1278,18 @@ fn run() -> Result<()> {
                     if *json {
                         println!("{}", serde_json::to_string_pretty(&hits)?);
                     } else {
+                        let t = term::term();
                         for b in hits {
                             println!(
-                                "{} (U+{:04X}–U+{:04X}): {} of {}",
+                                "{} {}",
                                 b.block,
-                                b.start,
-                                b.end,
-                                b.codepoints.len(),
-                                b.block_size
+                                t.dim(&format!(
+                                    "(U+{:04X}–U+{:04X}): {} of {}",
+                                    b.start,
+                                    b.end,
+                                    b.codepoints.len(),
+                                    b.block_size
+                                ))
                             );
                             let chars: Vec<char> = b
                                 .codepoints
@@ -1220,22 +1304,31 @@ fn run() -> Result<()> {
                 } else if *json {
                     println!("{}", serde_json::to_string_pretty(&blocks)?);
                 } else {
+                    let t = term::term();
                     println!(
-                        "{} {}: {} codepoints in {} blocks",
+                        "{} {}{}",
                         face.names.family,
-                        face.names.subfamily,
-                        face.coverage.codepoints,
-                        blocks.len()
+                        t.dim(&face.names.subfamily),
+                        t.dim(&format!(
+                            ": {} codepoints in {} blocks",
+                            face.coverage.codepoints,
+                            blocks.len()
+                        ))
                     );
                     for b in &blocks {
+                        let pct = b.codepoints.len() * 100 / b.block_size as usize;
                         println!(
-                            "  {:<44} U+{:04X}–U+{:04X}  {:>5} / {:<5} {:>3}%",
+                            "  {:<44} {}  {:>5} {} {:<5} {} {}",
                             b.block,
-                            b.start,
-                            b.end,
+                            t.dim(&format!("U+{:04X}–U+{:04X}", b.start, b.end)),
                             b.codepoints.len(),
-                            b.block_size,
-                            b.codepoints.len() * 100 / b.block_size as usize
+                            t.dim("/"),
+                            t.dim(&b.block_size.to_string()),
+                            t.dim(&format!("{pct:>3}%")),
+                            // A number is a fact and a bar is a shape, and a column of
+                            // shapes is the only way to see at a glance which blocks a
+                            // font really covers and which it merely touches.
+                            bar(&t, b.codepoints.len(), b.block_size as usize)
                         );
                     }
                 }
@@ -1286,13 +1379,24 @@ fn run() -> Result<()> {
                         .or_default()
                         .push(r);
                 }
+                let t = term::term();
+                let verdict = |f: Freedom| {
+                    let text = format!("[{f}]");
+                    match f {
+                        Freedom::Free => t.good(&text).to_string(),
+                        Freedom::Nonfree => t.bad(&text).to_string(),
+                        Freedom::Unknown => t.warn(&text).to_string(),
+                        Freedom::Unstated => t.dim(&text).to_string(),
+                    }
+                };
                 for (spdx, rs) in &by {
                     let v = rs[0];
                     println!(
-                        "{spdx}  [{}]  ({} face(s))\n  {}",
-                        v.freedom,
-                        rs.len(),
-                        v.reason
+                        "{}  {}  {}\n  {}",
+                        t.head(spdx),
+                        verdict(v.freedom),
+                        t.dim(&format!("({} face(s))", rs.len())),
+                        t.dim(v.reason)
                     );
                     for r in rs {
                         let emb = r
@@ -1302,16 +1406,23 @@ fn run() -> Result<()> {
                         let rfn = if r.reserved_font_names.is_empty() {
                             String::new()
                         } else {
-                            format!("  RFN: {}", r.reserved_font_names.join(", "))
+                            t.dim(&format!("  RFN: {}", r.reserved_font_names.join(", ")))
+                                .to_string()
                         };
-                        println!("  {} {}  [{emb}]{rfn}  {}", r.family, r.subfamily, r.path);
+                        println!(
+                            "  {} {}  {}{rfn}  {}",
+                            r.family,
+                            t.dim(r.subfamily),
+                            t.dim(&format!("[{emb}]")),
+                            t.dim(r.path)
+                        );
                     }
                 }
                 let mut tally: Vec<String> = Vec::new();
                 for f in Freedom::ALL {
                     let n = rows.iter().filter(|r| r.freedom == f).count();
                     if n > 0 {
-                        tally.push(format!("{n} {f}"));
+                        tally.push(format!("{n} {}", verdict(f)));
                     }
                 }
                 println!("\n{}", tally.join(", "));
@@ -1407,18 +1518,33 @@ fn run() -> Result<()> {
                 );
                 return Ok(());
             }
+            let t = term::term();
             println!(
                 "{}{}",
                 loaded.path.display(),
                 if loaded.found {
-                    ""
+                    String::new()
                 } else {
-                    "  (no file yet; `fontina config --example` prints one to save there)"
+                    t.dim("  (no file yet; `fontina config --example` prints one to save there)")
+                        .to_string()
                 }
             );
             println!();
             for s in settings {
-                println!("{:<18} {:<44} {}", s.key, s.value, s.source.label());
+                // Where a setting came from is the whole reason to run this, so it is
+                // the column that is coloured: what a flag or a file set stands out
+                // from the defaults it is standing on.
+                let source = s.source.label();
+                println!(
+                    "{} {:<44} {}",
+                    t.dim(&format!("{:<18}", s.key)),
+                    s.value,
+                    if source == "default" {
+                        t.dim(source).to_string()
+                    } else {
+                        t.accent(source).to_string()
+                    }
+                );
             }
         }
         Command::Schema { which } => {
@@ -1611,22 +1737,24 @@ fn resolve_faces(cli: &Cli, target: &str) -> Result<Vec<fontina_core::FaceMetada
 }
 
 fn print_table(faces: &[FaceSummary]) {
+    let t = term::term();
     if faces.is_empty() {
-        println!("no faces match");
+        println!("{}", t.dim("no faces match"));
         return;
     }
-    let w_fam = faces
-        .iter()
-        .map(|f| fontina_core::unicode::columns(&f.family))
-        .max()
-        .unwrap_or(6)
-        .clamp(6, 40);
-    let w_sub = faces
-        .iter()
-        .map(|f| fontina_core::unicode::columns(&f.subfamily))
-        .max()
-        .unwrap_or(5)
-        .clamp(5, 28);
+    let natural = |f: &dyn Fn(&FaceSummary) -> usize, floor: usize, cap: usize| {
+        faces.iter().map(f).max().unwrap_or(floor).clamp(floor, cap)
+    };
+    let mut flex = [
+        natural(&|f| fontina_core::unicode::columns(&f.family), 6, 40),
+        natural(&|f| fontina_core::unicode::columns(&f.subfamily), 5, 28),
+        natural(
+            &|f| fontina_core::unicode::columns(f.license.as_deref().unwrap_or("-")),
+            7,
+            14,
+        ),
+        natural(&|f| fontina_core::unicode::columns(&f.path) + 2, 8, 60),
+    ];
     // A variable face reaches further than the one number it reports, and a table that
     // shows only the default instance is the same omission the filter used to make.
     let wght: Vec<String> = faces
@@ -1640,14 +1768,18 @@ fn print_table(faces: &[FaceSummary]) {
     let w_wght = wght.iter().map(|c| c.len()).max().unwrap_or(4).max(4);
     let w_wdth = wdth.iter().map(|c| c.len()).max().unwrap_or(4).max(4);
     let any_tags = faces.iter().any(|f| !f.tags.is_empty());
+    // Everything that cannot give ground: the columns of fixed width, and the two
+    // spaces between every pair of columns.
+    let fixed = 6 + w_wght + w_wdth + 6 + 2 * 7;
+    fit_columns(&mut flex, &[16, 6, 7, 26], fixed, t.width());
+    let [w_fam, w_sub, w_lic, w_path] = flex;
     // One `println!` per row is one `write` syscall per row: Rust's stdout is line
     // buffered whether or not it is a terminal. Listing five thousand faces spent more
     // time in the kernel than in the query. Lock it once and buffer the whole table.
     let stdout = std::io::stdout();
     let mut out = std::io::BufWriter::new(stdout.lock());
-    let _ = writeln!(
-        out,
-        "{:>6}  {:<w_fam$}  {:<w_sub$}  {:>w_wght$}  {:>w_wdth$}  {:<6}  {:<12}  path{}",
+    let head = format!(
+        "{:>6}  {:<w_fam$}  {:<w_sub$}  {:>w_wght$}  {:>w_wdth$}  {:<6}  {:<w_lic$}  path{}",
         "id",
         "family",
         "style",
@@ -1657,43 +1789,43 @@ fn print_table(faces: &[FaceSummary]) {
         "license",
         if any_tags { "  [tags]" } else { "" }
     );
+    let _ = writeln!(out, "{}", t.head(&head));
     for (i, f) in faces.iter().enumerate() {
-        // The flags column is exactly six characters, so it goes straight into the row
-        // rather than through a `format!` and an allocation for every face listed.
+        let suffix = if f.index > 0 || f.container == "ttc" {
+            format!("#{}", f.index)
+        } else {
+            String::new()
+        };
+        // Unbounded on a pipe, which is where a script reads the whole path out of.
+        let (dir, file) = path_cell(
+            &f.path,
+            &suffix,
+            if t.width().is_some() {
+                w_path
+            } else {
+                usize::MAX
+            },
+        );
         let _ = writeln!(
             out,
-            "{:>6}  {}  {}  {:>w_wght$}  {:>w_wdth$}  {}{}{}{}{}{}  {}  {}{}{}",
-            f.id,
+            "{}  {}  {}  {}  {}  {}  {}  {}{}{}",
+            t.dim(&format!("{:>6}", f.id)),
             cell(&f.family, w_fam),
             cell(&f.subfamily, w_sub),
-            wght[i],
-            wdth[i],
-            if f.variable { "V" } else { "-" },
-            if f.color { "C" } else { "-" },
-            if f.italic { "I" } else { "-" },
-            if f.monospace { "M" } else { "-" },
-            match f.activation {
-                Some(ActivationState::Session) => "s",
-                Some(ActivationState::User) => "u",
-                Some(ActivationState::Installed) => "i",
-                None => "-",
-            },
-            freedom_flag(f.freedom),
-            cell(f.license.as_deref().unwrap_or("-"), 12),
-            f.path,
-            if f.index > 0 || f.container == "ttc" {
-                format!("#{}", f.index)
-            } else {
-                String::new()
-            },
+            t.dim(&format!("{:>w_wght$}", wght[i])),
+            t.dim(&format!("{:>w_wdth$}", wdth[i])),
+            flags_cell(&t, f),
+            t.dim(&cell(f.license.as_deref().unwrap_or("-"), w_lic)),
+            t.dim(&dir),
+            file,
             if f.tags.is_empty() {
                 String::new()
             } else {
-                format!("  [{}]", f.tags.join(", "))
+                format!("  {}", t.accent(&format!("[{}]", f.tags.join(", "))))
             }
         );
     }
-    let _ = writeln!(out, "{} face(s)", faces.len());
+    let _ = writeln!(out, "{}", t.dim(&format!("{} face(s)", faces.len())));
     // BufWriter swallows a failed flush in its destructor, and a closed pipe is the
     // ordinary way this ends; `die_on_broken_pipe` has already made that a signal.
     let _ = out.flush();
@@ -1712,38 +1844,74 @@ fn print_variants(index: &Index, target: i64, related: &[fontina_core::Related])
             face.path.clone(),
         ))
     };
+    let t = term::term();
     let (name, _) = of(target)?;
-    println!("faces overlapping {name} (#{target}):");
-    let w = related
-        .iter()
-        .map(|r| {
-            fontina_core::unicode::columns(&r.face.family)
-                + fontina_core::unicode::columns(&r.face.subfamily)
-                + 1
-        })
-        .max()
-        .unwrap_or(20)
-        .clamp(20, 44);
     println!(
+        "{} {} {}",
+        t.dim("faces overlapping"),
+        name,
+        t.dim(&format!("(#{target})"))
+    );
+    let mut flex = [
+        related
+            .iter()
+            .map(|r| {
+                fontina_core::unicode::columns(&r.face.family)
+                    + fontina_core::unicode::columns(&r.face.subfamily)
+                    + 1
+            })
+            .max()
+            .unwrap_or(20)
+            .clamp(20, 44),
+        related
+            .iter()
+            .map(|r| fontina_core::unicode::columns(&r.face.path))
+            .max()
+            .unwrap_or(20)
+            .clamp(8, 60),
+    ];
+    // Two leading spaces, the id, overlap, shared, metrics, and the gaps between them.
+    fit_columns(&mut flex, &[18, 24], 2 + 6 + 7 + 7 + 8 + 2 * 5, t.width());
+    let [w, w_path] = flex;
+    let head = format!(
         "  {:>6}  {:<w$}  {:>7}  {:>7}  {:<8}  path",
         "id", "face", "overlap", "shared", "metrics"
     );
+    println!("{}", t.head(&head));
     for r in related {
+        let (dir, file) = path_cell(
+            &r.face.path,
+            "",
+            if t.width().is_some() {
+                w_path
+            } else {
+                usize::MAX
+            },
+        );
         println!(
-            "  {:>6}  {}  {:>6.2}%  {:>7}  {:<8}  {}",
-            r.face.id,
+            "  {}  {}  {}  {}  {}  {}{}",
+            t.dim(&format!("{:>6}", r.face.id)),
             cell(&format!("{} {}", r.face.family, r.face.subfamily), w),
-            r.overlap * 100.0,
-            r.shared,
-            if r.metrics_agree { "same" } else { "differ" },
-            r.face.path
+            // The number the command was run to find, so it is the one thing lit.
+            t.accent(&format!("{:>6.2}%", r.overlap * 100.0)),
+            t.dim(&format!("{:>7}", r.shared)),
+            if r.metrics_agree {
+                t.good(&format!("{:<8}", "same")).to_string()
+            } else {
+                t.dim(&format!("{:<8}", "differ")).to_string()
+            },
+            t.dim(&dir),
+            file
         );
     }
     println!(
-        "{} face(s). `same` metrics means units per em, ascender, descender and spacing \
-         all agree; high overlap with `differ` is two fonts that serve the same \
-         languages, not two cuts of one typeface.",
-        related.len()
+        "{}",
+        t.dim(&format!(
+            "{} face(s). `same` metrics means units per em, ascender, descender and \
+             spacing all agree; high overlap with `differ` is two fonts that serve the \
+             same languages, not two cuts of one typeface.",
+            related.len()
+        ))
     );
     Ok(())
 }
@@ -1753,17 +1921,6 @@ fn axis_cell(value: f32, range: Option<[f32; 2]>) -> String {
     match range {
         Some([lo, hi]) => format!("{}-{}", lo.round() as i64, hi.round() as i64),
         None => format!("{}", value.round() as i64),
-    }
-}
-
-/// The fifth character of the `flags` column: `F` free, `N` nonfree, `?` a license
-/// nobody has ruled on, `-` no license stated.
-fn freedom_flag(f: Freedom) -> &'static str {
-    match f {
-        Freedom::Free => "F",
-        Freedom::Nonfree => "N",
-        Freedom::Unknown => "?",
-        Freedom::Unstated => "-",
     }
 }
 
@@ -1803,72 +1960,275 @@ fn cell(s: &str, w: usize) -> String {
     out
 }
 
-fn print_info(f: &fontina_core::FaceMetadata) {
-    let n = &f.names;
-    println!("{} {}", n.family, n.subfamily);
-    println!(
-        "  file:        {}{}",
-        f.file.path,
-        if f.file.face_count > 1 {
-            format!(" (face {} of {})", f.index, f.file.face_count)
-        } else {
-            String::new()
-        }
+/// Shrink the columns until the row fits the terminal.
+///
+/// `cols` are the natural widths — what each column would like — and `floors` the width
+/// below which each stops being worth printing. `fixed` is everything that cannot move,
+/// the gaps between columns included. `None` for `total` is a pipe: nothing is fitted,
+/// because a script reading a field out of `fontina list` is a reader too, and it can
+/// wrap but it cannot un-truncate.
+///
+/// The widest column gives first, a column at a time, so one very long name loses its
+/// own tail rather than every column losing a little. A table that cannot fit even at
+/// its floors overflows rather than printing something illegible: a wrapped row is
+/// still readable, and twelve columns of family name is not.
+fn fit_columns(cols: &mut [usize], floors: &[usize], fixed: usize, total: Option<usize>) {
+    let Some(total) = total else {
+        return;
+    };
+    while fixed + cols.iter().sum::<usize>() > total {
+        // The widest column that still has room to give. Ties go to the first, which is
+        // the leftmost, which is the one with the most to spare.
+        let Some(i) = (0..cols.len())
+            .filter(|&i| cols[i] > floors[i])
+            .max_by_key(|&i| cols[i])
+        else {
+            return;
+        };
+        cols[i] -= 1;
+    }
+}
+
+/// A path split where the eye should split it: the directory, which is scaffolding, and
+/// the filename, which is the answer.
+///
+/// Shortened from the middle when it has to be. The filename is kept whole for as long
+/// as there is room for it, then cut from the front, because a name ending in
+/// `-BoldItalic.otf` says more than one beginning in `Source`.
+fn path_cell(path: &str, suffix: &str, w: usize) -> (String, String) {
+    let cut = path.rfind('/').map(|i| i + 1).unwrap_or(0);
+    let (dir, file) = path.split_at(cut);
+    let file = format!("{file}{suffix}");
+    let (dw, fw) = (
+        fontina_core::unicode::columns(dir),
+        fontina_core::unicode::columns(&file),
     );
-    println!(
-        "  container:   {}  {} bytes  blake3 {}",
-        f.file.container.as_str(),
-        f.file.size,
-        &f.file.blake3[..16]
+    if dw + fw <= w {
+        return (dir.to_string(), file);
+    }
+    // The filename alone is already too long: there is no directory to show, and the
+    // name gives up its middle rather than its front. A path is identified by its end
+    // and a filename by its beginning — `AppleSDGoth….ttc` is a font you can name and
+    // `…pleSDGothicNeo.ttc` is a puzzle.
+    if fw >= w {
+        return (String::new(), fit_name(&file, w));
+    }
+    (fit_dir(dir, w - fw), file)
+}
+
+/// A filename shortened to `w` columns, keeping its extension.
+///
+/// The suffix a `.ttc` face carries — `#4` — counts as part of the extension: it is
+/// what tells two faces of one collection apart, so it is the last thing to go.
+fn fit_name(file: &str, w: usize) -> String {
+    let tail = file
+        .rfind('.')
+        .filter(|i| file.len() - i <= 12)
+        .unwrap_or(file.len());
+    let (stem, ext) = file.split_at(tail);
+    let ew = fontina_core::unicode::columns(ext);
+    if ew + 2 > w {
+        return fontina_core::unicode::fit(file, w);
+    }
+    format!("{}{ext}", fontina_core::unicode::fit(stem, w - ew))
+}
+
+/// A directory shortened to `w` columns, on a separator.
+///
+/// Whole names or none: `…/Supplemental/` says where the font lives and `…plemental/`
+/// says that something was cut, and the second one is different on every row of a table
+/// whose rows are mostly the same directory.
+fn fit_dir(dir: &str, w: usize) -> String {
+    if fontina_core::unicode::columns(dir) <= w {
+        return dir.to_string();
+    }
+    // Two columns for the `…/` that says something is missing. Below that there is
+    // nothing honest to print.
+    if w < 2 {
+        return String::new();
+    }
+    let mut kept = String::new();
+    for part in dir
+        .trim_end_matches('/')
+        .rsplit('/')
+        .filter(|p| !p.is_empty())
+    {
+        let want = fontina_core::unicode::columns(part) + 1;
+        if 2 + fontina_core::unicode::columns(&kept) + want > w {
+            break;
+        }
+        kept.insert_str(0, &format!("{part}/"));
+    }
+    format!("…/{kept}")
+}
+
+/// A ratio as ten cells of a bar.
+///
+/// Eighths, and the part-cell always rounds up, so a block a font barely touches is a
+/// visible sliver rather than nothing at all — the difference between a font with four
+/// Greek letters in it and one with no Greek is the difference this column exists to
+/// show. Taken as a ratio rather than as a percentage for the same reason: one
+/// codepoint in a hundred and forty-four is nought per cent and it is not nothing.
+fn bar(t: &term::Term, of: usize, whole: usize) -> String {
+    const CELLS: usize = 10;
+    if whole == 0 {
+        return " ".repeat(CELLS);
+    }
+    let eighths = (of.min(whole) * CELLS * 8).div_ceil(whole);
+    let (full, rest) = (eighths / 8, eighths % 8);
+    let mut out = "█".repeat(full);
+    if rest > 0 && full < CELLS {
+        out.push(['▏', '▎', '▍', '▌', '▋', '▊', '▉'][rest - 1]);
+    }
+    let drawn = out.chars().count();
+    t.dim(&format!("{out}{}", " ".repeat(CELLS - drawn)))
+        .to_string()
+}
+
+/// The `flags` column: six positions, of which only the ones that are set say anything.
+///
+/// It stays six columns wide in plain text, so everything after it still lines up, and
+/// the four that are usually off become a dim `·` instead of four dashes printed as
+/// loudly as the two letters between them.
+///
+/// Adjacent marks in the same colour are painted together rather than one at a time: a
+/// row is six of these and a library is five thousand rows, and the usual row is one
+/// escape rather than six.
+fn flags_cell(t: &term::Term, f: &FaceSummary) -> String {
+    use term::Role;
+    let off = ("·", Role::Dim);
+    let marks = [
+        if f.variable { ("V", Role::Accent) } else { off },
+        if f.color { ("C", Role::Accent) } else { off },
+        if f.italic { ("I", Role::Head) } else { off },
+        if f.monospace { ("M", Role::Head) } else { off },
+        match f.activation {
+            Some(ActivationState::Session) => ("s", Role::Good),
+            Some(ActivationState::User) => ("u", Role::Good),
+            Some(ActivationState::Installed) => ("i", Role::Good),
+            None => off,
+        },
+        match f.freedom {
+            Freedom::Free => ("F", Role::Good),
+            Freedom::Nonfree => ("N", Role::Bad),
+            Freedom::Unknown => ("?", Role::Warn),
+            Freedom::Unstated => off,
+        },
+    ];
+    let mut out = String::new();
+    let mut run = String::new();
+    let mut role = marks[0].1;
+    for (glyph, r) in marks {
+        if r != role {
+            out.push_str(&t.paint(role, &run).to_string());
+            run.clear();
+            role = r;
+        }
+        run.push_str(glyph);
+    }
+    out.push_str(&t.paint(role, &run).to_string());
+    out
+}
+
+fn print_info(f: &fontina_core::FaceMetadata) {
+    let t = term::term();
+    let n = &f.names;
+    // One label column for the whole report, dim, so the eye runs down the values and
+    // the labels are there when it needs to know which is which.
+    let row = |label: &str, value: String| {
+        println!("  {} {value}", t.dim(&format!("{label:<11}")));
+    };
+    println!("{} {}", t.head(&n.family), n.subfamily);
+    row(
+        "file",
+        format!(
+            "{}{}",
+            f.file.path,
+            if f.file.face_count > 1 {
+                t.dim(&format!(" (face {} of {})", f.index, f.file.face_count))
+                    .to_string()
+            } else {
+                String::new()
+            }
+        ),
+    );
+    row(
+        "container",
+        format!(
+            "{}  {}  {}",
+            f.file.container.as_str(),
+            t.dim(&format!("{} bytes", f.file.size)),
+            t.dim(&format!("blake3 {}", &f.file.blake3[..16]))
+        ),
     );
     if let Some(p) = &n.postscript_name {
-        println!("  postscript:  {p}");
+        row("postscript", p.clone());
     }
     if let Some(v) = &n.version {
-        println!("  version:     {v}");
+        row("version", v.clone());
     }
     if let Some(d) = &n.designer {
-        println!("  designer:    {d}");
+        row("designer", d.clone());
     }
     if let Some(m) = &n.manufacturer {
-        println!("  vendor:      {m}");
+        row("vendor", m.clone());
     }
-    println!(
-        "  css:         weight {}; stretch {}; style {}",
-        f.style.css.weight, f.style.css.stretch, f.style.css.style
+    row(
+        "css",
+        format!(
+            "weight {}{} stretch {}{} style {}",
+            f.style.css.weight,
+            t.dim(";"),
+            f.style.css.stretch,
+            t.dim(";"),
+            f.style.css.style
+        ),
     );
-    println!(
-        "  metrics:     {} upm, asc {} desc {} gap {}, italic angle {}",
-        f.metrics.units_per_em,
-        f.metrics.ascender,
-        f.metrics.descender,
-        f.metrics.line_gap,
-        f.metrics.italic_angle
+    row(
+        "metrics",
+        format!(
+            "{} {} asc {} desc {} gap {}{} italic angle {}",
+            f.metrics.units_per_em,
+            t.dim("upm,"),
+            f.metrics.ascender,
+            f.metrics.descender,
+            f.metrics.line_gap,
+            t.dim(","),
+            f.metrics.italic_angle
+        ),
     );
-    println!(
-        "  outlines:    {:?}{}",
-        f.capabilities.outlines,
-        if f.capabilities.hinting {
-            ", hinted"
-        } else {
-            ""
-        }
+    row(
+        "outlines",
+        format!(
+            "{:?}{}",
+            f.capabilities.outlines,
+            if f.capabilities.hinting {
+                t.dim(", hinted").to_string()
+            } else {
+                String::new()
+            }
+        ),
     );
     if !f.capabilities.color.is_empty() {
-        println!("  color:       {:?}", f.capabilities.color);
+        row("color", format!("{:?}", f.capabilities.color));
     }
-    println!(
-        "  glyphs:      {}   codepoints: {}",
-        f.glyph_count, f.coverage.codepoints
+    row(
+        "glyphs",
+        format!(
+            "{}   {} {}",
+            f.glyph_count,
+            t.dim("codepoints:"),
+            f.coverage.codepoints
+        ),
     );
     let scripts: Vec<String> = f
         .coverage
         .scripts
         .iter()
         .take(8)
-        .map(|s| format!("{} {}", s.script, s.codepoints))
+        .map(|s| format!("{} {}", s.script, t.dim(&s.codepoints.to_string())))
         .collect();
-    println!("  scripts:     {}", scripts.join(", "));
+    row("scripts", scripts.join(", "));
     // Two different claims, kept apart: the shaping engine's rules, and the languages the
     // font names itself in. Merging them would say more than the file does.
     let shaping: Vec<&str> = f
@@ -1882,14 +2242,17 @@ fn print_info(f: &fontina_core::FaceMetadata) {
         let mut tags: Vec<&str> = shaping;
         tags.sort_unstable();
         tags.dedup();
-        println!(
-            "  shaping for: {}{}",
-            tags.iter().take(12).copied().collect::<Vec<_>>().join(" "),
-            if tags.len() > 12 {
-                format!(" +{} more", tags.len() - 12)
-            } else {
-                String::new()
-            }
+        row(
+            "shaping for",
+            format!(
+                "{}{}",
+                tags.iter().take(12).copied().collect::<Vec<_>>().join(" "),
+                if tags.len() > 12 {
+                    t.dim(&format!(" +{} more", tags.len() - 12)).to_string()
+                } else {
+                    String::new()
+                }
+            ),
         );
     }
     let mut named: Vec<&str> = f
@@ -1900,58 +2263,88 @@ fn print_info(f: &fontina_core::FaceMetadata) {
     named.sort_unstable();
     named.dedup();
     if !named.is_empty() {
-        println!("  named in:    {}", named.join(" "));
+        row("named in", named.join(" "));
     }
     if let Some(v) = &f.variable {
-        println!(
-            "  axes:        {}",
+        row(
+            "axes",
             v.axes
                 .iter()
-                .map(|a| format!("{} {}..{} (default {})", a.tag, a.min, a.max, a.default))
+                .map(|a| {
+                    format!(
+                        "{} {}",
+                        t.accent(&a.tag),
+                        t.dim(&format!("{}..{} (default {})", a.min, a.max, a.default))
+                    )
+                })
                 .collect::<Vec<_>>()
-                .join("; ")
+                .join("; "),
         );
         if !v.instances.is_empty() {
-            println!(
-                "  instances:   {}",
+            row(
+                "instances",
                 v.instances
                     .iter()
                     .filter_map(|i| i.name.clone())
                     .collect::<Vec<_>>()
-                    .join(", ")
+                    .join(", "),
             );
         }
     }
     if !f.features.gsub.is_empty() {
-        println!("  gsub:        {}", f.features.gsub.join(" "));
+        row("gsub", f.features.gsub.join(" "));
     }
     if !f.features.gpos.is_empty() {
-        println!("  gpos:        {}", f.features.gpos.join(" "));
+        row("gpos", f.features.gpos.join(" "));
     }
     if let Some(o) = &f.os2 {
-        println!(
-            "  embedding:   {:?}{}{}",
-            o.embedding.level,
-            if o.embedding.no_subsetting {
-                ", no subsetting"
-            } else {
-                ""
-            },
-            if o.embedding.bitmap_only {
-                ", bitmap only"
-            } else {
-                ""
-            }
+        // Reported, never enforced: `freedom.rs` says why, and the colour here says the
+        // same thing — a restriction is a fact about the font, so it is noticed rather
+        // than obeyed.
+        let level = format!("{:?}", o.embedding.level);
+        row(
+            "embedding",
+            format!(
+                "{}{}{}",
+                if o.embedding.level == fontina_core::model::EmbeddingLevel::Installable {
+                    level.clone()
+                } else {
+                    t.warn(&level).to_string()
+                },
+                if o.embedding.no_subsetting {
+                    t.dim(", no subsetting").to_string()
+                } else {
+                    String::new()
+                },
+                if o.embedding.bitmap_only {
+                    t.dim(", bitmap only").to_string()
+                } else {
+                    String::new()
+                }
+            ),
         );
     }
-    println!(
-        "  license:     {}{}",
-        f.license.spdx.as_deref().unwrap_or("(none embedded)"),
-        f.license
-            .url
-            .as_ref()
-            .map(|u| format!("  {u}"))
-            .unwrap_or_default()
+    let freedom = fontina_core::freedom::classify(f.license.spdx.as_deref());
+    row(
+        "license",
+        format!(
+            "{}  {}{}",
+            match &f.license.spdx {
+                Some(id) => id.clone(),
+                None => t.dim("(none embedded)").to_string(),
+            },
+            match freedom {
+                Freedom::Free => t.good("[free]").to_string(),
+                Freedom::Nonfree => t.bad("[nonfree]").to_string(),
+                Freedom::Unknown => t.warn("[unknown]").to_string(),
+                Freedom::Unstated => t.dim("[unstated]").to_string(),
+            },
+            f.license
+                .url
+                .as_ref()
+                .map(|u| t.dim(&format!("  {u}")).to_string())
+                .unwrap_or_default()
+        ),
     );
     println!();
 }
@@ -2663,17 +3056,25 @@ fn run_source(cli: &Cli, cmd: &SourceCmd) -> Result<()> {
             if *json {
                 println!("{}", serde_json::to_string_pretty(&sources)?);
             } else if sources.is_empty() {
-                println!("no sources; run `fontina scan <dir>` or `fontina source add <dir>`");
+                println!(
+                    "{}",
+                    term::term()
+                        .dim("no sources; run `fontina scan <dir>` or `fontina source add <dir>`")
+                );
             } else {
+                let t = term::term();
                 for s in sources {
                     println!(
-                        "{} {}{}",
+                        "{} {}",
                         pad(&s.path, 60),
-                        match s.kind {
-                            SourceKind::User => "user",
-                            SourceKind::System => "system",
-                        },
-                        if s.watch { ", watched" } else { "" }
+                        t.dim(&format!(
+                            "{}{}",
+                            match s.kind {
+                                SourceKind::User => "user",
+                                SourceKind::System => "system",
+                            },
+                            if s.watch { ", watched" } else { "" }
+                        ))
                     );
                 }
             }
@@ -2734,73 +3135,159 @@ fn run_source(cli: &Cli, cmd: &SourceCmd) -> Result<()> {
 }
 
 fn print_families(families: &[fontina_core::Family]) {
+    let t = term::term();
     if families.is_empty() {
-        println!("no families match");
+        println!("{}", t.dim("no families match"));
         return;
     }
-    let w = families
+    let range = |lo: f32, hi: f32| {
+        if (lo - hi).abs() < 0.5 {
+            format!("{}", lo.round() as i64)
+        } else {
+            format!("{}-{}", lo.round() as i64, hi.round() as i64)
+        }
+    };
+    let scripts: Vec<String> = families
         .iter()
-        .map(|f| fontina_core::unicode::columns(&f.name))
-        .max()
-        .unwrap_or(6)
-        .clamp(6, 40);
-    println!(
-        "{:<w$}  {:>5}  {:<9}  {:<9}  {:<5}  {:<12}  scripts",
-        "family", "faces", "weights", "widths", "flags", "license"
-    );
-    for f in families {
-        let flags = format!(
-            "{}{}{}{}",
-            if f.variable { "V" } else { "-" },
-            if f.color { "C" } else { "-" },
-            if f.italic { "I" } else { "-" },
-            if f.active > 0 { "A" } else { "-" }
-        );
-        let range = |lo: f32, hi: f32| {
-            if (lo - hi).abs() < 0.5 {
-                format!("{}", lo.round() as i64)
-            } else {
-                format!("{}-{}", lo.round() as i64, hi.round() as i64)
-            }
-        };
-        println!(
-            "{}  {:>5}  {:<9}  {:<9}  {:<5}  {}  {}",
-            cell(&f.name, w),
-            f.faces,
-            range(f.weights[0], f.weights[1]),
-            range(f.widths[0], f.widths[1]),
-            flags,
-            cell(f.license.as_deref().unwrap_or("-"), 12),
+        .map(|f| {
             f.scripts
                 .iter()
                 .take(4)
                 .cloned()
                 .collect::<Vec<_>>()
                 .join(" ")
+        })
+        .collect();
+    let natural = |f: &dyn Fn(usize) -> usize, floor: usize, cap: usize| {
+        (0..families.len())
+            .map(f)
+            .max()
+            .unwrap_or(floor)
+            .clamp(floor, cap)
+    };
+    let mut flex = [
+        natural(
+            &|i| fontina_core::unicode::columns(&families[i].name),
+            6,
+            44,
+        ),
+        natural(
+            &|i| fontina_core::unicode::columns(families[i].license.as_deref().unwrap_or("-")),
+            7,
+            14,
+        ),
+        natural(&|i| fontina_core::unicode::columns(&scripts[i]), 7, 24),
+    ];
+    // faces, weights, widths, flags, and the two spaces between each pair of columns.
+    let fixed = 5 + 9 + 9 + 5 + 2 * 5;
+    fit_columns(&mut flex, &[16, 7, 7], fixed, t.width());
+    let [w, w_lic, w_scr] = flex;
+    let stdout = std::io::stdout();
+    let mut out = std::io::BufWriter::new(stdout.lock());
+    let head = format!(
+        "{:<w$}  {:>5}  {:<9}  {:<9}  {:<5}  {:<w_lic$}  scripts",
+        "family", "faces", "weights", "widths", "flags", "license"
+    );
+    let _ = writeln!(out, "{}", t.head(&head));
+    for (i, f) in families.iter().enumerate() {
+        let _ = writeln!(
+            out,
+            "{}  {}  {}  {}  {}  {}  {}",
+            cell(&f.name, w),
+            format_args!("{:>5}", f.faces),
+            t.dim(&format!("{:<9}", range(f.weights[0], f.weights[1]))),
+            t.dim(&format!("{:<9}", range(f.widths[0], f.widths[1]))),
+            family_flags(&t, f),
+            t.dim(&cell(f.license.as_deref().unwrap_or("-"), w_lic)),
+            t.dim(&fontina_core::unicode::fit(&scripts[i], w_scr)),
         );
     }
-    println!("{} family(ies)", families.len());
+    let _ = writeln!(out, "{}", t.dim(&format!("{} family(ies)", families.len())));
+    let _ = out.flush();
+}
+
+/// The `flags` column of the family table: four positions, and the same rule as
+/// [`flags_cell`] — what is set is coloured, what is not gets out of the way.
+fn family_flags(t: &term::Term, f: &fontina_core::Family) -> String {
+    use term::Role;
+    let off = ("·", Role::Dim);
+    let marks = [
+        if f.variable { ("V", Role::Accent) } else { off },
+        if f.color { ("C", Role::Accent) } else { off },
+        if f.italic { ("I", Role::Head) } else { off },
+        if f.active > 0 { ("A", Role::Good) } else { off },
+    ];
+    let mut out = String::new();
+    let mut run = String::new();
+    let mut role = marks[0].1;
+    for (glyph, r) in marks {
+        if r != role {
+            out.push_str(&t.paint(role, &run).to_string());
+            run.clear();
+            role = r;
+        }
+        run.push_str(glyph);
+    }
+    out.push_str(&t.paint(role, &run).to_string());
+    // The column is five wide and the marks are four; the header lines up on the space.
+    out.push(' ');
+    out
 }
 
 fn print_facets(f: &fontina_core::Facets) {
-    println!("{} face(s) in {} family(ies)", f.faces, f.families);
-    let row =
-        |label: &str, items: &[fontina_core::index::FacetCount], name: &dyn Fn(&str) -> String| {
-            if items.is_empty() {
-                return;
+    let t = term::term();
+    println!(
+        "{} {} {} {} {}",
+        f.faces,
+        t.dim("face(s) in"),
+        f.families,
+        t.dim("family(ies)"),
+        t.dim("· counts are faces")
+    );
+    // A facet on a real library runs past any terminal — 163 scripts, 96 languages — so
+    // the values wrap under a hanging indent rather than off the right of the screen,
+    // and the label column stays a column.
+    const LABEL: usize = 11;
+    // Enough that a real library's scripts and languages are more than a sample, and
+    // few enough that `facets` is still something you read rather than scroll.
+    const CAP: usize = 24;
+    let width = t.width().unwrap_or(96).max(LABEL + 20);
+    let row = |label: &str,
+               items: &[fontina_core::index::FacetCount],
+               name: &dyn Fn(&str) -> String| {
+        if items.is_empty() {
+            return;
+        }
+        // Padded first and painted after: an escape has no width, and `{:<n$}`
+        // counts what it is given rather than what lands on the screen.
+        let mut line = t.dim(&format!("{label:<LABEL$}")).to_string();
+        let mut used = LABEL;
+        let mut first = true;
+        let shown = items.len().min(CAP);
+        for c in &items[..shown] {
+            let part = format!("{} {}", name(&c.value), t.dim(&c.count.to_string()));
+            let plain = fontina_core::unicode::columns(&format!("{} {}", name(&c.value), c.count));
+            let sep = if first { 0 } else { 3 };
+            if !first && used + sep + plain > width {
+                println!("{line}");
+                line = " ".repeat(LABEL);
+                used = LABEL;
+            } else if !first {
+                line.push_str(&format!(" {} ", t.dim("·")));
+                used += sep;
             }
-            let parts: Vec<String> = items
-                .iter()
-                .take(12)
-                .map(|c| format!("{} {}", name(&c.value), c.count))
-                .collect();
-            let more = if items.len() > 12 {
-                format!(" · +{} more", items.len() - 12)
-            } else {
-                String::new()
-            };
-            println!("{label:<11} {}{more}", parts.join(" · "));
-        };
+            line.push_str(&part);
+            used += plain;
+            first = false;
+        }
+        if items.len() > shown {
+            line.push_str(
+                &t.dim(&format!(" · +{} more", items.len() - shown))
+                    .to_string(),
+            );
+        }
+        println!("{line}");
+    };
     row("weight", &f.weight, &|v| {
         format!(
             "{v} {}",
@@ -2814,7 +3301,13 @@ fn print_facets(f: &fontina_core::Facets) {
         )
     });
     row("style", &f.style, &|v| v.to_string());
-    println!("{:<11} {}   color {}", "variable", f.variable, f.color);
+    println!(
+        "{}{} {} {}",
+        t.dim(&format!("{:<LABEL$}", "variable")),
+        f.variable,
+        t.dim("· color"),
+        f.color
+    );
     row("container", &f.container, &|v| v.to_string());
     row("spacing", &f.spacing, &|v| v.to_string());
     row("script", &f.script, &|v| v.to_string());
@@ -2895,15 +3388,25 @@ pub(crate) fn collect_conflicts(index: &Index, ids: &[i64]) -> Result<Vec<fontin
 }
 
 fn print_conflicts(conflicts: &[fontina_core::Conflict]) {
+    // Standard error, painted from what standard *output* is: one run, one palette.
+    // A conflict is the reason an activation printed nothing, and having the report and
+    // the reason disagree about whether this is a terminal would be worse than either
+    // answer on its own.
+    let t = term::term();
     for c in conflicts {
         eprintln!(
-            "conflict: [{}] {} {} ({})  {}",
-            c.face.id, c.face.family, c.face.subfamily, c.reason, c.face.path
+            "{} {} {} {}  {}",
+            t.warn("conflict:"),
+            t.dim(&format!("[{}]", c.face.id)),
+            c.face.family,
+            t.dim(&format!("{} ({})", c.face.subfamily, c.reason)),
+            t.dim(&c.face.path)
         );
     }
     eprintln!(
-        "{} conflict(s); pass --replace to deactivate the ones fontina manages",
-        conflicts.len()
+        "{} {}",
+        t.warn(&format!("{} conflict(s);", conflicts.len())),
+        t.dim("pass --replace to deactivate the ones fontina manages")
     );
 }
 
@@ -3476,6 +3979,104 @@ mod tests {
     use super::*;
     use fontina_platform::{FontActivator, Scope};
     use std::path::Path;
+
+    /// A table shrinks the widest column first, so one long name loses its own tail
+    /// rather than every column losing a little, and it stops at the floors rather than
+    /// printing something illegible.
+    #[test]
+    fn a_table_gives_ground_from_the_widest_column() {
+        let mut cols = [40, 10, 12, 50];
+        fit_columns(&mut cols, &[16, 6, 7, 26], 38, Some(100));
+        assert!(
+            38 + cols.iter().sum::<usize>() <= 100,
+            "{cols:?} does not fit"
+        );
+        let gave = [40 - cols[0], 10 - cols[1], 12 - cols[2], 50 - cols[3]];
+        assert!(
+            gave[0] + gave[3] > 4 * (gave[1] + gave[2]),
+            "{cols:?} gave {gave:?}: the small columns paid for the big ones"
+        );
+
+        // A pipe is not fitted at all: a script reading a field can wrap and cannot
+        // un-truncate.
+        let mut piped = [40, 10, 12, 50];
+        fit_columns(&mut piped, &[16, 6, 7, 26], 38, None);
+        assert_eq!(piped, [40, 10, 12, 50]);
+
+        // And a terminal nothing could fit into overflows rather than printing twelve
+        // columns of family name.
+        let mut squeezed = [40, 10, 12, 50];
+        fit_columns(&mut squeezed, &[16, 6, 7, 26], 38, Some(41));
+        assert_eq!(squeezed, [16, 6, 7, 26], "every column is at its floor");
+    }
+
+    /// A path is identified by its end and a filename by its beginning, so the two are
+    /// cut from opposite ends.
+    #[test]
+    fn a_path_keeps_its_filename_and_a_filename_keeps_its_front() {
+        let path = "/System/Library/Fonts/Supplemental/AlBayan.ttc";
+        let (dir, file) = path_cell(path, "#1", 60);
+        assert_eq!(dir, "/System/Library/Fonts/Supplemental/");
+        assert_eq!(file, "AlBayan.ttc#1");
+
+        // Too narrow for the whole path: the directory gives ground, on a separator, so
+        // what is left is whole directory names.
+        let (dir, file) = path_cell(path, "#1", 30);
+        assert_eq!(file, "AlBayan.ttc#1", "the filename is not touched first");
+        assert!(dir.starts_with("…/") && dir.ends_with('/'), "{dir:?}");
+        assert!(
+            path.contains(dir.trim_start_matches('…')),
+            "{dir:?}: cut mid-name rather than on a separator"
+        );
+        assert!(fontina_core::unicode::columns(&format!("{dir}{file}")) <= 30);
+
+        // Narrower than the filename: the directory is gone and the name keeps its
+        // front and its extension, which is what tells two fonts apart.
+        let (dir, file) = path_cell(path, "#1", 14);
+        assert_eq!(dir, "");
+        assert!(file.ends_with(".ttc#1"), "{file:?} lost its extension");
+        assert!(file.starts_with("Al"), "{file:?} lost its front");
+        assert!(fontina_core::unicode::columns(&file) <= 14);
+    }
+
+    /// Whatever the width, a fitted cell fits.
+    #[test]
+    fn no_width_makes_a_path_cell_overflow_it() {
+        for path in [
+            "/a/b/c/Source Serif 4.ttf",
+            "/one/two/three/four/five/six/seven/AVeryLongFontFileName-BoldItalic.otf",
+            "bare.ttf",
+            "/",
+        ] {
+            for w in 1..=80usize {
+                let (dir, file) = path_cell(path, "#12", w);
+                let drawn = fontina_core::unicode::columns(&format!("{dir}{file}"));
+                assert!(drawn <= w, "{path:?} at {w}: drew {drawn} columns");
+            }
+        }
+    }
+
+    /// A block a font barely touches has to look different from one it does not touch
+    /// at all, which is the whole reason the bar is there beside the number.
+    #[test]
+    fn a_bar_shows_the_difference_between_a_little_and_none() {
+        let t = term::Term::plain();
+        assert_eq!(bar(&t, 0, 144).trim_end(), "");
+        assert_ne!(
+            bar(&t, 1, 144).trim_end(),
+            "",
+            "one codepoint in a hundred and forty-four is nought per cent and is not \
+             nothing"
+        );
+        assert_eq!(bar(&t, 144, 144).trim_end().chars().count(), 10);
+        for (of, whole) in [(0, 0), (1, 1), (7, 3), (99, 100), (1, 100_000)] {
+            assert_eq!(
+                fontina_core::unicode::columns(&bar(&t, of, whole)),
+                10,
+                "{of}/{whole} is not ten columns wide"
+            );
+        }
+    }
 
     /// An activator that installs without touching the machine, and can break the index
     /// while it does so — the one way, from outside the core, to make the write that
