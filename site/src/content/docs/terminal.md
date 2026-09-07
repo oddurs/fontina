@@ -1,6 +1,6 @@
 ---
 title: Watching, previews and the browser
-description: "`watch` keeps the index current; `preview` draws real shaped glyphs in the terminal; `ui` is the keyboard-first browser."
+description: "`watch` keeps the index current; `preview` draws real shaped glyphs in the terminal; `ui` is the keyboard-first browser over what is in your fonts."
 order: 4
 ---
 
@@ -86,8 +86,14 @@ $ fontina ui
 opens the index with a keyboard on it. Three panes: every facet of the library down
 the left, families or faces in the middle, the face itself on the right. It uses the
 terminal's own sixteen colours, so it looks like your terminal rather than like a
-website, and truecolor only where a preview needs it. The mouse works. The keyboard
-is the design.
+website. The mouse works. The keyboard is the design.
+
+It shows what is *in* a font rather than a picture of one. A terminal cell is about one
+pixel wide and two tall, so type drawn with block characters arrives through a filter
+that changes its weight, loses its spacing and destroys its detail — a judgement made
+on something that is not the font. `s` writes a real specimen and opens it in a
+browser; `fontina preview` draws a true image where the terminal has a protocol for
+one. The browser is where you decide what to look at.
 
 <!--frame:the_browser_opens_on_the_family_list "families"-->
 
@@ -128,19 +134,28 @@ becomes a family you can move through.
 
 `h` and `l` move an axis and `H` and `L` move it by ten; `n` and `p` step through the
 named instances the designer drew; Space toggles an OpenType feature; `0` puts
-everything back. The preview above redraws as you move, so what you are looking at is
-the font at that position rather than an interpolation of a picture.
+everything back. The status line carries the command that draws what you have set —
+`fontina preview 12 --axes wght=600,opsz=14` — so a position you found by feel is a
+position you can hand to something that renders.
 
-### Waterfalls, comparisons, specimens
+### The measurements
 
-`w` sets the face down the size ladder, `C` compares every face the selection stands
-for, and `+` and `-` resize a comparison. `e` changes the sample text everywhere, so
-you can put your own words in.
+Under the controls are the numbers, which is what a terminal is good for: units per em,
+ascender, descender, line gap, cap height, x-height and the x-height ratio, then
+coverage per script with the count beside a bar.
 
-For what a terminal cannot show honestly — colour fonts, fine hinting, the difference
-between two weights at 11px — `s` writes a [self-contained HTML specimen](../specimen/)
-for the selection and opens it in your browser. The terminal is where you decide what to
-look at; the specimen is where you look at it.
+Two faces compared this way are actually comparable. `x/em 0.43` against `x/em 0.52`
+says which will look larger at the same size, and no rendering at terminal resolution
+would have told you that.
+
+### Looking at the type
+
+`s` writes a [self-contained HTML specimen](../specimen/) for the selection and opens
+it in your browser: a waterfall, the script samples, axis sliders, feature toggles and
+a glyph map, with real antialiasing and real spacing. On the command line,
+[`fontina preview`](#previews) draws a true image over kitty graphics, iTerm2 or sixel.
+
+Neither is the browser's job. It finds and organises; those show.
 
 ### Many at once
 
@@ -219,12 +234,10 @@ and anything but `y` is a no.
 | `a` / `A` | activate for the user / until logout |
 | `i` / `u` | install a copy / uninstall it |
 | `d` | deactivate |
-| `e`, `+`, `-` | sample text, preview size |
 | `h` `l`, `H` `L` | move an axis, by one or by ten |
 | `n` / `p` | step through named instances |
 | `0` | reset the axes and features |
 | `m` | the glyph map |
-| `w` / `C` | waterfall / compare |
 | `s` | write an HTML specimen and open it |
 | `U` / Ctrl-R | undo the last change to the index / do it again |
 | `:` | every command, filtered as you type |

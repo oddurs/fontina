@@ -1,6 +1,5 @@
 ---
 source: crates/fontina-cli/src/ui/mod.rs
-assertion_line: 3642
 expression: drawn
 ---
 ┌ 6 faces ───────────────┐┌ 5 families ─────────────────────────────┐┌ Details ────────────────────────────────────────┐
@@ -28,12 +27,12 @@ expression: drawn
 │  Latn                6 ││                                         ││  ss07 [ ] Stylistic set 7                       │
 │  Arab                1 ││                                         ││  ss08 [ ] Stylistic set 8                       │
 │  Zyyy                6 ││                                         ││                                                 │
-│  Cyrl                1 ││                                         ││                                                 │
-│  Zinh                6 ││                                         ││                                                 │
-│  Grek                2 ││                                         ││                                                 │
-│Language                ││                                         ││                                                 │
-│  en                  6 ││                                         ││                                                 │
-│  CAT                 3 ││                                         ││                                                 │
+│  Cyrl                1 ││                                         ││metrics   1000 upm · asc 1124 · desc -634 · gap 0│
+│  Zinh                6 ││                                         ││shape     cap 646 · x-height 433 · x/em 0.43     │
+│  Grek                2 ││                                         ││Arab      ██████████ 1217                        │
+│Language                ││                                         ││Latn      ███░░░░░░░ 291                         │
+│  en                  6 ││                                         ││Zyyy      ██░░░░░░░░ 160                         │
+│  CAT                 3 ││                                         ││Zinh      █░░░░░░░░░ 31                          │
 │  TRK                 3 ││                                         ││                                                 │
 │  AZE                 2 ││                                         ││                                                 │
 └────────────────────────┘└─────────────────────────────────────────┘└─────────────────────────────────────────────────┘

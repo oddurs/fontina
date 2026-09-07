@@ -146,48 +146,6 @@ impl Theme {
             _ => Style::default().fg(Color::Green),
         }
     }
-
-    /// Ink for a rasterised preview, for coverage `alpha`.
-    ///
-    /// `None` means this terminal has no colour to draw type with, and the caller must
-    /// say it in characters instead. That is not a degraded mode so much as a different
-    /// medium: see [`density`].
-    pub fn ink(&self, alpha: u8) -> Option<Color> {
-        // A neutral light grey blended over black, which reads on a dark theme and a
-        // light one alike once the block glyph carries both halves.
-        let v = 30 + (u16::from(alpha) * 200 / 255) as u8;
-        Some(match self.depth {
-            Depth::True => Color::Rgb(v, v, v),
-            // 232..=255 is the greyscale ramp, twenty-four steps from near-black to
-            // near-white — enough for type at this size, and the reason to reach for
-            // the ramp rather than the six-level cube.
-            Depth::Ansi256 => Color::Indexed(232 + (u16::from(v) * 23 / 255) as u8),
-            Depth::Ansi16 => match v {
-                0..=70 => Color::Black,
-                71..=130 => Color::DarkGray,
-                131..=200 => Color::Gray,
-                _ => Color::White,
-            },
-            Depth::None => return None,
-        })
-    }
-}
-
-/// The block character for a pair of vertically stacked pixels, when colour is not
-/// available to carry them.
-///
-/// A half-block preview normally puts two pixels in one cell by colouring the glyph's
-/// halves separately. With no colour that cannot work — but the block glyphs already
-/// encode which half is filled, so the same two pixels come through as shape instead.
-/// The preview survives `NO_COLOR` rather than disappearing under it.
-pub fn density(top: u8, bottom: u8) -> char {
-    const ON: u8 = 96;
-    match (top >= ON, bottom >= ON) {
-        (true, true) => '█',
-        (true, false) => '▀',
-        (false, true) => '▄',
-        (false, false) => ' ',
-    }
 }
 
 #[cfg(test)]
@@ -226,33 +184,6 @@ mod tests {
         // to, arriving from the other side.
         assert_eq!(Depth::from_env(false, None, Some("dumb")), Depth::None);
         assert_eq!(Depth::from_env(false, None, None), Depth::None);
-    }
-
-    /// Ink has to stay ink at every depth: monotonic, so more coverage is never lighter,
-    /// and never the same colour at both ends, or type becomes a solid block.
-    #[test]
-    fn ink_darkens_and_lightens_the_same_way_at_every_depth() {
-        for depth in [Depth::True, Depth::Ansi256, Depth::Ansi16] {
-            let theme = Theme::new(depth);
-            let low = theme.ink(0).expect("a colour depth has ink");
-            let high = theme.ink(255).expect("a colour depth has ink");
-            assert_ne!(low, high, "{depth:?} collapses ink to one colour");
-        }
-    }
-
-    #[test]
-    fn no_colour_has_no_ink_and_says_so() {
-        assert_eq!(Theme::new(Depth::None).ink(255), None);
-    }
-
-    /// The characters are the fallback's whole vocabulary, so each pair of pixels has to
-    /// reach a different one.
-    #[test]
-    fn density_encodes_both_halves_of_a_cell() {
-        assert_eq!(density(0, 0), ' ');
-        assert_eq!(density(255, 0), '▀');
-        assert_eq!(density(0, 255), '▄');
-        assert_eq!(density(255, 255), '█');
     }
 
     /// Every role has to survive its own absence, because colour carries hierarchy here

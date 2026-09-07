@@ -3471,13 +3471,6 @@ unsafe fn libc_ioctl_winsize(ws: *mut u16) -> i32 {
     unsafe { ioctl(1, TIOCGWINSZ, ws) }
 }
 
-/// A stable key for a parsed face, for caches: the file's hash and the face index.
-pub(crate) fn face_key(face: &fontina_core::FaceMetadata) -> i64 {
-    let h = &face.file.blake3;
-    let n = i64::from_str_radix(&h[..15.min(h.len())], 16).unwrap_or(0);
-    n.wrapping_mul(31).wrapping_add(face.index as i64)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

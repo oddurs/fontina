@@ -599,10 +599,13 @@ to show them, so the tests came first and the page reads what they assert. The r
 that the site never renders a frame the program does not produce — if a page wants to show
 something, the way to get it is a test that pins it.
 
-**What is not animated: the waterfall.** It is the most beautiful thing the browser draws
-and its ink comes from the rasteriser, so pinning it in a snapshot would pin skrifa's
-output and break the page on somebody else's release. The glyph map and the controls pane
-are text and labels, identical on every machine, which is why those two are here.
+**Nothing here is rasterised type, and now nothing in the browser is either.** The
+waterfall was the most beautiful thing the browser drew, and it was a picture of
+something that is not the font: a terminal cell is one pixel wide and two tall. It was
+removed (ADR 0010) along with the preview pane, which is also why no frame on this site
+needs a snapshot of the rasteriser's output — every one of them is text and labels,
+identical on every machine and under every skrifa release. Type is shown where type can
+be drawn: the HTML specimen, and `fontina preview` over kitty, iTerm2 or sixel.
 
 Two things this got wrong on the way, both worth knowing before touching it:
 

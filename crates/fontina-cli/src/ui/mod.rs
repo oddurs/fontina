@@ -26,15 +26,12 @@ mod glyphs;
 mod history;
 mod layout;
 mod palette;
-mod preview;
 mod search;
-mod sheet;
 mod theme;
 
 use anyhow::Result;
 use fontina_core::index::FacetCount;
 use fontina_core::model::EmbeddingLevel;
-use fontina_core::render::RenderOptions;
 use fontina_core::{ActivationState, FaceFilter, FaceMetadata, FaceSummary, Facets, Family, Index};
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -132,7 +129,6 @@ enum InputKind {
     Search,
     Tag,
     Collection,
-    Text,
     /// A codepoint or a block name, in the glyph map.
     Glyph,
 }
@@ -180,11 +176,9 @@ pub struct App {
     input: Option<Input>,
     status: String,
     help: bool,
-    preview_text: Option<String>,
     /// First line of the help the overlay is showing. Only ever non-zero on a terminal
     /// too short to hold all of it at once.
     help_scroll: u16,
-    preview_size: f32,
     detail: Option<FaceMetadata>,
     detail_id: Option<i64>,
     /// The listing row for `detail_id`: tags and activation state, joined once per
@@ -201,9 +195,7 @@ pub struct App {
     glyph_cols: usize,
     /// The waterfall or comparison, while it is open. Full-screen for the same reason
     /// the glyph map is: rendered type needs the width.
-    sheet: Option<sheet::Sheet>,
     /// Terminal lines the sheet had on the last frame, so a PageDown moves by a screen.
-    sheet_visible: usize,
     /// How many panes the last frame had room for.
     ///
     /// Read by the key handler, written by the drawing: Tab has to cycle through the
@@ -211,7 +203,6 @@ pub struct App {
     /// terminal was. A resize therefore reaches the keys one frame late, which is a
     /// frame the reader spends letting go of the mouse.
     shape: layout::Shape,
-    preview: preview::Cache,
     /// How the browser registers a font with the operating system.
     ///
     /// A field rather than a call to `fontina_platform::activator()` at each use, so a
@@ -280,18 +271,13 @@ impl App {
             status: String::new(),
             help: false,
             help_scroll: 0,
-            preview_text: None,
-            preview_size: 28.0,
             detail: None,
             detail_id: None,
             detail_summary: None,
             controls: controls::Controls::default(),
             glyphs: None,
             glyph_cols: 16,
-            sheet: None,
-            sheet_visible: 20,
             shape: layout::Shape::Three,
-            preview: preview::Cache::default(),
             activator,
             history: history::History::default(),
             search: None,
@@ -689,11 +675,10 @@ impl App {
     /// Asking the environment happens here, once, rather than inside `Theme::default`,
     /// so that building an App — which every test does — does not inherit whatever
     /// `TERM` and `NO_COLOR` the machine running the tests happens to have. Both the
-    /// panes and the preview cache hold the answer, because a preview drawn at one
-    /// depth and a border drawn at another would be one screen in two palettes.
+    /// panes hold the answer, because two panes drawn at two depths would be one screen
+    /// in two palettes.
     fn use_depth(&mut self, depth: theme::Depth) {
         self.theme = theme::Theme::new(depth);
-        self.preview = preview::Cache::new(self.theme);
     }
 
     // ----- events -----
@@ -758,15 +743,9 @@ impl App {
         }
         // Ctrl-C still quits from anywhere; a full-screen mode takes every other key,
         // so nothing underneath can move while it covers the panes.
-        if !ctrl_c(&key) {
-            if self.glyphs.is_some() {
-                self.handle_glyph_key(key.code)?;
-                return Ok(Flow::Continue);
-            }
-            if self.sheet.is_some() {
-                self.handle_sheet_key(key.code)?;
-                return Ok(Flow::Continue);
-            }
+        if !ctrl_c(&key) && self.glyphs.is_some() {
+            self.handle_glyph_key(key.code)?;
+            return Ok(Flow::Continue);
         }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match key.code {
@@ -833,15 +812,9 @@ impl App {
                 self.say_marked();
             }
             KeyCode::Char('m') => self.open_glyphs(),
-            KeyCode::Char('w') => self.open_sheet(sheet::Kind::Waterfall)?,
-            KeyCode::Char('C') => self.open_sheet(sheet::Kind::Compare)?,
             KeyCode::Char('s') => self.open_specimen()?,
             KeyCode::Tab => self.cycle_focus(),
             KeyCode::Char('/') => self.start_input(InputKind::Search, self.query.clone()),
-            KeyCode::Char('e') => {
-                let text = self.preview_text.clone().unwrap_or_default();
-                self.start_input(InputKind::Text, text)
-            }
             KeyCode::Char('t') => self.start_input(InputKind::Tag, String::new()),
             KeyCode::Char('c') => self.start_input(InputKind::Collection, String::new()),
             KeyCode::Char('x') => {
@@ -849,10 +822,6 @@ impl App {
                 self.query.clear();
                 self.reload()?;
             }
-            KeyCode::Char('+') | KeyCode::Char('=') => {
-                self.preview_size = (self.preview_size + 4.0).min(160.0)
-            }
-            KeyCode::Char('-') => self.preview_size = (self.preview_size - 4.0).max(8.0),
             KeyCode::Char('a') => self.activate(ActivationState::User)?,
             KeyCode::Char('A') => self.activate(ActivationState::Session)?,
             KeyCode::Char('i') => self.activate(ActivationState::Installed)?,
@@ -877,23 +846,32 @@ impl App {
             // family; Space and Enter still toggle the row under the cursor.
             KeyCode::Right | KeyCode::Char('l') if self.controls_active() => {
                 self.controls.adjust(1);
+                self.say_position();
             }
             KeyCode::Left | KeyCode::Char('h') if self.controls_active() => {
                 self.controls.adjust(-1);
+                self.say_position();
             }
             KeyCode::Char('L') if self.controls_active() => {
                 self.controls.adjust(10);
+                self.say_position();
             }
             KeyCode::Char('H') if self.controls_active() => {
                 self.controls.adjust(-10);
+                self.say_position();
             }
             KeyCode::Char('n') if self.controls_active() => {
                 self.controls.cycle_instance(1);
+                self.say_position();
             }
             KeyCode::Char('p') if self.controls_active() => {
                 self.controls.cycle_instance(-1);
+                self.say_position();
             }
-            KeyCode::Char('0') if self.controls_active() => self.controls.reset(),
+            KeyCode::Char('0') if self.controls_active() => {
+                self.controls.reset();
+                self.say_position();
+            }
             KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Right | KeyCode::Char('l') => {
                 match self.focus {
                     Focus::Facets => self.toggle_facet()?,
@@ -901,6 +879,7 @@ impl App {
                     Focus::Detail => {
                         if self.controls_active() {
                             self.controls.toggle();
+                            self.say_position();
                         }
                     }
                 }
@@ -936,49 +915,38 @@ impl App {
         self.glyphs = Some(map);
     }
 
-    /// Open a waterfall over the selected face, or a comparison across everything the
-    /// selection stands for.
-    fn open_sheet(&mut self, kind: sheet::Kind) -> Result<()> {
-        let ids: Vec<i64> = match kind {
-            sheet::Kind::Waterfall => self.current_face_id().into_iter().collect(),
-            // Inside an open family the listing is the family's own faces, and that is
-            // exactly the view a reader presses `C` from. `current_face_ids` narrows to
-            // the selected face there, which would compare a face with itself.
-            sheet::Kind::Compare if self.open_family.is_some() => {
-                self.faces.iter().map(|f| f.id).collect()
-            }
-            sheet::Kind::Compare => self.current_face_ids(),
-        };
-        // Read every face once, here. The sheet is drawn on every frame and holds what
-        // it needs; querying per row per frame is the mistake #36 fixed for the pane.
-        let mut faces = Vec::with_capacity(ids.len());
-        for id in &ids {
-            if let Some(face) = self.index.get_face(*id)? {
-                faces.push(face);
-            }
+    /// Say where the axes and features now stand, as the command that would draw it.
+    ///
+    /// The controls used to move a picture in the pane below them. They move a position
+    /// now, and a position with nothing to show for it is a knob attached to nothing —
+    /// so it goes where every other action in this program goes: the status line, as the
+    /// command line that would produce it. `fontina preview` draws a true image where
+    /// the terminal has a protocol for one, and `s` opens the specimen with the sliders
+    /// in it.
+    fn say_position(&mut self) {
+        let Some(id) = self.detail_id else { return };
+        let axes = self
+            .controls
+            .variations()
+            .iter()
+            .map(|(tag, value)| format!("{tag}={}", (value * 100.0).round() / 100.0))
+            .collect::<Vec<_>>()
+            .join(",");
+        let features = self
+            .controls
+            .forced_features()
+            .iter()
+            .map(|(tag, _)| tag.clone())
+            .collect::<Vec<_>>()
+            .join(",");
+        let mut command = format!("fontina preview {id}");
+        if !axes.is_empty() {
+            command.push_str(&format!(" --axes {axes}"));
         }
-        if faces.is_empty() {
-            self.status = "no face on show".into();
-            return Ok(());
+        if !features.is_empty() {
+            command.push_str(&format!(" --features {features}"));
         }
-        let sheet = match kind {
-            sheet::Kind::Waterfall => sheet::Sheet::waterfall(
-                faces.remove(0),
-                self.controls.variations(),
-                self.controls.forced_features(),
-            ),
-            sheet::Kind::Compare => sheet::Sheet::compare(faces, self.preview_size),
-        };
-        self.status = format!(
-            "{}   (fontina specimen {})",
-            sheet.title(),
-            ids.iter()
-                .map(|id| id.to_string())
-                .collect::<Vec<_>>()
-                .join(" ")
-        );
-        self.sheet = Some(sheet);
-        Ok(())
+        self.status = command;
     }
 
     /// Write a specimen for the selection and hand it to the user's browser.
@@ -1007,7 +975,7 @@ impl App {
         let html = fontina_core::specimen::render(
             &faces,
             &fontina_core::specimen::SpecimenOptions {
-                text: self.preview_text.clone(),
+                text: None,
                 link: false,
                 title: None,
             },
@@ -1028,51 +996,6 @@ impl App {
             // written either way, and its path is the useful half of the answer.
             Err(e) => format!("wrote {} but could not open it: {e}", path.display()),
         };
-        Ok(())
-    }
-
-    /// Keys the sheet owns while it is open. Everything else is swallowed, for the same
-    /// reason the glyph map swallows: it covers the panes underneath.
-    fn handle_sheet_key(&mut self, code: KeyCode) -> Result<()> {
-        let visible = self.sheet_visible.max(1);
-        let Some(sheet) = self.sheet.as_mut() else {
-            return Ok(());
-        };
-        match code {
-            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('w') | KeyCode::Char('C') => {
-                self.sheet = None;
-            }
-            KeyCode::Down | KeyCode::Char('j') => sheet.scroll_by(1, visible),
-            KeyCode::Up | KeyCode::Char('k') => sheet.scroll_by(-1, visible),
-            // A page is a screen less one line of overlap, and at least one line: in a
-            // pane one line tall the overlap would be the whole page, and PageDown,
-            // PageUp and Space were dead keys.
-            KeyCode::PageDown | KeyCode::Char(' ') => {
-                sheet.scroll_by((visible as i32 - 1).max(1), visible)
-            }
-            KeyCode::PageUp => sheet.scroll_by(-(visible as i32 - 1).max(1), visible),
-            KeyCode::Home | KeyCode::Char('g') => sheet.scroll_by(i32::MIN / 2, visible),
-            KeyCode::End | KeyCode::Char('G') => sheet.scroll_by(i32::MAX / 2, visible),
-            KeyCode::Char('+') | KeyCode::Char('=') | KeyCode::Char('-') => {
-                let delta = if code == KeyCode::Char('-') {
-                    -4.0
-                } else {
-                    4.0
-                };
-                let fixed = !sheet.resize(delta) && sheet.kind() == sheet::Kind::Waterfall;
-                if fixed {
-                    // Silence would read as a broken key; the ladder is deliberate.
-                    self.status =
-                        "a waterfall is the size ladder; C compares faces at one size".into();
-                }
-            }
-            KeyCode::Char('e') => {
-                let text = self.preview_text.clone().unwrap_or_default();
-                self.start_input(InputKind::Text, text);
-            }
-            KeyCode::Char('s') => self.open_specimen()?,
-            _ => {}
-        }
         Ok(())
     }
 
@@ -1140,9 +1063,6 @@ impl App {
                         // one moment the reader has finished typing and is looking.
                         self.query = value;
                         self.request_reload();
-                    }
-                    InputKind::Text => {
-                        self.preview_text = (!value.is_empty()).then_some(value);
                     }
                     InputKind::Glyph => {
                         let cols = self.glyph_cols.max(1);
@@ -1474,7 +1394,6 @@ impl App {
             report.removed,
             report.failed.len()
         );
-        self.preview.clear();
         self.reload()
     }
 
@@ -1513,9 +1432,6 @@ impl App {
         }
         self.draw_status(f, vertical[1]);
         self.draw_keys(f, vertical[2]);
-        if self.sheet.is_some() {
-            self.draw_sheet(f, vertical[0]);
-        }
         if self.glyphs.is_some() {
             self.draw_glyphs(f, vertical[0]);
         }
@@ -1602,73 +1518,6 @@ impl App {
         f.render_stateful_widget(list, rows, &mut windowed(Some(palette.cursor()), &win));
     }
 
-    /// The waterfall or the comparison: each row rendered, labelled, and stacked, with
-    /// the whole sheet scrolling by terminal lines.
-    fn draw_sheet(&mut self, f: &mut ratatui::Frame, area: Rect) {
-        let Some(sheet) = &self.sheet else { return };
-        f.render_widget(Clear, area);
-        // A waterfall runs to a few hundred lines, so where you are in it is worth
-        // saying; without it the only cue is that scrolling stopped.
-        let position = match sheet.lines() {
-            0 => String::new(),
-            total => format!(" [{}/{}]", sheet.scroll_row() + 1, total),
-        };
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(self.theme.accent())
-            .title(format!(
-                " {}{position} — e sets the text, Esc closes ",
-                sheet.title()
-            ));
-        let inner = block.inner(area);
-        f.render_widget(block, area);
-        if inner.width < 8 || inner.height < 2 {
-            return;
-        }
-
-        let visible = inner.height as usize;
-        self.sheet_visible = visible;
-        let width = inner.width;
-        let text = self.preview_text.clone();
-
-        // Lay the sheet out once per pane width and sample text, not once per frame:
-        // a waterfall is nine rasterisations and a comparison is one per face.
-        if !self
-            .sheet
-            .as_ref()
-            .is_some_and(|s| s.is_built_for(width, text.as_deref()))
-        {
-            let Some(sheet) = self.sheet.take() else {
-                return;
-            };
-            let mut lines: Vec<Line> = Vec::new();
-            for row in sheet.rows() {
-                let words = sheet.text_for(row, text.as_deref());
-                let opts = sheet.options(row, words, width as u32);
-                lines.push(Line::from(Span::styled(
-                    row.label.clone(),
-                    self.theme.dim(),
-                )));
-                let px_rows = (row.size.ceil() as u32 * 2).max(2);
-                lines.extend(self.preview.lines(&row.face, &opts, px_rows));
-                lines.push(Line::from(""));
-            }
-            let mut sheet = sheet;
-            sheet.set_built(width, text, lines);
-            self.sheet = Some(sheet);
-        }
-
-        let Some(sheet) = self.sheet.as_mut() else {
-            return;
-        };
-        // Re-clamp against the height being drawn: a pane that grew since the last
-        // keypress must not start past the end and render blank.
-        sheet.scroll_by(0, visible);
-        f.render_widget(Paragraph::new(sheet.window(visible)), inner);
-    }
-
-    /// The glyph map: covered blocks down the left, the characters of the selected one
-    /// in a grid on the right. Full width, because a coverage grid needs the room.
     fn draw_glyphs(&mut self, f: &mut ratatui::Frame, area: Rect) {
         let Some(map) = &self.glyphs else { return };
         f.render_widget(Clear, area);
@@ -2271,33 +2120,80 @@ impl App {
         if control_rows > 0 {
             self.draw_controls(f, chunks[1], face);
         }
-        let preview_area = chunks[2];
-        if preview_area.height < 2 || preview_area.width < 4 {
+        let rest = chunks[2];
+        if rest.height < 2 || rest.width < 4 {
             return;
         }
-        let text = self
-            .preview_text
-            .clone()
-            .or_else(|| face.names.sample_text.clone())
-            .unwrap_or_else(|| preview::sample_for(face));
-        let opts = self.render_options(text, preview_area.width as u32);
-        let lines = self
-            .preview
-            .lines(face, &opts, preview_area.height as u32 * 2);
-        f.render_widget(Paragraph::new(lines), preview_area);
+        f.render_widget(
+            Paragraph::new(self.measurements(face)).wrap(Wrap { trim: false }),
+            rest,
+        );
     }
 
-    /// The preview's render settings: the sample text at the chosen size, positioned by
-    /// whatever the reader has done to the axes and features.
-    fn render_options(&self, text: String, cols: u32) -> RenderOptions {
-        RenderOptions {
-            text,
-            size: self.preview_size,
-            variations: self.controls.variations(),
-            features: self.controls.forced_features(),
-            padding: 1,
-            max_width: Some(cols),
+    /// What the pane says below the controls: the numbers, and the coverage they came
+    /// from.
+    ///
+    /// This was a rasterised sample of the face, drawn in half-block characters. A
+    /// terminal cell is about one pixel wide and two tall, so a typeface met that way is
+    /// met through a filter that changes its weight, loses its spacing and destroys its
+    /// detail — a judgement made on something that is not the font. `s` writes a real
+    /// specimen and opens it in a browser, and `fontina preview` draws a true image
+    /// where the terminal has a protocol for one. What a terminal is good at is this:
+    /// the measurements, in a column, comparable at a glance between two faces.
+    fn measurements(&self, face: &FaceMetadata) -> Vec<Line<'static>> {
+        let m = &face.metrics;
+        let mut lines = vec![Line::from("")];
+        lines.push(kv(
+            "metrics",
+            format!(
+                "{} upm · asc {} · desc {} · gap {}",
+                m.units_per_em, m.ascender, m.descender, m.line_gap
+            ),
+            &self.theme,
+        ));
+        let mut shape = Vec::new();
+        if let Some(cap) = m.cap_height {
+            shape.push(format!("cap {cap}"));
         }
+        if let Some(x) = m.x_height {
+            shape.push(format!("x-height {x}"));
+            // The ratio is the number type people actually compare, and neither font
+            // carries it: a face with a large x-height at the same size reads larger.
+            if m.units_per_em > 0 {
+                shape.push(format!(
+                    "x/em {:.2}",
+                    f64::from(x) / f64::from(m.units_per_em)
+                ));
+            }
+        }
+        if m.italic_angle.abs() > f32::EPSILON {
+            shape.push(format!("italic {}°", m.italic_angle));
+        }
+        if !shape.is_empty() {
+            lines.push(kv("shape", shape.join(" · "), &self.theme));
+        }
+        // Coverage by script, deepest first, with a bar for the eye and the count for
+        // the answer. A face's scripts are already sorted by how much of each it has.
+        let deepest = face
+            .coverage
+            .scripts
+            .first()
+            .map(|s| s.codepoints)
+            .unwrap_or(0)
+            .max(1);
+        for script in face.coverage.scripts.iter().take(6) {
+            let filled = (script.codepoints * 10).div_ceil(deepest).min(10) as usize;
+            lines.push(kv(
+                &script.script,
+                format!(
+                    "{:<10} {}",
+                    "█".repeat(filled) + &"░".repeat(10 - filled),
+                    script.codepoints
+                ),
+                &self.theme,
+            ));
+        }
+        lines
     }
 
     /// Axes as `tag  value` with a bar, features as a checkbox, the selected row
@@ -2360,7 +2256,6 @@ impl App {
                 InputKind::Search => "search",
                 InputKind::Tag => "tag",
                 InputKind::Collection => "collection",
-                InputKind::Text => "preview text",
                 InputKind::Glyph => "codepoint or block",
             };
             Line::from(vec![
@@ -2396,15 +2291,14 @@ impl App {
              are any, and to the cursor when there are not. Esc clears them
  Organise    t tag the selection   c add it to a collection
  Activate    a for the user, A until logout, i install a copy, d deactivate, u uninstall
- Preview     e sets the sample text   + / - change the size
  Controls    h/l ←/→ move an axis (H/L by ten)   Space toggles a feature
-             n/p step through named instances   0 resets everything
+             n/p step through named instances   0 resets everything. The status
+             line carries the command that draws what you have set
  Glyphs      m opens the glyph map: h/l pick a block, j/k scroll, / finds a
              codepoint (U+0041, 0x41, 41) or a block by name
- Sheets      w waterfalls the face down the size ladder; C compares every face
-             the selection stands for. j/k scroll, +/- resize a comparison
- Specimen    s writes an HTML specimen and opens it, for what a terminal cannot
-             show honestly
+ Specimen    s writes an HTML specimen and opens it. A terminal cannot show a
+             typeface honestly, so this program does not try: it shows what is
+             in one, and hands the looking to something that can draw
  Panes       Three side by side at {three} columns and up; under that the facets
              move over the list and Tab opens them; under {two}, one pane at a
              time, the others still a Tab away
@@ -2906,38 +2800,6 @@ mod tests {
         }
     }
 
-    /// A page in a pane one line tall still moves.
-    ///
-    /// A page is a screen less one line of overlap, and in a one-line pane that left
-    /// nothing: PageDown, PageUp and Space did nothing at all. `draw_sheet` gives up
-    /// below two lines and never records a height it gave up on, so no reader could
-    /// reach it — which is exactly the kind of arithmetic that becomes reachable later
-    /// and is nobody's suspect when it does.
-    #[test]
-    fn a_page_in_a_one_line_pane_still_moves() {
-        let mut app = app();
-        app.open_sheet(sheet::Kind::Waterfall).unwrap();
-        app.sheet_visible = 1;
-        // A sheet has to be laid out before it can scroll; one line per row is enough.
-        let rows = app.sheet.as_ref().unwrap().rows().len();
-        assert!(rows > 1, "a waterfall has rows to page through");
-        app.sheet
-            .as_mut()
-            .unwrap()
-            .set_built(40, None, vec![Line::from("x"); rows]);
-
-        app.handle_sheet_key(KeyCode::PageDown).unwrap();
-        assert_eq!(
-            app.sheet.as_ref().unwrap().scroll_row(),
-            1,
-            "PageDown in a one-line pane moves one line, not none"
-        );
-        app.handle_sheet_key(KeyCode::PageUp).unwrap();
-        assert_eq!(app.sheet.as_ref().unwrap().scroll_row(), 0);
-        app.handle_sheet_key(KeyCode::Char(' ')).unwrap();
-        assert_eq!(app.sheet.as_ref().unwrap().scroll_row(), 1);
-    }
-
     /// Pressing an activation key with nothing selected says so and changes nothing.
     #[test]
     fn activating_nothing_is_a_message_rather_than_a_mistake() {
@@ -2965,7 +2827,6 @@ mod tests {
         // SAFETY: single-threaded test.
         unsafe { std::env::set_var("BROWSER", "true") };
         let mut app = app();
-        app.preview_text = Some("Hamburgefonstiv".into());
         let ids = app.current_face_ids();
         assert!(!ids.is_empty(), "the first family is selected");
 
@@ -2977,8 +2838,9 @@ mod tests {
         let html = std::fs::read_to_string(&path).expect("the specimen was written");
         assert!(html.starts_with("<!doctype html>") || html.starts_with("<!DOCTYPE html>"));
         assert!(
-            html.contains("Hamburgefonstiv"),
-            "the sample text the user set is in it"
+            html.contains("waterfall") || html.contains("compare"),
+            "the specimen is where the type is actually set: {}",
+            &html[..400.min(html.len())]
         );
         assert!(
             !html.contains("http://") && !html.contains("https://"),
@@ -3170,11 +3032,6 @@ mod tests {
                 "{whence}: focus sits on a controls pane the face does not have"
             );
         }
-        assert!(
-            (8.0..=160.0).contains(&app.preview_size),
-            "{whence}: preview size {} outside its bounds",
-            app.preview_size
-        );
         if let Some(g) = &app.glyphs {
             assert!(
                 g.is_empty() || g.selected_index() < g.blocks().len(),
@@ -3704,124 +3561,6 @@ mod tests {
     }
 
     #[test]
-    fn a_waterfall_covers_one_face_and_a_comparison_the_whole_family() {
-        let mut app = app();
-        select_family(&mut app, "Bricolage");
-
-        app.open_sheet(sheet::Kind::Waterfall).unwrap();
-        let s = app.sheet.as_ref().expect("a face was selected");
-        assert_eq!(s.kind(), sheet::Kind::Waterfall);
-        let names: std::collections::BTreeSet<&str> = s
-            .rows()
-            .iter()
-            .map(|r| r.face.names.family.as_str())
-            .collect();
-        assert_eq!(names.len(), 1, "a waterfall is one face at many sizes");
-        assert!(app.status.contains("fontina specimen"), "{}", app.status);
-
-        // Every key is swallowed while it is open, so nothing underneath can move.
-        let before = app.detail_id;
-        app.handle_sheet_key(KeyCode::Char('a')).unwrap();
-        assert_eq!(app.detail_id, before);
-        assert!(app.sheet.is_some());
-        app.handle_sheet_key(KeyCode::Esc).unwrap();
-        assert!(app.sheet.is_none());
-
-        app.open_sheet(sheet::Kind::Compare).unwrap();
-        let s = app.sheet.as_ref().unwrap();
-        assert_eq!(s.kind(), sheet::Kind::Compare);
-        assert_eq!(
-            s.rows().len(),
-            app.current_face_ids().len(),
-            "a comparison covers everything the selection stands for"
-        );
-    }
-
-    /// The face listing inside a family is exactly the view a reader presses `C` from,
-    /// and `current_face_ids` narrows to the selected face there — which would compare a
-    /// face with itself.
-    #[test]
-    fn comparing_inside_an_open_family_covers_the_family() {
-        let mut app = app();
-        select_family(&mut app, "Inter");
-        app.open_family().unwrap();
-        assert!(app.open_family.is_some(), "the family is open");
-        let listed = app.faces.len();
-        assert!(listed > 1, "this family has siblings to compare");
-        assert_eq!(app.current_face_ids().len(), 1, "the selection is one face");
-
-        app.open_sheet(sheet::Kind::Compare).unwrap();
-        assert_eq!(
-            app.sheet.as_ref().unwrap().rows().len(),
-            listed,
-            "C compares what the listing shows"
-        );
-    }
-
-    #[test]
-    fn only_a_comparison_answers_the_size_keys() {
-        let mut app = app();
-        select_family(&mut app, "Amiri");
-        app.open_sheet(sheet::Kind::Waterfall).unwrap();
-        let sizes: Vec<f32> = app
-            .sheet
-            .as_ref()
-            .unwrap()
-            .rows()
-            .iter()
-            .map(|r| r.size)
-            .collect();
-        app.handle_sheet_key(KeyCode::Char('+')).unwrap();
-        let after: Vec<f32> = app
-            .sheet
-            .as_ref()
-            .unwrap()
-            .rows()
-            .iter()
-            .map(|r| r.size)
-            .collect();
-        assert_eq!(sizes, after, "a waterfall's ladder is fixed");
-
-        app.sheet = None;
-        app.open_sheet(sheet::Kind::Compare).unwrap();
-        let before = app.sheet.as_ref().unwrap().size();
-        app.handle_sheet_key(KeyCode::Char('+')).unwrap();
-        assert!(app.sheet.as_ref().unwrap().size() > before);
-    }
-
-    /// One rendering per row, held between frames: scrolling a waterfall must not
-    /// re-render nine bitmaps on every keypress.
-    #[test]
-    fn the_preview_cache_holds_a_rendering_for_every_row() {
-        let mut app = app();
-        select_family(&mut app, "Amiri");
-        let face = app.detail.clone().unwrap();
-        let opts = |size: f32| RenderOptions {
-            text: "Ag".into(),
-            size,
-            padding: 1,
-            max_width: Some(60),
-            ..Default::default()
-        };
-        for size in fontina_core::typography::WATERFALL_SIZES {
-            app.preview.lines(&face, &opts(*size), 40);
-        }
-        assert_eq!(
-            app.preview.len(),
-            fontina_core::typography::WATERFALL_SIZES.len(),
-            "every size kept its rendering"
-        );
-        // And asking again returns them without rendering: the count does not grow.
-        for size in fontina_core::typography::WATERFALL_SIZES {
-            app.preview.lines(&face, &opts(*size), 40);
-        }
-        assert_eq!(
-            app.preview.len(),
-            fontina_core::typography::WATERFALL_SIZES.len()
-        );
-    }
-
-    #[test]
     fn searching_the_map_reports_what_it_found_or_did_not() {
         let mut app = app();
         select_family(&mut app, "Amiri");
@@ -3841,22 +3580,6 @@ mod tests {
         }
         app.handle_input_key(KeyCode::Enter).unwrap();
         assert!(app.status.contains("nothing covered"), "{}", app.status);
-    }
-
-    #[test]
-    fn the_render_options_carry_what_the_reader_set() {
-        let mut app = app();
-        select_family(&mut app, "Bricolage");
-        app.focus = Focus::Detail;
-        app.controls.adjust(-3);
-        let opts = app.render_options("Ag".into(), 80);
-        assert_eq!(opts.variations, app.controls.variations());
-        assert!(!opts.variations.is_empty());
-        assert_eq!(opts.features, app.controls.forced_features());
-        // The cache key is the options, so a moved axis is a different key.
-        let before = opts.clone();
-        app.controls.adjust(-1);
-        assert_ne!(app.render_options("Ag".into(), 80), before);
     }
 
     // ----- frames -----
@@ -3894,7 +3617,6 @@ mod tests {
     /// name still opens — the preview reads the file — because cargo runs a test with
     /// the package root as its working directory.
     fn stable_frame(app: &mut App, width: u16, height: u16) -> String {
-        app.preview_text = Some(" ".into());
         if let Some(face) = app.detail.as_mut() {
             let name = Path::new(&face.file.path)
                 .file_name()
@@ -3918,12 +3640,6 @@ mod tests {
             .collect::<String>()
             .trim_end()
             .to_string()
-    }
-
-    /// Where a substring starts, counted in columns rather than bytes: the frame is
-    /// full of box drawing, and one of those is three bytes wide and one column.
-    fn column_of(row: &str, needle: &str) -> Option<usize> {
-        row.find(needle).map(|b| row[..b].chars().count())
     }
 
     /// The glyph map, which is what the browser is for.
@@ -3962,29 +3678,6 @@ mod tests {
         let drawn = stable_frame(&mut app, 120, 36);
         assert!(drawn.contains("wght"), "the weight axis is named: {drawn}");
         insta::assert_snapshot!(drawn);
-    }
-
-    /// The depth reaches the preview as well as the panes: one screen, one palette.
-    #[test]
-    fn the_terminals_depth_reaches_the_preview_as_well_as_the_borders() {
-        let mut app = app();
-        select_family(&mut app, "Amiri");
-        let coloured = frame(&mut app, 120, 36);
-        assert!(
-            coloured.contains('▀'),
-            "with colour every filled cell is a top half over a background"
-        );
-
-        app.use_depth(theme::Depth::None);
-        let plain = frame(&mut app, 120, 36);
-        assert_ne!(
-            plain, coloured,
-            "the preview did not notice the depth change"
-        );
-        assert!(
-            plain.contains('█') || plain.contains('▄') || plain.contains('▀'),
-            "and it is drawn as shape rather than dropped: {plain}"
-        );
     }
 
     /// A library of `n` families, made by cloning the fixtures' own.
@@ -4069,7 +3762,6 @@ mod tests {
             let mut app = app();
             with_families(&mut app, n);
             app.list.select(Some(n / 2));
-            app.preview_text = Some(" ".into());
             frame(&mut app, 120, 36);
             let start = std::time::Instant::now();
             const FRAMES: u32 = 200;
@@ -4623,63 +4315,6 @@ mod tests {
         insta::assert_snapshot!(rows.join("\n"));
     }
 
-    #[test]
-    fn the_preview_is_shaped_ink_and_it_stays_inside_the_details_pane() {
-        let mut app = app();
-        let drawn = frame(&mut app, 120, 40);
-        let rows: Vec<&str> = drawn.lines().collect();
-        let pane = column_of(rows[0], "┌ Details").expect("the details pane is titled");
-        assert!(
-            drawn.contains('▀'),
-            "the details pane drew no preview at all:\n{drawn}"
-        );
-        for (y, row) in rows.iter().enumerate() {
-            if let Some(x) = column_of(row, "▀") {
-                assert!(
-                    x > pane,
-                    "row {y} has preview ink at column {x}, outside the details pane at {pane}"
-                );
-            }
-        }
-        // And it is the sample text that puts it there, which is what lets the frames
-        // above be snapshotted without a rasteriser in them.
-        app.preview_text = Some(" ".into());
-        assert!(
-            !frame(&mut app, 120, 40).contains('▀'),
-            "a blank sample text still drew ink"
-        );
-    }
-
-    /// A defect this change reports rather than fixes.
-    ///
-    /// The preview is rendered at a fixed size and then clipped to the rows the pane
-    /// has, from the top. A face with many features gives its controls the room, and
-    /// what is left of the details pane is a few rows — into which the preview puts the
-    /// first few pixel rows of the rendering. Those rows are the font's ascent, which
-    /// is empty, so a reader on a 36-row terminal sees a blank space where the type
-    /// should be. Fitting the rendering to the rows it has, or clipping around the
-    /// baseline rather than the top, would fix it; when it is fixed this is the test
-    /// that should change.
-    #[test]
-    fn a_details_pane_squeezed_by_controls_still_draws_the_preview() {
-        // The rendering is clipped to the ink rather than to its top row. The top of a
-        // rendering is the font's empty ascent — Source Serif at 28 px is 41 pixels tall
-        // with nothing above row 9 — so clipping from row zero showed a pane of blank on
-        // any terminal short enough that its feature controls crowded the preview.
-        let mut app = app();
-        select_family(&mut app, "Source Serif");
-        assert!(
-            app.controls.len() > 10,
-            "the face was picked because its features crowd the pane"
-        );
-        for height in [36, 44] {
-            assert!(
-                frame(&mut app, 120, height).contains('▀'),
-                "no preview drawn on a {height}-row terminal"
-            );
-        }
-    }
-
     /// Every row a frame draws fits the terminal it was drawn into.
     ///
     /// Run at each breakpoint and at both sides of each one, because a layout bug
@@ -4810,7 +4445,10 @@ mod tests {
             drawn.contains("Amiri"),
             "the face is on the screen: {drawn}"
         );
-        assert!(drawn.contains('▀'), "with its preview under it");
+        assert!(
+            drawn.contains("upm"),
+            "with the measurements under it: {drawn}"
+        );
 
         // And beside the others it is a readout again: Tab skips a pane where nothing
         // the reader presses would do anything.
