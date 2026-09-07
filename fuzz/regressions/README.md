@@ -32,8 +32,8 @@ an unfixed input would fail the required CI test job on every pull request, and 
 loads its whole corpus before it fuzzes anything, so a known-bad seed aborts the run at
 startup and nothing gets fuzzed at all. The test prints them so they cannot be forgotten.
 
-Both of its original inputs were fixed in #51 and moved up into the table above. One
-input is here now:
+Both of its original inputs were fixed in #51 and moved up into the table above. Three
+are here now:
 
 `woff2-bbox-stream-underflow.woff2.gz` is the first WOFF **2.0** finding, and the first in
 code that is not ours. `woff2-patched` 0.4.0 computes the bbox stream size as
@@ -51,13 +51,38 @@ subtracts one from the other; a file declaring them the wrong way round underflo
 Same decoder, different arithmetic, same containment. Two of these in two functions is
 the argument for containing the decoder rather than waiting for the last bug in it.
 
-Both are here rather than in the table because neither defect is fixed. WOFF 2.0 decoding is
-delegated (ADR 0005), 0.4.0 is the newest release, and the arithmetic is not ours to
-correct in this tree. What *is* fixed is the blast radius: `container::decode_woff2` now
-contains the call, so `load_bytes` returns `Err` where it used to unwind, and
-`tests/woff2_containment.rs` holds that. That is not enough to seed the input, because
-`libfuzzer-sys` installs a panic hook that aborts before unwinding — deliberately, so a
-caught panic still counts as a finding — so a seeded copy would abort every fuzzing run at
-startup and a contained panic is still a crash to the fuzzer. Until upstream fixes the
-subtraction, a fuzzing run can rediscover this input and fail; that is the cost of the
-dependency and it is written down here rather than worked around.
+`woff2-table-record-past-its-stream.woff2` is the third, and it is not the same shape as
+the other two. `push_simple_table_record` slices the decompressed table stream with a
+range taken from the file's own table directory —
+`&decompressed_tables[table.get_source_range()]` — without checking it against the length
+it has, so a record
+declaring `origLength` 208 over a stream that decompresses to nothing indexes `[..208]`
+into an empty slice. Found on an unrelated pull request at 111,095 bytes and minimised by
+hand to fifty-two: a header, one table record, and a one-byte brotli stream.
+
+**A release build does not survive this one.** The two above are arithmetic underflows, so
+with `overflow-checks` off the value wraps and the decoder's own length guard rejects it;
+the shipped binary comes back with `Invalid("Stream truncated")` having never panicked. A
+slice index is bounds-checked in every profile. Checked rather than assumed, with the same
+release binary against both inputs:
+
+```
+release, woff2-table-record-past-its-stream: range end index 208 out of range
+                                             for slice of length 0
+release, woff2-bbox-stream-underflow:        Invalid("Stream truncated")
+```
+
+So for this input `container::decode_woff2`'s `catch_unwind` is not a second line of
+defence behind a wrap that would have been caught anyway — it is the only thing standing
+between a malformed file and a panic in the shipped binary.
+
+All three are here rather than in the table because none of the defects is fixed. WOFF
+2.0 decoding is delegated (ADR 0005), 0.4.0 is the newest release, and the code is not
+ours to correct in this tree. What *is* fixed is the blast radius:
+`container::decode_woff2` now contains the call, so `load_bytes` returns `Err` where it
+used to unwind, and `tests/woff2_containment.rs` holds that. That is not enough to seed
+the input, because `libfuzzer-sys` installs a panic hook that aborts before unwinding —
+deliberately, so a caught panic still counts as a finding — so a seeded copy would abort
+every fuzzing run at startup and a contained panic is still a crash to the fuzzer. Until
+upstream fixes them, a fuzzing run can rediscover any of these inputs and fail; that is
+the cost of the dependency and it is written down here rather than worked around.
