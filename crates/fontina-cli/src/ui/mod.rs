@@ -27,6 +27,7 @@ mod glyphs;
 mod history;
 mod layout;
 mod palette;
+mod related;
 mod search;
 mod theme;
 
@@ -310,6 +311,12 @@ pub struct App {
     /// The glyph map, while it is open. It covers the whole screen, so it is a mode
     /// rather than a pane: there is no room to browse and read coverage at once.
     glyphs: Option<glyphs::Glyphs>,
+    /// What else covers nearly the same characters, while the list is open. A mode
+    /// rather than a pane, for the reason the glyph map is one: the evidence beside
+    /// each score is what makes it worth reading, and it needs the width.
+    related: Option<related::View>,
+    /// Rows the related list had on the last frame, so a PageDown moves by a screen.
+    related_rows: usize,
     /// Columns the glyph grid used when it was last drawn, so a PageDown moves by what
     /// the reader can see rather than by a guess.
     glyph_cols: usize,
@@ -399,6 +406,8 @@ impl App {
             detail_summary: None,
             controls: controls::Controls::default(),
             glyphs: None,
+            related: None,
+            related_rows: 0,
             glyph_cols: 16,
             shape: layout::Shape::Two,
             activator,
@@ -920,6 +929,10 @@ impl App {
             self.handle_glyph_key(key.code)?;
             return Ok(Flow::Continue);
         }
+        if !ctrl_c(&key) && self.related.is_some() {
+            self.handle_related_key(key.code)?;
+            return Ok(Flow::Continue);
+        }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match key.code {
             KeyCode::Char('q') => return Ok(Flow::Quit),
@@ -991,6 +1004,8 @@ impl App {
                 self.say_marked();
             }
             KeyCode::Char('m') => self.open_glyphs(),
+            // Guarded, because Ctrl-R is redo and an unguarded arm would swallow it.
+            KeyCode::Char('r') if !ctrl => self.open_related()?,
             KeyCode::Char('s') => self.open_specimen()?,
             KeyCode::Tab => self.cycle_focus(),
             KeyCode::Char('/') => self.start_input(InputKind::Search, self.query.clone()),
@@ -1084,6 +1099,91 @@ impl App {
 
     /// Open the glyph map on the face on show. A face with no coverage at all — a
     /// broken font, or one still being scanned — has nothing to map.
+    /// List what else in the library covers nearly the same characters.
+    ///
+    /// Every candidate's metadata is read here, once, rather than per frame: the four
+    /// metrics beside each score come out of the face itself, and a mode drawn four
+    /// times a second cannot go back to the index for them.
+    fn open_related(&mut self) -> Result<()> {
+        let (Some(id), Some(face)) = (self.detail_id, self.detail.clone()) else {
+            self.status = "no face on show".into();
+            return Ok(());
+        };
+        let mut candidates = Vec::new();
+        for row in self.index.related(id, related::FLOOR)? {
+            let Some(other) = self.index.get_face(row.face.id)? else {
+                continue;
+            };
+            candidates.push(related::Candidate {
+                metrics: related::Metrics::of(&other),
+                row,
+            });
+        }
+        let view = related::View::new(&face, candidates);
+        // Saying so is the answer, and a better one than a list of weak matches: a
+        // library where nothing resembles this face has told the reader something.
+        if view.is_empty() {
+            self.status = format!(
+                "nothing in the library covers what {} {} covers   (fontina variants {id})",
+                face.names.family, face.names.subfamily
+            );
+            return Ok(());
+        }
+        self.status = format!("{}   (fontina variants {id})", view.title());
+        self.related = Some(view);
+        Ok(())
+    }
+
+    /// Keys while the related list is up. It covers the screen, so it takes them all.
+    fn handle_related_key(&mut self, code: KeyCode) -> Result<()> {
+        let page = self.related_rows.max(1) as i32;
+        let Some(view) = self.related.as_mut() else {
+            return Ok(());
+        };
+        match code {
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('r') => self.related = None,
+            KeyCode::Down | KeyCode::Char('j') => view.move_cursor(1),
+            KeyCode::Up | KeyCode::Char('k') => view.move_cursor(-1),
+            KeyCode::PageDown => view.move_cursor(page),
+            KeyCode::PageUp => view.move_cursor(-page),
+            KeyCode::Home | KeyCode::Char('g') => view.jump(0),
+            KeyCode::End | KeyCode::Char('G') => view.jump(usize::MAX),
+            // Enter takes the reader to the face they are looking at, which is the
+            // whole point of having found it.
+            KeyCode::Enter => {
+                let Some(id) = view.selected().map(|c| c.row.face.id) else {
+                    return Ok(());
+                };
+                self.related = None;
+                return self.go_to_face(id);
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Put the cursor on a face by id, opening the family it lives in.
+    fn go_to_face(&mut self, id: i64) -> Result<()> {
+        let Some(face) = self.index.get_face(id)? else {
+            self.status = format!("face {id} is no longer in the index");
+            return Ok(());
+        };
+        // Whatever was filtering the list would probably hide the face just chosen,
+        // and a "go here" that goes nowhere is worse than none.
+        self.filter_line = None;
+        self.filter_override = None;
+        self.selected.clear();
+        self.query.clear();
+        self.open_family = Some(face.names.family.clone());
+        self.reload()?;
+        if let Some(i) = self.faces.iter().position(|f| f.id == id) {
+            self.list.select(Some(i));
+            self.refresh_detail()?;
+        }
+        self.status = format!("{} {}", face.names.family, face.names.subfamily);
+        Ok(())
+    }
+
     fn open_glyphs(&mut self) {
         let Some(face) = &self.detail else {
             self.status = "no face on show".into();
@@ -1685,6 +1785,9 @@ impl App {
         if self.glyphs.is_some() {
             self.draw_glyphs(f, body);
         }
+        if self.related.is_some() {
+            self.draw_related(f, vertical[0]);
+        }
         if self.palette.is_some() {
             self.draw_palette(f, area);
         }
@@ -1870,6 +1973,38 @@ impl App {
         let list =
             List::new(items).highlight_style(Style::default().add_modifier(Modifier::REVERSED));
         f.render_stateful_widget(list, rows, &mut windowed(Some(palette.cursor()), &win));
+    }
+
+    /// The related list: a score, a name, and the evidence for the score.
+    fn draw_related(&mut self, f: &mut ratatui::Frame, area: Rect) {
+        let Some(view) = &self.related else { return };
+        f.render_widget(Clear, area);
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(self.theme.accent())
+            .title(format!(
+                " {} — ⏎ goes to it, r or Esc closes ",
+                view.title()
+            ));
+        let inner = block.inner(area);
+        f.render_widget(block, area);
+        if inner.width < 24 || inner.height < 1 {
+            return;
+        }
+        self.related_rows = inner.height as usize;
+        let win = layout::window(
+            view.candidates().len(),
+            view.cursor(),
+            inner.height as usize,
+            0,
+        );
+        let items: Vec<ListItem> = view.candidates()[win.clone()]
+            .iter()
+            .map(|c| ListItem::new(Line::from(view.row_text(c, inner.width as usize))))
+            .collect();
+        let list =
+            List::new(items).highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+        f.render_stateful_widget(list, inner, &mut windowed(Some(view.cursor()), &win));
     }
 
     fn draw_glyphs(&mut self, f: &mut ratatui::Frame, area: Rect) {
@@ -2885,6 +3020,8 @@ impl App {
  Controls    h/l ←/→ move an axis (H/L by ten), Space toggles a feature, n/p step
              through named instances, 0 resets everything. The status line carries
              the command that draws what you have set
+ Alike       r lists what else covers nearly the same characters, with the score
+             and the metrics that say whether that means one design. ⏎ goes to it
  Glyphs      m opens the glyph map: h/l pick a block, / finds a codepoint
              (U+0041, 0x41, 41) or a block by name
  Specimen    s writes an HTML specimen and opens it. A terminal cannot show a
@@ -4753,7 +4890,8 @@ mod tests {
             app.collect().unwrap();
             assert!(
                 std::time::Instant::now() < deadline,
-                "the worker never answered"
+                "the worker never answered: {:?} asked and answered",
+                app.search.as_ref().map(search::Search::progress)
             );
             // Yield. Spinning here starves the very thread being waited on: the suite
             // runs these in parallel and every one of them owns a worker, so a hot
@@ -5399,6 +5537,125 @@ mod tests {
         );
     }
 
+    /// The item's own example: a library holds families that are one typeface spelled
+    /// several ways. The fixtures have exactly that — Inter as a WOFF and a WOFF2 — so
+    /// `r` on one of them should find the other, and say what it found it on.
+    #[test]
+    fn r_lists_what_covers_nearly_the_same_characters() {
+        let mut app = app();
+        select_family(&mut app, "Inter");
+        app.open_family().unwrap();
+        press(&mut app, KeyCode::Char('r'));
+
+        let view = app
+            .related
+            .as_ref()
+            .expect("Inter has a twin in the fixtures");
+        assert!(!view.is_empty());
+        let top = view.candidates().first().unwrap();
+        assert_eq!(top.row.face.family, "Inter", "{:?}", top.row.face.family);
+        assert!(
+            top.row.overlap > 0.9,
+            "the same font twice: {}",
+            top.row.overlap
+        );
+        assert!(top.row.metrics_agree, "and the same metrics");
+
+        // The score and the evidence are both on the screen, which is the rule.
+        let drawn = stable_frame(&mut app, 120, 36);
+        assert!(drawn.contains("1.00") || drawn.contains("0.9"), "{drawn}");
+        assert!(drawn.contains("upem"), "the metrics are beside it: {drawn}");
+        assert!(drawn.contains("same metrics"), "{drawn}");
+        assert!(drawn.contains("shared"), "{drawn}");
+        // And the floor is stated, so a reader can ask what fell below it.
+        assert!(drawn.contains("over 0.10 overlap"), "{drawn}");
+    }
+
+    /// A face with nothing near it says so rather than showing a weak list.
+    #[test]
+    fn a_face_with_nothing_near_it_says_so() {
+        let mut app = app();
+        select_family(&mut app, "Amiri");
+        press(&mut app, KeyCode::Char('r'));
+        // Amiri is the only Arabic face in the fixtures; if anything did clear the
+        // floor the assertion below still holds the rule, which is that an empty
+        // answer is a sentence rather than an empty box.
+        if app.related.is_none() {
+            assert!(
+                app.status.starts_with("nothing in the library covers"),
+                "{}",
+                app.status
+            );
+            assert!(app.status.contains("fontina variants"), "{}", app.status);
+        }
+    }
+
+    /// Finding it is only half of it: Enter puts the cursor on the face, past whatever
+    /// filter was hiding it.
+    #[test]
+    fn enter_goes_to_the_face_the_list_found() {
+        let mut app = app();
+        select_family(&mut app, "Inter");
+        app.open_family().unwrap();
+        let from = app.detail_id.expect("a face is selected");
+        press(&mut app, KeyCode::Char('r'));
+        let to = app
+            .related
+            .as_ref()
+            .and_then(|v| v.selected())
+            .map(|c| c.row.face.id)
+            .expect("something to go to");
+        assert_ne!(from, to);
+
+        press(&mut app, KeyCode::Enter);
+        assert!(app.related.is_none(), "the list closed behind it");
+        assert_eq!(app.detail_id, Some(to), "{}", app.status);
+    }
+
+    /// A filter that would hide the face is cleared on the way, because a "go here"
+    /// that goes nowhere is worse than none.
+    #[test]
+    fn going_to_a_face_clears_a_filter_that_would_hide_it() {
+        let mut app = app();
+        select_family(&mut app, "Inter");
+        app.open_family().unwrap();
+        let to = {
+            press(&mut app, KeyCode::Char('r'));
+            app.related
+                .as_ref()
+                .and_then(|v| v.selected())
+                .map(|c| c.row.face.id)
+                .expect("something to go to")
+        };
+        press(&mut app, KeyCode::Esc);
+
+        app.query = "Amiri".into();
+        app.reload().unwrap();
+        app.go_to_face(to).unwrap();
+        assert!(app.query.is_empty(), "the query survived and hid the face");
+        assert_eq!(app.detail_id, Some(to));
+    }
+
+    /// `r` closes it again, and Ctrl-R is still redo.
+    #[test]
+    fn r_closes_the_list_and_ctrl_r_is_still_redo() {
+        let mut app = app();
+        select_family(&mut app, "Inter");
+        app.open_family().unwrap();
+        press(&mut app, KeyCode::Char('r'));
+        assert!(app.related.is_some());
+        press(&mut app, KeyCode::Char('r'));
+        assert!(app.related.is_none());
+
+        app.on_key(event::KeyEvent::new(
+            KeyCode::Char('r'),
+            KeyModifiers::CONTROL,
+        ))
+        .unwrap();
+        assert_eq!(app.status, "nothing to redo", "Ctrl-R was swallowed");
+        assert!(app.related.is_none());
+    }
+
     #[test]
     fn the_browser_opens_on_the_family_list() {
         let mut app = app();
@@ -5425,9 +5682,15 @@ mod tests {
         let mut app = app();
         app.help = true;
         let drawn = stable_frame(&mut app, 120, 36);
+        // Either the line that says how to leave, or — on a terminal too short to hold
+        // the whole list — the border saying how to reach it. The list has outgrown
+        // thirty-six rows and shaving a line off it every time a key is added is not a
+        // design, it is a treadmill; `the_help_says_when_it_does_not_fit_and_scrolls`
+        // holds the scrolling itself.
         assert!(
-            drawn.contains("any key to close"),
-            "the overlay does not say how to leave it"
+            drawn.contains("any key to close") || drawn.contains("j/k scrolls"),
+            "the overlay says neither how to leave it nor how to reach the line \
+             that does: {drawn}"
         );
         insta::assert_snapshot!(drawn);
     }

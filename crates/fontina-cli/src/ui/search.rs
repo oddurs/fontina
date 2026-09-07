@@ -289,6 +289,13 @@ impl Search {
         None
     }
 
+    /// How many have been asked for and how many answered, for a test that wants to
+    /// say which of the two went wrong rather than only that something did.
+    #[cfg(test)]
+    pub fn progress(&self) -> (u64, u64) {
+        (self.sent, self.applied)
+    }
+
     /// Whether an answer is still owed. The event loop polls faster while it is.
     pub fn waiting(&self) -> bool {
         self.applied < self.sent

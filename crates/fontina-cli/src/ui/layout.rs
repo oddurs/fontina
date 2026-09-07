@@ -193,6 +193,7 @@ const KEYS: &[(&str, &str)] = &[
     ("d", "deactivate"),
     ("i", "install"),
     ("u", "uninstall"),
+    ("r", "alike"),
     ("m", "glyphs"),
     ("s", "specimen"),
     ("U", "undo"),
