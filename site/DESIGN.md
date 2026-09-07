@@ -582,6 +582,22 @@ a dense frame, short enough that a reader still there at eighteen seconds has se
 five. Each frame fades in while the last is still fading out, because a gap of even a
 fifth of a second reads as a flicker.
 
+**None of this is allowed to rot quietly, and three things about it can.** A typing
+animation whose step count and string length disagree loses its last characters; a
+slideshow frame with no keyframe delay never comes up; a class the reduced-motion block
+forgets keeps animating for a reader who asked it not to. The page still builds, still
+deploys, and still looks nearly right in each case. `npm run check:demos` reads the built
+HTML and the stylesheet and fails on all three, and the site workflow runs it after every
+build. A frame marker naming a snapshot that does not exist already fails the build; a
+marker that cannot be rendered now throws rather than disappearing, since an HTML comment
+that is dropped looks exactly like a chapter that never asked for a frame.
+
+The manual has the same problem from the other side, and `cargo test` holds it: the
+browser's help overlay is the program's own list of what it does, and
+`the_manual_matches_the_help.rs` fails when a subject or a leading key is in the overlay
+and not in the chapter. It found one the day after this page was written — the command
+palette — which is the answer to whether a check like that earns its keep.
+
 **A chapter can show a frame too.** `<!--frame:NAME "caption"-->` on a line of its own in
 a manual chapter becomes that frame, in a terminal, where the marker was. A comment rather
 than a component and Markdown rather than MDX, because the manual is also read as plain
