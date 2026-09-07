@@ -9,6 +9,7 @@ updated: 2026-09-05
 priority: p0
 effort: m
 crate: ui
+depends_on: [1]
 ---
 
 ## Problem
@@ -40,3 +41,17 @@ of the question that is about looking.
 - [ ] a property that is the same across every pinned face is dimmed or dropped: the
       point of the view is the difference
 - [ ] `s` opens one specimen containing the whole pinned set
+
+## Where this stands after the preview came out of the browser
+
+Blocked on the same thing 0001 is. Setting four faces one above another needs something
+that can draw them, and #158 removed the half-block rendering that the first attempt
+(#164, closed) used — rightly: a pinned comparison drawn one pixel wide and two tall is
+dishonest about exactly the thing somebody pins two faces to judge.
+
+The question is still worth answering. The answer now goes through an image protocol,
+which means this waits on 0001.
+
+The closed branch `feat/tui-pin-compare` holds the state handling, if it is worth
+lifting out later: a pin set that survives filtering where the marks do not, rows
+numbered in the order they were pinned, and a four-pin limit.
