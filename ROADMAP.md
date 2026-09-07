@@ -4,13 +4,14 @@
 
 ## tui-craft — TUI 1 — Craft
 
-`#####·····` 50% · 2 of 4 done
+`####······` 40% · 2 of 5 done
 
 What the browser looks like. A font manager whose list is set in the fonts it lists, drawn with real glyphs, in a layout that holds at any size.
 
 ### backlog
 
 - [ ] [`0002`](https://github.com/oddurs/fontina/blob/main/cairn/items/0002-a-specimen-in-the-terminal-that-matches-the-html-one.md) A specimen in the terminal that matches the HTML one <sup>feat · p1 · ui</sup>
+- [ ] [`0024`](https://github.com/oddurs/fontina/blob/main/cairn/items/0024-nobody-knows-what-the-left-pane-is.md) Nobody knows what the left pane is <sup>feat · p0 · ui</sup>
 
 ### ready to start
 
@@ -68,13 +69,14 @@ Helping someone find the right face rather than the one they asked for: comparis
 
 ## unfiled — Found, not yet scheduled
 
-`#####·····` 50% · 1 of 2 done
+`####······` 33% · 1 of 3 done
 
 Real findings with no milestone. Triage moves them or drops them; nothing sits here by default.
 
 ### backlog
 
 - [ ] [`0018`](https://github.com/oddurs/fontina/blob/main/cairn/items/0018-say-what-a-scan-skipped.md) Say what a scan skipped <sup>feat · p1 · core</sup>
+- [ ] [`0023`](https://github.com/oddurs/fontina/blob/main/cairn/items/0023-filtering-to-nothing-removes-the-way-back.md) Filtering to nothing removes the way back <sup>fix · p0 · ui</sup>
 
 ### done
 
