@@ -22,6 +22,7 @@
 //! preview, so the screen looks native in any theme.
 
 mod controls;
+mod filter;
 mod glyphs;
 mod history;
 mod layout;
@@ -131,6 +132,8 @@ enum InputKind {
     Collection,
     /// A codepoint or a block name, in the glyph map.
     Glyph,
+    /// The flags `fontina list` takes, applied to the panes as they are typed.
+    Filter,
 }
 
 struct Input {
@@ -157,6 +160,19 @@ pub struct App {
     /// than rows, because a row is a family in one view and a face in another and the
     /// mark has to survive opening the family it stands for.
     marked: BTreeSet<i64>,
+    /// The filter bar's line, while one is set.
+    ///
+    /// Kept as the text the reader typed rather than only as the parsed filter, because
+    /// it is also the command line the status bar shows: rebuilding flags from a parsed
+    /// `FaceFilter` would be a second renderer to keep in step with the first.
+    filter_line: Option<String>,
+    /// The same line, parsed. `None` while the line does not parse, which is most of
+    /// the time somebody is typing one.
+    filter_override: Option<FaceFilter>,
+    /// What to put back if the reader presses Esc.
+    filter_before: Option<(Option<String>, Option<FaceFilter>)>,
+    /// Why the line does not parse, while it does not.
+    filter_error: Option<String>,
     /// Where `v` was pressed, as a row, so the range can be redrawn as the cursor
     /// moves. Cleared when the range is committed or the view changes under it.
     mark_anchor: Option<usize>,
@@ -261,6 +277,10 @@ impl App {
             faces: Vec::new(),
             open_family: None,
             marked: BTreeSet::new(),
+            filter_line: None,
+            filter_override: None,
+            filter_before: None,
+            filter_error: None,
             mark_anchor: None,
             focus: Focus::List,
             list: ListState::default(),
@@ -294,7 +314,24 @@ impl App {
 
     // ----- data -----
 
+    /// What the panes are showing, as a filter.
+    ///
+    /// The filter bar, when one is set, is the whole answer: it came from the command
+    /// line's own parser and can say things the facet pane cannot, so mixing the two
+    /// would mean deciding what `--variable=false` plus a "variable" facet means. The
+    /// open family is the one thing that survives, because it is the pane the reader is
+    /// standing in rather than part of the filter they wrote.
     fn filter(&self) -> FaceFilter {
+        if let Some(f) = &self.filter_override {
+            return FaceFilter {
+                family: self.open_family.clone().or_else(|| f.family.clone()),
+                ..f.clone()
+            };
+        }
+        self.filter_from_facets()
+    }
+
+    fn filter_from_facets(&self) -> FaceFilter {
         let mut f = FaceFilter {
             query: (!self.query.is_empty()).then(|| self.query.clone()),
             family: self.open_family.clone(),
@@ -342,6 +379,19 @@ impl App {
         } else {
             "fontina families"
         });
+        // A filter that came from a typed line is already a command line; rebuilding it
+        // from the parsed form would be a second renderer to keep in step with the
+        // first, and the reader typed the flags they wanted to see.
+        if let Some(line) = &self.filter_line {
+            if !line.trim().is_empty() {
+                s.push(' ');
+                s.push_str(line.trim());
+            }
+            if let Some(f) = &self.open_family {
+                s.push_str(&format!(" --family {f:?}"));
+            }
+            return s;
+        }
         if !self.query.is_empty() {
             s.push_str(&format!(" {:?}", self.query));
         }
@@ -717,7 +767,7 @@ impl App {
     /// relies on.
     fn on_key(&mut self, key: event::KeyEvent) -> Result<Flow> {
         if self.input.is_some() {
-            self.handle_input_key(key.code)?;
+            self.handle_input_key(key)?;
             return Ok(Flow::Continue);
         }
         if self.help {
@@ -815,6 +865,7 @@ impl App {
             KeyCode::Char('s') => self.open_specimen()?,
             KeyCode::Tab => self.cycle_focus(),
             KeyCode::Char('/') => self.start_input(InputKind::Search, self.query.clone()),
+            KeyCode::Char('F') => self.open_filter_bar(),
             KeyCode::Char('t') => self.start_input(InputKind::Tag, String::new()),
             KeyCode::Char('c') => self.start_input(InputKind::Collection, String::new()),
             KeyCode::Char('x') => {
@@ -1036,7 +1087,16 @@ impl App {
         self.input = Some(Input { kind, buf });
     }
 
-    fn handle_input_key(&mut self, code: KeyCode) -> Result<()> {
+    fn handle_input_key(&mut self, key: event::KeyEvent) -> Result<()> {
+        let code = key.code;
+        // The filter bar is applied as it is typed, so every key that changes the line
+        // has to re-apply it, and Esc has to put back what was there before. Checked
+        // before the borrow below, because applying a line touches the whole browser.
+        match self.input.as_ref().map(|i| i.kind) {
+            None => return Ok(()),
+            Some(InputKind::Filter) => return self.handle_filter_key(key),
+            Some(_) => {}
+        }
         let Some(input) = self.input.as_mut() else {
             return Ok(());
         };
@@ -1057,6 +1117,12 @@ impl App {
                 let Input { kind, buf } = self.input.take().expect("checked");
                 let value = buf.trim().to_string();
                 match kind {
+                    InputKind::Filter => {
+                        // Already applied, keystroke by keystroke. Enter just closes
+                        // the prompt over the answer.
+                        self.filter_before = None;
+                        self.status = format!("{}   ({})", self.count_line(), self.command_line());
+                    }
                     InputKind::Search => {
                         // Enter closes the box on a query already asked for by the last
                         // character typed. Waiting here would put the pause back at the
@@ -1209,6 +1275,15 @@ impl App {
     }
 
     fn toggle_facet(&mut self) -> Result<()> {
+        // A typed filter can say things a facet cannot — a range, two scripts at once,
+        // "not variable" — so there is no sensible way to add one facet to one of
+        // those. The facets take over again, and the line is not silently half-kept.
+        if self.filter_override.take().is_some() {
+            self.filter_line = None;
+            self.status = "the filter bar was cleared: facets and a typed filter are \
+                           two ways of saying the same thing"
+                .into();
+        }
         let Some(i) = self.facet_list.selected() else {
             return Ok(());
         };
@@ -1699,6 +1774,118 @@ impl App {
 
     /// Say how many faces the next action would touch, in the words the browser uses
     /// everywhere else: face counts, because a family is not a unit anything acts on.
+    /// Open the filter bar over whatever the panes are showing.
+    ///
+    /// Pre-filled with the flags for the current screen — the same flags the status
+    /// line has been showing all along — so the bar starts as an editable copy of what
+    /// the reader can already see rather than as an empty box they have to guess at.
+    fn open_filter_bar(&mut self) {
+        self.filter_before = Some((self.filter_line.clone(), self.filter_override.clone()));
+        let line = self.filter_flags();
+        self.filter_error = None;
+        self.start_input(InputKind::Filter, line);
+    }
+
+    /// The current filter as the flags `fontina list` would take.
+    ///
+    /// Taken off the command line the status bar already builds, rather than rendered
+    /// a second way: two renderers of one filter drift, and the one that drifts is the
+    /// one nobody is looking at.
+    fn filter_flags(&self) -> String {
+        let line = self.command_line();
+        let flags = line
+            .strip_prefix("fontina families")
+            .or_else(|| line.strip_prefix("fontina list"))
+            .unwrap_or("")
+            .trim();
+        // The open family is the pane the reader is standing in, not part of what they
+        // typed, and `filter` puts it back on its own.
+        match flags.find("--family ") {
+            Some(i) => flags[..i].trim_end().to_string(),
+            None => flags.to_string(),
+        }
+    }
+
+    /// Keys while the filter bar is up.
+    ///
+    /// Every key that changes the line applies it again, so the panes behind the prompt
+    /// are always showing what the line says and the count in the prompt is a fact
+    /// rather than a promise.
+    fn handle_filter_key(&mut self, key: event::KeyEvent) -> Result<()> {
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        match key.code {
+            KeyCode::Esc => {
+                // Back to whatever was there when the bar opened, panes and all.
+                self.input = None;
+                self.filter_error = None;
+                if let Some((line, parsed)) = self.filter_before.take() {
+                    self.filter_line = line;
+                    self.filter_override = parsed;
+                    return self.reload();
+                }
+            }
+            KeyCode::Enter => {
+                self.filter_before = None;
+                self.input = None;
+                self.filter_error = None;
+                self.status = format!("{}   ({})", self.count_line(), self.command_line());
+            }
+            // One keystroke from a composed filter to a collection of what it matched:
+            // everything matching is marked and the collection prompt opens over it, so
+            // the next thing typed is the name.
+            KeyCode::Char('s') if ctrl => {
+                self.input = None;
+                self.filter_before = None;
+                self.filter_error = None;
+                self.marked = self.visible_face_ids().into_iter().collect();
+                if self.marked.is_empty() {
+                    self.status = "nothing to save: the filter matches no faces".into();
+                    return Ok(());
+                }
+                self.start_input(InputKind::Collection, String::new());
+            }
+            KeyCode::Backspace => {
+                if let Some(i) = self.input.as_mut() {
+                    i.buf.pop();
+                }
+                return self.apply_filter_line();
+            }
+            KeyCode::Char(c) => {
+                if let Some(i) = self.input.as_mut() {
+                    i.buf.push(c);
+                }
+                return self.apply_filter_line();
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Parse what has been typed and show it, or say what is wrong with it.
+    ///
+    /// A line that does not parse leaves the panes on the last one that did. Half a
+    /// flag is not a filter, and blanking the list on every intermediate keystroke
+    /// would make the count useless exactly while it is being composed.
+    fn apply_filter_line(&mut self) -> Result<()> {
+        let line = self
+            .input
+            .as_ref()
+            .map(|i| i.buf.clone())
+            .unwrap_or_default();
+        match filter::parse(&line) {
+            Ok(parsed) => {
+                self.filter_error = None;
+                self.filter_line = Some(line);
+                self.filter_override = Some(parsed);
+                self.reload()
+            }
+            Err(e) => {
+                self.filter_error = Some(e);
+                Ok(())
+            }
+        }
+    }
+
     fn say_marked(&mut self) {
         self.status = match self.marked.len() {
             0 => "selection cleared".into(),
@@ -2250,6 +2437,37 @@ impl App {
         f.render_widget(Paragraph::new(lines), area);
     }
 
+    /// The filter prompt: the line, and what it is doing.
+    ///
+    /// The count comes from the panes behind it, which are already showing this filter
+    /// — the line is applied as it is typed. Watching the count while composing is the
+    /// whole point of the bar, so it cannot be something the reader has to ask for.
+    fn filter_prompt(&self, f: &mut ratatui::Frame, area: Rect, line: &str) {
+        let (tail, style) = match &self.filter_error {
+            Some(e) => (format!("  ← {e}"), self.theme.bad()),
+            None => (format!("  {}", self.count_line()), self.theme.dim()),
+        };
+        let head = " filter: ";
+        let room = (area.width as usize).saturating_sub(head.len() + tail.chars().count() + 1);
+        f.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled(head, self.theme.accent()),
+                Span::raw(truncate(line, room)),
+                Span::styled("▏", self.theme.accent()),
+                Span::styled(tail, style),
+            ])),
+            area,
+        );
+    }
+
+    /// How many faces the filter leaves, in the browser's own words.
+    fn count_line(&self) -> String {
+        match self.facets.faces {
+            1 => "1 face".into(),
+            n => format!("{n} faces"),
+        }
+    }
+
     fn draw_status(&self, f: &mut ratatui::Frame, area: Rect) {
         let line = if let Some(input) = &self.input {
             let prompt = match input.kind {
@@ -2257,6 +2475,10 @@ impl App {
                 InputKind::Tag => "tag",
                 InputKind::Collection => "collection",
                 InputKind::Glyph => "codepoint or block",
+                // What the line is doing right now, so the reader is watching the
+                // count rather than guessing at it: the panes behind the prompt are
+                // already showing this filter.
+                InputKind::Filter => return self.filter_prompt(f, area, &input.buf),
             };
             Line::from(vec![
                 Span::styled(format!(" {prompt}: "), self.theme.accent()),
@@ -2284,32 +2506,32 @@ impl App {
     fn draw_help(&self, f: &mut ratatui::Frame, area: Rect) {
         let text = "
  Move        j/k ↑/↓ PgUp/PgDn g/G        Tab cycles the panes
- Filter      / type to search  Esc clears   Enter/Space toggles a facet   x clears all
- Families    Enter opens a family, Backspace/Esc closes it
- Select      Space marks a row, v starts and ends a range, * takes everything
-             the filter matches. Every action applies to the marks when there
-             are any, and to the cursor when there are not. Esc clears them
- Organise    t tag the selection   c add it to a collection
- Activate    a for the user, A until logout, i install a copy, d deactivate, u uninstall
- Controls    h/l ←/→ move an axis (H/L by ten)   Space toggles a feature
-             n/p step through named instances   0 resets everything. The status
-             line carries the command that draws what you have set
- Glyphs      m opens the glyph map: h/l pick a block, j/k scroll, / finds a
-             codepoint (U+0041, 0x41, 41) or a block by name
+ Search      / types a query, Esc clears it, x clears every filter
+ Filter bar  F takes the flags fontina list takes — ranges, two scripts at once,
+             --variable=false — applied as you type, with the count beside them.
+             Ctrl-S saves what it matched as a collection
+ Facets      Enter or Space toggles the value under the cursor
+ Families    Enter opens a family, Backspace or Esc closes it
+ Select      Space marks a row, v starts and ends a range, * takes everything the
+             filter matches. Actions below apply to the marks when there are any,
+             to the cursor when there are not; Esc clears them
+ Organise    t tags the selection, c adds it to a collection
+ Activate    a for the user, A until logout, i installs a copy, d and u undo those
+ Controls    h/l ←/→ move an axis (H/L by ten), Space toggles a feature, n/p step
+             through named instances, 0 resets everything. The status line carries
+             the command that draws what you have set
+ Glyphs      m opens the glyph map: h/l pick a block, / finds a codepoint
+             (U+0041, 0x41, 41) or a block by name
  Specimen    s writes an HTML specimen and opens it. A terminal cannot show a
-             typeface honestly, so this program does not try: it shows what is
-             in one, and hands the looking to something that can draw
+             typeface honestly, so this program does not try: it shows what is in
+             one, and hands the looking to something that can draw
  Panes       Three side by side at {three} columns and up; under that the facets
-             move over the list and Tab opens them; under {two}, one pane at a
-             time, the others still a Tab away
+             move over the list; under {two}, one pane at a time. Tab reaches all
  Undo        U takes back the last change to the index, Ctrl-R does it again. A
-             whole selection is one undo, and what cannot be put back exactly —
-             a rescan — is not offered
- Commands    : lists every command the program has, filtered as you type. The
-             ones the browser implements it runs; the ones that print it writes
-             out with your selection already in them
- Index       R rescans every source (fontina scan --prune)
- Quit        q
+             whole selection is one undo; what cannot be put back exactly is not
+ Commands    : lists every command the program has, filtered as you type. What the
+             browser implements it runs; what prints, it writes out for you
+ Index       R rescans every source (fontina scan --prune)          Quit  q
 
  The status line shows the CLI command for what you see. Everything here is a command.
 
@@ -3568,17 +3790,21 @@ mod tests {
 
         app.start_input(InputKind::Glyph, String::new());
         for c in "U+0041".chars() {
-            app.handle_input_key(KeyCode::Char(c)).unwrap();
+            app.handle_input_key(event::KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE))
+                .unwrap();
         }
-        app.handle_input_key(KeyCode::Enter).unwrap();
+        app.handle_input_key(event::KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
         assert!(app.status.starts_with("U+0041 in "), "{}", app.status);
         assert_eq!(app.glyphs.as_ref().unwrap().found(), Some(0x41));
 
         app.start_input(InputKind::Glyph, String::new());
         for c in "Tibetan".chars() {
-            app.handle_input_key(KeyCode::Char(c)).unwrap();
+            app.handle_input_key(event::KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE))
+                .unwrap();
         }
-        app.handle_input_key(KeyCode::Enter).unwrap();
+        app.handle_input_key(event::KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
         assert!(app.status.contains("nothing covered"), "{}", app.status);
     }
 
@@ -3778,7 +4004,10 @@ mod tests {
     /// What the loop does between frames, without the frames. Bounded, so a worker that
     /// never answers fails the test rather than hanging the suite.
     fn settle(app: &mut App) {
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        // Generous: this is a net for a worker that never answers, not a measurement.
+        // Every test in this file spawns one, and a loaded machine running them in
+        // parallel is not the same as a browser answering a keystroke.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
         while app.search.as_ref().is_some_and(search::Search::waiting) {
             app.collect().unwrap();
             assert!(
@@ -4256,6 +4485,174 @@ mod tests {
                 app.status
             );
         }
+    }
+
+    /// Type into the filter bar, one key at a time, the way a reader does.
+    fn type_filter(app: &mut App, line: &str) {
+        press(app, KeyCode::Char('F'));
+        // The bar opens pre-filled, so clear it first: this is what a reader who wants
+        // a different filter does.
+        while app.input.as_ref().is_some_and(|i| !i.buf.is_empty()) {
+            press(app, KeyCode::Backspace);
+        }
+        for c in line.chars() {
+            press(app, KeyCode::Char(c));
+        }
+    }
+
+    /// The whole of the item: a filter the facet pane cannot express, applied as it is
+    /// typed, with the count in front of the reader while they compose it.
+    #[test]
+    fn the_filter_bar_applies_the_flags_as_they_are_typed() {
+        let mut app = app();
+        assert_eq!(app.facets.faces, 6);
+
+        type_filter(&mut app, "--script Arab");
+        assert_eq!(app.facets.faces, 1, "the panes moved as the line was typed");
+        assert_eq!(app.count_line(), "1 face");
+        assert_eq!(
+            app.families
+                .iter()
+                .map(|f| f.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Amiri"]
+        );
+
+        // Enter keeps it, and the status line says the command that would repeat it.
+        press(&mut app, KeyCode::Enter);
+        assert!(app.input.is_none());
+        assert_eq!(app.facets.faces, 1);
+        assert!(
+            app.command_line().contains("--script Arab"),
+            "{}",
+            app.command_line()
+        );
+    }
+
+    /// A range and two scripts at once — the things the facet pane has no way to say.
+    #[test]
+    fn the_bar_says_what_the_facets_cannot() {
+        let mut app = app();
+        type_filter(&mut app, "--weight 300-500 --variable=false");
+        press(&mut app, KeyCode::Enter);
+        assert!(app.facets.faces < 6, "{} faces", app.facets.faces);
+        assert!(
+            app.families.iter().all(|f| !f.variable),
+            "a variable family survived --variable=false"
+        );
+    }
+
+    /// A half-typed flag is not a filter, so the panes stay on the last line that
+    /// parsed and the prompt says what is wrong rather than blanking the list.
+    #[test]
+    fn a_line_that_does_not_parse_leaves_the_panes_alone_and_says_why() {
+        let mut app = app();
+        type_filter(&mut app, "--script Arab");
+        assert_eq!(app.facets.faces, 1);
+
+        for c in " --wieght".chars() {
+            press(&mut app, KeyCode::Char(c));
+        }
+        assert!(app.filter_error.is_some(), "the mistake went unnoticed");
+        assert_eq!(app.facets.faces, 1, "the panes were blanked mid-word");
+        let drawn = stable_frame(&mut app, 120, 36);
+        assert!(
+            drawn.contains("--wieght"),
+            "the prompt says which word: {drawn}"
+        );
+
+        // And correcting it puts the count back.
+        for _ in 0.." --wieght".len() {
+            press(&mut app, KeyCode::Backspace);
+        }
+        assert!(app.filter_error.is_none());
+    }
+
+    /// Esc puts back what was there, panes and all.
+    #[test]
+    fn esc_restores_the_filter_the_bar_opened_over() {
+        let mut app = app();
+        type_filter(&mut app, "--script Arab");
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(app.facets.faces, 1);
+
+        // A filter with a different count, so "it changed" is visible: two of the
+        // fixtures are variable and only one is Arabic.
+        type_filter(&mut app, "--variable");
+        assert_eq!(app.facets.faces, 2, "the new line took effect");
+        press(&mut app, KeyCode::Esc);
+        assert_eq!(app.facets.faces, 1, "Esc did not put the old filter back");
+        assert_eq!(app.filter_line.as_deref(), Some("--script Arab"));
+    }
+
+    /// The bar opens as an editable copy of the screen, not as an empty box.
+    #[test]
+    fn the_bar_opens_pre_filled_with_what_the_panes_are_showing() {
+        let mut app = app();
+        app.selected.insert(Facet::Variable, "variable".into());
+        app.reload().unwrap();
+        press(&mut app, KeyCode::Char('F'));
+        assert_eq!(
+            app.input.as_ref().map(|i| i.buf.as_str()),
+            Some("--variable"),
+            "the bar started empty over a filtered screen"
+        );
+    }
+
+    /// One keystroke from a composed filter to a collection of what it matched.
+    #[test]
+    fn ctrl_s_saves_what_the_filter_matched_as_a_collection() {
+        let mut app = app();
+        type_filter(&mut app, "--script Arab");
+        app.on_key(event::KeyEvent::new(
+            KeyCode::Char('s'),
+            KeyModifiers::CONTROL,
+        ))
+        .unwrap();
+        assert_eq!(
+            app.input.as_ref().map(|i| i.kind),
+            Some(InputKind::Collection),
+            "the next thing typed should be the name"
+        );
+        assert_eq!(app.marked.len(), 1, "everything it matched is marked");
+
+        for c in "arabic".chars() {
+            press(&mut app, KeyCode::Char(c));
+        }
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(
+            app.index
+                .list(&FaceFilter {
+                    collection: Some("arabic".into()),
+                    ..Default::default()
+                })
+                .unwrap()
+                .len(),
+            1,
+            "{}",
+            app.status
+        );
+    }
+
+    /// A typed filter and the facet pane are two ways of saying the same thing, and
+    /// there is no sensible way to add one facet to `--variable=false`. Toggling one
+    /// takes the facets back, and says so rather than half-keeping the line.
+    #[test]
+    fn toggling_a_facet_takes_the_facets_back_from_a_typed_filter() {
+        let mut app = app();
+        type_filter(&mut app, "--script Arab");
+        press(&mut app, KeyCode::Enter);
+        assert!(app.filter_override.is_some());
+
+        app.focus = Focus::Facets;
+        press(&mut app, KeyCode::Enter);
+        assert!(app.filter_override.is_none(), "the line was half-kept");
+        assert!(app.filter_line.is_none());
+        assert!(
+            app.status.contains("filter bar was cleared"),
+            "{}",
+            app.status
+        );
     }
 
     #[test]

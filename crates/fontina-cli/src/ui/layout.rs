@@ -201,6 +201,7 @@ pub fn window(len: usize, selected: usize, height: usize, offset: usize) -> Rang
 /// for all the rest.
 const KEYS: &[(&str, &str)] = &[
     ("/", "search"),
+    ("F", "filter"),
     ("⇥", "pane"),
     ("⏎", "open"),
     ("⌫", "back"),

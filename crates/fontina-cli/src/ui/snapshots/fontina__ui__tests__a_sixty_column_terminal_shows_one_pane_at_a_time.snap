@@ -1,6 +1,6 @@
 ---
 source: crates/fontina-cli/src/ui/mod.rs
-assertion_line: 3838
+assertion_line: 5000
 expression: drawn
 ---
 ┌ 5 families ──────────────────────────────────────────────┐
@@ -26,4 +26,4 @@ expression: drawn
 │                                                          │
 └──────────────────────────────────────────────────────────┘
  $ fontina families
- / search  ⇥ pane  ⏎ open  ⌫ back  ␣ select  t tag  ? help
+ / search  F filter  ⇥ pane  ⏎ open  ⌫ back  ? help
