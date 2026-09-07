@@ -4,7 +4,7 @@
 
 ## tui-craft — TUI 1 — Craft
 
-`######····` 60% · 3 of 5 done
+`#######···` 67% · 4 of 6 done
 
 What the browser looks like. A font manager whose list is set in the fonts it lists, drawn with real glyphs, in a layout that holds at any size.
 
@@ -21,6 +21,7 @@ What the browser looks like. A font manager whose list is set in the fonts it li
 - [x] [`0003`](https://github.com/oddurs/fontina/blob/main/cairn/items/0003-one-colour-scheme-three-colour-depths.md) One colour scheme, three colour depths <sup>feat · p1 · ui</sup>
 - [x] [`0004`](https://github.com/oddurs/fontina/blob/main/cairn/items/0004-three-panes-two-panes-one-pane.md) Three panes, two panes, one pane <sup>feat · p1 · ui</sup>
 - [x] [`0024`](https://github.com/oddurs/fontina/blob/main/cairn/items/0024-nobody-knows-what-the-left-pane-is.md) Nobody knows what the left pane is <sup>feat · p0 · ui</sup>
+- [x] [`0028`](https://github.com/oddurs/fontina/blob/main/cairn/items/0028-the-command-line-prints-in-one-colour-and-one-width.md) The command line prints in one colour and one width <sup>feat · p1 · cli</sup>
 
 ## tui-speed — TUI 2 — Speed
 

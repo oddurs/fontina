@@ -34,6 +34,14 @@ collection; the path on its own means every face in the file.
 Exit status is `0` on success, `1` on error, and `2` when a conflict blocked an
 activation and nothing was applied.
 
+Output is written for whoever is reading it. At a terminal, tables are fitted to the
+window and coloured — the label, the count and the directory part of a path recede so
+that the family name and the filename stand out, and a failing check is red because
+that is how you find it, not how you know: it says `FAIL` either way. Piped, none of
+that happens. No escape is ever written to something that is not a terminal, and the
+columns are not re-fitted either, because a script that cuts a field out of `fontina
+list` can wrap a long line and cannot un-truncate a short one.
+
 ## COMMANDS
 
 ### Indexing
@@ -277,6 +285,19 @@ platform data directory.</dd>
 directory.</dd>
 <dt><code>XDG_DATA_HOME</code>, <code>XDG_CONFIG_HOME</code></dt>
 <dd>Honoured on Linux for the default index location and, in future, configuration.</dd>
+<dt><code>NO_COLOR</code></dt>
+<dd>Set to anything: never colour, whatever else says. There is no <code>--color</code>
+flag because <code>--color</code> is already a filter — <code>fontina list --color</code>
+is the fonts that carry their own colour.</dd>
+<dt><code>CLICOLOR_FORCE</code></dt>
+<dd>Set to anything but <code>0</code>: colour even when the output is not a terminal,
+for a pager that understands escapes.</dd>
+<dt><code>COLUMNS</code></dt>
+<dd>How wide to print, instead of what the terminal reports. Read only when the output
+<em>is</em> a terminal.</dd>
+<dt><code>TERM</code>, <code>COLORTERM</code></dt>
+<dd>How much colour the terminal can show. <code>TERM=dumb</code> is a terminal saying
+it cannot, which is what <code>NO_COLOR</code> says from the other direction.</dd>
 </dl>
 
 ## FILES

@@ -26,58 +26,9 @@
 
 use ratatui::style::{Color, Modifier, Style};
 
-/// What the terminal can show, in the order the checks run.
-///
-/// The default is the top of the range, not the bottom: a palette assumes the best
-/// until something asks the terminal, and [`Depth::detect`] is that asking. Keeping
-/// the asking out of `Default` is what makes a `Theme` a value rather than a reading
-/// of the environment, and it is not a theoretical distinction: a preview test that
-/// built its palette with `default()` passed under a developer's terminal and failed
-/// in CI, which has no `TERM` at all.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Depth {
-    /// Twenty-four bit colour: `COLORTERM` says `truecolor` or `24bit`.
-    #[default]
-    True,
-    /// The 256-colour cube and its greyscale ramp.
-    Ansi256,
-    /// The original sixteen, and nothing to interpolate with.
-    Ansi16,
-    /// None at all, by the reader's instruction.
-    None,
-}
-
-impl Depth {
-    /// Read the environment the way every other well-behaved terminal program does.
-    ///
-    /// `NO_COLOR` wins over everything, including a `COLORTERM` that promises the
-    /// world: it is a person saying what they want, and the informal standard is that
-    /// its mere presence counts, whatever it is set to.
-    pub fn detect() -> Depth {
-        Self::from_env(
-            std::env::var_os("NO_COLOR").is_some(),
-            std::env::var("COLORTERM").ok().as_deref(),
-            std::env::var("TERM").ok().as_deref(),
-        )
-    }
-
-    /// The decision itself, separated from the environment so it can be tested.
-    pub fn from_env(no_color: bool, colorterm: Option<&str>, term: Option<&str>) -> Depth {
-        if no_color {
-            return Depth::None;
-        }
-        if matches!(colorterm, Some(c) if c.contains("truecolor") || c.contains("24bit")) {
-            return Depth::True;
-        }
-        match term {
-            Some(t) if t.contains("256color") => Depth::Ansi256,
-            // `dumb` is a terminal saying it cannot do this, which is the same
-            // instruction `NO_COLOR` gives, arriving from the other direction.
-            Some("dumb") | None => Depth::None,
-            Some(_) => Depth::Ansi16,
-        }
-    }
-}
+/// What the terminal can show. Resolved for the whole process in [`crate::term`]; the
+/// browser takes the same answer and turns it into ratatui styles.
+pub use crate::term::Depth;
 
 /// The palette, resolved once.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -156,36 +107,6 @@ mod tests {
     /// palette built anywhere inherited the environment. Every test that renders got
     /// its colours from whatever terminal it ran under, which is how a preview test
     /// passed on a developer's machine and failed in CI, where there is no `TERM`.
-    #[test]
-    fn a_palette_is_a_value_and_never_a_reading_of_the_environment() {
-        assert_eq!(Theme::default(), Theme::new(Depth::True));
-        assert_eq!(Depth::default(), Depth::True);
-    }
-
-    #[test]
-    fn no_color_beats_a_terminal_that_promises_everything() {
-        assert_eq!(
-            Depth::from_env(true, Some("truecolor"), Some("xterm-256color")),
-            Depth::None,
-            "a person saying no outranks a terminal saying yes"
-        );
-    }
-
-    #[test]
-    fn the_depth_is_read_from_the_environment_in_order() {
-        assert_eq!(Depth::from_env(false, Some("truecolor"), None), Depth::True);
-        assert_eq!(Depth::from_env(false, Some("24bit"), None), Depth::True);
-        assert_eq!(
-            Depth::from_env(false, None, Some("xterm-256color")),
-            Depth::Ansi256
-        );
-        assert_eq!(Depth::from_env(false, None, Some("xterm")), Depth::Ansi16);
-        // A terminal that says it cannot is the same instruction as a person saying not
-        // to, arriving from the other side.
-        assert_eq!(Depth::from_env(false, None, Some("dumb")), Depth::None);
-        assert_eq!(Depth::from_env(false, None, None), Depth::None);
-    }
-
     /// Every role has to survive its own absence, because colour carries hierarchy here
     /// and never meaning on its own. Under `NO_COLOR` a role either takes a modifier or
     /// deliberately takes nothing — what it must not do is set a colour anyway.
