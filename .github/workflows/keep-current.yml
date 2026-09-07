@@ -15,6 +15,18 @@
 # Each update is a merge commit on the pull request's branch, which starts its checks
 # again. Those runs are not extra: branch protection requires them before the merge, so
 # this only makes them happen sooner and without a person asking.
+#
+# It has to push as a person, and that is not a preference. GitHub gates every workflow
+# run whose triggering actor is `github-actions[bot]` — its guard against a token starting
+# workflows recursively — so a branch updated with `GITHUB_TOKEN` gets CI sitting in
+# `action_required` and the pull request cannot merge until somebody clicks approve. The
+# first version of this workflow did exactly that and put 48 runs behind a button, which
+# is a worse chore than the one it removed and a much less visible one.
+#
+# So it runs only when `PACKAGING_TOKEN` is set, and says why when it is not. Auto-
+# approving its own runs would work and is not the answer: that guard is there to stop a
+# leaked token running arbitrary workflows, and this repository is not the place to switch
+# it off for convenience.
 
 name: keep current
 
@@ -45,11 +57,23 @@ jobs:
     steps:
       - name: Update the pull requests that are only waiting to be current
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A person's token, so the pushes it makes are attributed to a person and the
+          # runs they trigger are not gated. See the note at the top.
+          GH_TOKEN: ${{ secrets.PACKAGING_TOKEN }}
           GH_REPO: ${{ github.repository }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
+
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "PACKAGING_TOKEN is not set, so this does nothing."
+            echo
+            echo "Updating a branch with GITHUB_TOKEN leaves its checks in"
+            echo "action_required, which blocks the merge this exists to enable. Rather"
+            echo "than trade one chore for a less visible one, it waits for a token that"
+            echo "pushes as a person. cairn 0039 has the steps."
+            exit 0
+          fi
 
           # `BEHIND` is the state this exists for. `DIRTY` is a real conflict and the
           # author has to resolve it; `BLOCKED` is a missing review or a failing check.
