@@ -76,8 +76,8 @@ Every check today reads the metadata and asks whether it is sensible. None asks 
 
 ### in review
 
-- [ ] [`0029`](https://github.com/oddurs/fontina/blob/main/cairn/items/0029-a-monospaced-font-whose-advances-are-not-all-equal.md) A monospaced font whose advances are not all equal <sup>feat · p1 · core</sup>
-- [ ] [`0031`](https://github.com/oddurs/fontina/blob/main/cairn/items/0031-two-files-claiming-to-be-the-same-font-with-different-bytes.md) Two files claiming to be the same font, with different bytes <sup>feat · p2 · cli</sup>
+- [ ] [`0035`](https://github.com/oddurs/fontina/blob/main/cairn/items/0035-a-monospaced-font-whose-advances-are-not-all-equal.md) A monospaced font whose advances are not all equal <sup>feat · p1 · core</sup>
+- [ ] [`0037`](https://github.com/oddurs/fontina/blob/main/cairn/items/0037-two-files-claiming-to-be-the-same-font-with-different-bytes.md) Two files claiming to be the same font, with different bytes <sup>feat · p2 · cli</sup>
 
 ## unfiled — Found, not yet scheduled
 
