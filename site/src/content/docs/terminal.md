@@ -198,6 +198,27 @@ written into the status line instead, ready to paste into another window: the br
 is using the screen they would print to. Anything that writes to the disk asks first,
 and anything but `y` is a no.
 
+### Choosing between two typefaces
+
+Looking at two faces together is the whole of the decision, and a browser that shows
+one at a time makes you do it from memory, which is where comparisons go wrong.
+
+`.` pins the face under the cursor, up to four; `.` again unpins it. Pinned rows are
+numbered in the list, in the order you pinned them, because that is the order the
+comparison puts them in. `C` then sets them one above another at a single size, in a
+single sample text, with a single set of controls — the ones in front of you when you
+press it — so what differs between the rows is the design rather than the settings.
+
+Pins survive filtering and searching, and that is the point of them rather than an
+accident: marks are pruned when the filter stops matching, because a mark says what
+the next action will touch and acting on something invisible is a bad idea. A pin says
+"I am deciding between these", and searching for the next one is exactly how you find
+it. Losing the first pin the moment you typed would make the feature useless at the
+one moment it is needed.
+
+With nothing pinned, `C` still compares whatever the listing holds, the way it always
+did.
+
 ### The keys
 
 `?` puts this list over whatever you are looking at.
@@ -224,7 +245,8 @@ and anything but `y` is a no.
 | `n` / `p` | step through named instances |
 | `0` | reset the axes and features |
 | `m` | the glyph map |
-| `w` / `C` | waterfall / compare |
+| `.` | pin a face, up to four; again to unpin |
+| `w` / `C` | waterfall / compare the pins, or the listing |
 | `s` | write an HTML specimen and open it |
 | `U` / Ctrl-R | undo the last change to the index / do it again |
 | `:` | every command, filtered as you type |

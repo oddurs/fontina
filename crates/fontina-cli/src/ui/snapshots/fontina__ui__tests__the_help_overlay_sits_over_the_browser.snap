@@ -1,6 +1,6 @@
 ---
 source: crates/fontina-cli/src/ui/mod.rs
-assertion_line: 4599
+assertion_line: 4842
 expression: drawn
 ---
 ┌ 6 faces ─────┌ fontina ui ────────────────────────────────────────────────────────────────────────────┐──────────────┐
@@ -18,24 +18,24 @@ expression: drawn
 │  100% Normal │             n/p step through named instances   0 resets everything                     │              │
 │Style         │ Glyphs      m opens the glyph map: h/l pick a block, j/k scroll, / finds a             │              │
 │  upright     │             codepoint (U+0041, 0x41, 41) or a block by name                            │              │
-│Variable      │ Sheets      w waterfalls the face down the size ladder; C compares every face          │              │
-│  variable    │             the selection stands for. j/k scroll, +/- resize a comparison              │              │
-│Color         │ Specimen    s writes an HTML specimen and opens it, for what a terminal cannot         │              │
-│  color       │             show honestly                                                              │              │
-│Spacing       │ Panes       Three side by side at 112 columns and up; under that the facets            │              │
-│  proportional│             move over the list and Tab opens them; under 76, one pane at a             │              │
-│Script        │             time, the others still a Tab away                                          │              │
-│  Latn        │ Undo        U takes back the last change to the index, Ctrl-R does it again. A         │              │
-│  Arab        │             whole selection is one undo, and what cannot be put back exactly —         │              │
-│  Zyyy        │             a rescan — is not offered                                                  │              │
-│  Cyrl        │ Commands    : lists every command the program has, filtered as you type. The           │              │
-│  Zinh        │             ones the browser implements it runs; the ones that print it writes         │              │
-│  Grek        │             out with your selection already in them                                    │              │
-│Language      │ Index       R rescans every source (fontina scan --prune)                              │              │
-│  en          │ Quit        q                                                                          │              │
-│  CAT         │                                                                                        │              │
-│  TRK         │ The status line shows the CLI command for what you see. Everything here is a command.  │              │
-│  AZE         │                                                                                        │              │
-└──────────────│ any key to close                                                                       │──────────────┘
- $ fontina fami└────────────────────────────────────────────────────────────────────────────────────────┘
- / search  ⇥ pane  ⏎ open  ⌫ back  ␣ select  t tag  c collection  a/A activate  d deactivate  i install  ? help
+│Variable      │ Sheets      w waterfalls a face down the size ladder, C compares every face the        │              │
+│  variable    │             selection stands for. j/k scroll, +/- resize a comparison                  │              │
+│Color         │ Pins        . pins a face, up to four; . again unpins it. Pins survive filtering,      │              │
+│  color       │             so you can search for the next one. C sets them side by side               │              │
+│Spacing       │ Specimen    s writes an HTML specimen and opens it, for what a terminal cannot         │              │
+│  proportional│             show honestly                                                              │              │
+│Script        │ Panes       Three side by side at 112 columns and up; under that the facets            │              │
+│  Latn        │             move over the list; under 76, one pane at a time. Tab reaches all          │              │
+│  Arab        │ Undo        U takes back the last change to the index, Ctrl-R does it again. A         │              │
+│  Zyyy        │             whole selection is one undo, and what cannot be put back exactly —         │              │
+│  Cyrl        │             a rescan — is not offered                                                  │              │
+│  Zinh        │ Commands    : lists every command the program has, filtered as you type. The           │              │
+│  Grek        │             ones the browser implements it runs; the ones that print it writes         │              │
+│Language      │             out with your selection already in them                                    │              │
+│  en          │ Index       R rescans every source (fontina scan --prune)                              │              │
+│  CAT         │ Quit        q                                                                          │              │
+│  TRK         │                                                                                        │              │
+│  AZE         │ The status line shows the CLI command for what you see. Everything here is a command.  │              │
+└──────────────│                                                                                        │──────────────┘
+ $ fontina fami│ any key to close                                                                       │
+ / search  ⇥ pa└────────────────────────────────────────────────────────────────────────────────────────┘? help

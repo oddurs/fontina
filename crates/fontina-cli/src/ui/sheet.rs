@@ -30,6 +30,15 @@ use ratatui::text::Line;
 pub enum Kind {
     Waterfall,
     Compare,
+    /// Faces the reader pinned, deliberately, to choose between.
+    ///
+    /// A separate kind from `Compare` because of one difference that matters: the
+    /// controls carry through. A comparison stands for a family the listing happened
+    /// to hold, so applying one face's `wght` to all of them would be meaningless where
+    /// the axis exists and a lie where it does not. A pinned set is four faces somebody
+    /// chose, and the question they chose them to answer is which one they prefer — so
+    /// what differs between the rows has to be the design and not the settings.
+    Pinned,
 }
 
 /// One rendering in the sheet: which face, how big, how it is set, and what to call it.
@@ -118,6 +127,35 @@ impl Sheet {
         }
     }
 
+    /// The faces the reader pinned, at one size, under one set of controls.
+    ///
+    /// Numbered, because the order is the reader's: the first pin is the one the rest
+    /// are being compared against, and a row that does not say which it is makes the
+    /// reader count.
+    pub fn pinned(
+        faces: Vec<FaceMetadata>,
+        size: f32,
+        variations: Vec<(String, f32)>,
+        features: Vec<(String, bool)>,
+    ) -> Self {
+        Sheet {
+            kind: Kind::Pinned,
+            rows: faces
+                .into_iter()
+                .enumerate()
+                .map(|(i, face)| Row {
+                    label: format!("{}. {} {}", i + 1, face.names.family, face.names.subfamily),
+                    face,
+                    size,
+                    variations: variations.clone(),
+                    features: features.clone(),
+                })
+                .collect(),
+            scroll: 0,
+            built: None,
+        }
+    }
+
     pub fn kind(&self) -> Kind {
         self.kind
     }
@@ -179,7 +217,7 @@ impl Sheet {
             return text.to_string();
         }
         match self.kind {
-            Kind::Compare => self
+            Kind::Compare | Kind::Pinned => self
                 .rows
                 .first()
                 .map(|first| typography::preview_text(&first.face).to_string())
@@ -216,7 +254,9 @@ impl Sheet {
     /// Change the size every row is rendered at. Only a comparison has one size to
     /// change; a waterfall's sizes are the point of it.
     pub fn resize(&mut self, delta: f32) -> bool {
-        if self.kind != Kind::Compare {
+        // A waterfall's sizes are the point of it; the other two have one size, which
+        // is what makes them a comparison rather than a list.
+        if self.kind == Kind::Waterfall {
             return false;
         }
         let mut changed = false;
@@ -242,6 +282,11 @@ impl Sheet {
             Kind::Waterfall => format!("waterfall — {} sizes", self.rows.len()),
             Kind::Compare => format!(
                 "compare — {} face(s) at {:.0} px, +/- to resize",
+                self.rows.len(),
+                self.size()
+            ),
+            Kind::Pinned => format!(
+                "pinned — {} face(s) at {:.0} px, one set of controls, +/- to resize",
                 self.rows.len(),
                 self.size()
             ),

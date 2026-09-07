@@ -161,6 +161,17 @@ pub struct App {
     /// than rows, because a row is a family in one view and a face in another and the
     /// mark has to survive opening the family it stands for.
     marked: BTreeSet<i64>,
+    /// Faces the reader pinned, in the order they pinned them, to choose between.
+    ///
+    /// A list rather than a set, because the order is the reader's: the first pin is
+    /// the one the rest are being compared against.
+    ///
+    /// Unlike the marks, these are not pruned when the filter changes. A mark says what
+    /// the next action will touch, so a face nobody can see must not be in it; a pin
+    /// says "I am deciding between these", and searching for the second one is exactly
+    /// how a reader finds it. Losing the first pin the moment they type would make the
+    /// feature useless at the one moment it is needed.
+    pinned: Vec<i64>,
     /// Where `v` was pressed, as a row, so the range can be redrawn as the cursor
     /// moves. Cleared when the range is committed or the view changes under it.
     mark_anchor: Option<usize>,
@@ -270,6 +281,7 @@ impl App {
             faces: Vec::new(),
             open_family: None,
             marked: BTreeSet::new(),
+            pinned: Vec::new(),
             mark_anchor: None,
             focus: Focus::List,
             list: ListState::default(),
@@ -834,7 +846,18 @@ impl App {
             }
             KeyCode::Char('m') => self.open_glyphs(),
             KeyCode::Char('w') => self.open_sheet(sheet::Kind::Waterfall)?,
-            KeyCode::Char('C') => self.open_sheet(sheet::Kind::Compare)?,
+            // `C` compares what the reader pinned, if they pinned anything, and
+            // otherwise what the listing is showing. The same rule the actions follow
+            // for the marked set: a deliberate choice outranks the incidental one.
+            KeyCode::Char('C') => {
+                let kind = if self.pinned.is_empty() {
+                    sheet::Kind::Compare
+                } else {
+                    sheet::Kind::Pinned
+                };
+                self.open_sheet(kind)?
+            }
+            KeyCode::Char('.') => self.toggle_pin(),
             KeyCode::Char('s') => self.open_specimen()?,
             KeyCode::Tab => self.cycle_focus(),
             KeyCode::Char('/') => self.start_input(InputKind::Search, self.query.clone()),
@@ -948,6 +971,7 @@ impl App {
                 self.faces.iter().map(|f| f.id).collect()
             }
             sheet::Kind::Compare => self.current_face_ids(),
+            sheet::Kind::Pinned => self.pinned.clone(),
         };
         // Read every face once, here. The sheet is drawn on every frame and holds what
         // it needs; querying per row per frame is the mistake #36 fixed for the pane.
@@ -968,6 +992,15 @@ impl App {
                 self.controls.forced_features(),
             ),
             sheet::Kind::Compare => sheet::Sheet::compare(faces, self.preview_size),
+            // The controls carry through here, unlike a comparison: these are four
+            // faces somebody chose to decide between, and the thing that has to differ
+            // between the rows is the design rather than the settings.
+            sheet::Kind::Pinned => sheet::Sheet::pinned(
+                faces,
+                self.preview_size,
+                self.controls.variations(),
+                self.controls.forced_features(),
+            ),
         };
         self.status = format!(
             "{}   (fontina specimen {})",
@@ -1848,6 +1881,60 @@ impl App {
         }
     }
 
+    /// Pin or unpin the face under the cursor, or the marked faces.
+    ///
+    /// A family row pins the face that stands for the family rather than all of its
+    /// weights: a side-by-side of sixteen weights of one typeface is a waterfall, and
+    /// there is already a key for that.
+    fn toggle_pin(&mut self) {
+        let wanted: Vec<i64> = if self.marked.is_empty() {
+            self.representative_at(self.list.selected())
+                .into_iter()
+                .collect()
+        } else {
+            self.marked.iter().copied().collect()
+        };
+        if wanted.is_empty() {
+            self.status = "no face on show".into();
+            return;
+        }
+        // Unpinning if they are all already pinned, so the key is its own undo.
+        if wanted.iter().all(|id| self.pinned.contains(id)) {
+            self.pinned.retain(|id| !wanted.contains(id));
+            self.say_pinned();
+            return;
+        }
+        for id in wanted {
+            if self.pinned.contains(&id) {
+                continue;
+            }
+            if self.pinned.len() >= PIN_LIMIT {
+                self.status =
+                    format!("{PIN_LIMIT} pins is the limit — . unpins one   (C compares them)");
+                return;
+            }
+            self.pinned.push(id);
+        }
+        self.say_pinned();
+    }
+
+    /// The one face a row stands for: the face itself, or the family's representative.
+    fn representative_at(&self, row: Option<usize>) -> Option<i64> {
+        let i = row?;
+        if self.open_family.is_some() {
+            self.faces.get(i).map(|f| f.id)
+        } else {
+            self.families.get(i).map(|f| f.representative)
+        }
+    }
+
+    fn say_pinned(&mut self) {
+        self.status = match self.pinned.len() {
+            0 => "no pins".into(),
+            n => format!("{n} of {PIN_LIMIT} pinned — C sets them side by side"),
+        };
+    }
+
     /// Say how many faces the next action would touch, in the words the browser uses
     /// everywhere else: face counts, because a family is not a unit anything acts on.
     fn say_marked(&mut self) {
@@ -2041,7 +2128,8 @@ impl App {
         // A mark column, but only while there is something marked or a range being
         // drawn: a column of spaces down every list for a feature nobody is using is
         // two columns of names given up for nothing.
-        let marking = !self.marked.is_empty() || self.mark_anchor.is_some();
+        let marking =
+            !self.marked.is_empty() || self.mark_anchor.is_some() || !self.pinned.is_empty();
         let marks: Vec<String> = if marking {
             win.clone()
                 .map(|i| {
@@ -2049,10 +2137,17 @@ impl App {
                         let cursor = self.list.selected().unwrap_or(a);
                         (a.min(cursor)..=a.max(cursor)).contains(&i)
                     });
-                    match (self.row_marked(i), in_range) {
-                        (true, _) => "● ".into(),
-                        (false, true) => "· ".into(),
-                        (false, false) => "  ".into(),
+                    // A pin outranks a mark in the column, because there are at most
+                    // four of them and the number is the thing worth seeing: it is the
+                    // order the comparison will put them in.
+                    let pin = self
+                        .representative_at(Some(i))
+                        .and_then(|id| self.pinned.iter().position(|p| *p == id));
+                    match (pin, self.row_marked(i), in_range) {
+                        (Some(n), _, _) => format!("{} ", n + 1),
+                        (None, true, _) => "● ".into(),
+                        (None, false, true) => "· ".into(),
+                        (None, false, false) => "  ".into(),
                     }
                 })
                 .collect()
@@ -2401,13 +2496,14 @@ impl App {
              n/p step through named instances   0 resets everything
  Glyphs      m opens the glyph map: h/l pick a block, j/k scroll, / finds a
              codepoint (U+0041, 0x41, 41) or a block by name
- Sheets      w waterfalls the face down the size ladder; C compares every face
-             the selection stands for. j/k scroll, +/- resize a comparison
+ Sheets      w waterfalls a face down the size ladder, C compares every face the
+             selection stands for. j/k scroll, +/- resize a comparison
+ Pins        . pins a face, up to four; . again unpins it. Pins survive filtering,
+             so you can search for the next one. C sets them side by side
  Specimen    s writes an HTML specimen and opens it, for what a terminal cannot
              show honestly
  Panes       Three side by side at {three} columns and up; under that the facets
-             move over the list and Tab opens them; under {two}, one pane at a
-             time, the others still a Tab away
+             move over the list; under {two}, one pane at a time. Tab reaches all
  Undo        U takes back the last change to the index, Ctrl-R does it again. A
              whole selection is one undo, and what cannot be put back exactly —
              a rescan — is not offered
@@ -2685,6 +2781,13 @@ fn report(verb: &str, done: usize, failed: &[String]) -> String {
         ),
     }
 }
+
+/// How many faces can be pinned at once.
+///
+/// Four, because the point is a decision and a decision between more than four things
+/// is not one anybody makes at a glance — and because four rows at a readable size is
+/// what a terminal holds without scrolling.
+const PIN_LIMIT: usize = 4;
 
 fn truncate(s: &str, n: usize) -> String {
     if s.chars().count() <= n {
@@ -4562,6 +4665,146 @@ mod tests {
                 want_installed,
                 "answering {answer:?} did the wrong thing: {}",
                 app.status
+            );
+        }
+    }
+
+    /// Pins survive what marks do not. A mark says what the next action will touch,
+    /// so a face nobody can see must not be in it; a pin says "I am deciding between
+    /// these", and searching for the second one is exactly how a reader finds it.
+    #[test]
+    fn a_pin_survives_the_filter_that_would_drop_a_mark() {
+        let mut app = app();
+        // The first four families — Amiri, Bricolage, Inter, Nabla — one at a time, so
+        // Source Serif is the one family the pins have not reached.
+        for _ in 0..4 {
+            press(&mut app, KeyCode::Char('.'));
+            press(&mut app, KeyCode::Down);
+        }
+        assert_eq!(app.pinned.len(), 4, "{:?}", app.pinned);
+        let pinned = app.pinned.clone();
+
+        press(&mut app, KeyCode::Char('*'));
+        assert_eq!(app.marked.len(), 6);
+
+        app.query = "Source".into();
+        app.reload().unwrap();
+        assert!(app.marked.len() < 6, "the marks were pruned");
+        assert_eq!(app.pinned, pinned, "and the pins were not");
+
+        // Which is the point: the reader can now find the face they wanted to add —
+        // and is told plainly that they have to give one up first.
+        app.marked.clear();
+        press(&mut app, KeyCode::Char('.'));
+        assert_eq!(
+            app.status, "4 pins is the limit — . unpins one   (C compares them)",
+            "{}",
+            app.status
+        );
+        assert_eq!(app.pinned, pinned, "and nothing moved");
+    }
+
+    /// The key is its own undo, and the limit is a sentence rather than a silence.
+    #[test]
+    fn pinning_the_same_face_again_unpins_it() {
+        let mut app = app();
+        press(&mut app, KeyCode::Char('.'));
+        assert_eq!(app.pinned.len(), 1);
+        assert!(app.status.starts_with("1 of 4 pinned"), "{}", app.status);
+        press(&mut app, KeyCode::Char('.'));
+        assert!(app.pinned.is_empty());
+        assert_eq!(app.status, "no pins");
+    }
+
+    /// `C` compares the pins when there are any, and the listing when there are not —
+    /// the same rule the actions follow for marks: a deliberate choice outranks the
+    /// incidental one.
+    #[test]
+    fn c_compares_the_pins_when_there_are_pins() {
+        let mut app = app();
+        press(&mut app, KeyCode::Char('C'));
+        assert_eq!(
+            app.sheet.as_ref().map(|s| s.kind()),
+            Some(sheet::Kind::Compare),
+            "with no pins it compares what the listing holds"
+        );
+        press(&mut app, KeyCode::Esc);
+
+        // Pin two faces from different families.
+        press(&mut app, KeyCode::Char('.'));
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Char('.'));
+        assert_eq!(app.pinned.len(), 2);
+
+        press(&mut app, KeyCode::Char('C'));
+        let sheet = app.sheet.as_ref().expect("a sheet opened");
+        assert_eq!(sheet.kind(), sheet::Kind::Pinned);
+        assert_eq!(sheet.rows().len(), 2);
+        assert!(
+            sheet.title().starts_with("pinned — 2 face(s)"),
+            "{}",
+            sheet.title()
+        );
+        // Numbered in the order they were pinned, because that is the reader's order.
+        assert!(
+            sheet.rows()[0].label.starts_with("1. "),
+            "{:?}",
+            sheet.rows()[0].label
+        );
+        assert!(sheet.rows()[1].label.starts_with("2. "));
+    }
+
+    /// One text, one size, one set of controls, applied to every pinned face — which
+    /// is the difference between this and a comparison, and the whole point: what
+    /// differs between the rows has to be the design and not the settings.
+    #[test]
+    fn every_pinned_row_is_set_the_same_way() {
+        let mut app = app();
+        // A variable face, so there are controls to carry.
+        select_family(&mut app, "Bricolage");
+        press(&mut app, KeyCode::Char('.'));
+        select_family(&mut app, "Amiri");
+        press(&mut app, KeyCode::Char('.'));
+
+        // Back on the variable face, with an axis moved: the controls that carry are
+        // the ones in front of the reader when they press C, which is the only set
+        // that could be meant.
+        select_family(&mut app, "Bricolage");
+        app.controls.adjust(2);
+        let variations = app.controls.variations();
+        assert!(!variations.is_empty(), "the face offers axes to carry");
+        app.preview_size = 48.0;
+
+        press(&mut app, KeyCode::Char('C'));
+        let sheet = app.sheet.as_ref().expect("a sheet opened");
+        assert_eq!(sheet.rows().len(), 2);
+        for row in sheet.rows() {
+            assert_eq!(row.size, 48.0, "one size");
+            assert_eq!(row.variations, variations, "one set of controls");
+        }
+        // And one text: with nothing chosen, every row falls back to the first face's.
+        let first = sheet.text_for(&sheet.rows()[0], None);
+        assert_eq!(sheet.text_for(&sheet.rows()[1], None), first, "one text");
+    }
+
+    /// Four faces at 48 px, drawn, inside the pane it was given.
+    #[test]
+    fn four_pinned_faces_at_forty_eight_pixels_draw_inside_the_pane() {
+        let mut app = app();
+        press(&mut app, KeyCode::Char('*'));
+        press(&mut app, KeyCode::Char('.'));
+        assert_eq!(app.pinned.len(), 4);
+        app.preview_size = 48.0;
+        press(&mut app, KeyCode::Char('C'));
+
+        let drawn = frame(&mut app, 120, 36);
+        assert!(drawn.contains("pinned — 4 face(s) at 48 px"), "{drawn}");
+        assert!(drawn.contains('▀'), "with the faces actually set");
+        for (n, row) in drawn.lines().enumerate() {
+            assert!(
+                row.chars().count() <= 120,
+                "row {n} ran past the pane: {row}"
             );
         }
     }
