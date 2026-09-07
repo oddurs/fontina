@@ -1,6 +1,6 @@
 ---
 source: crates/fontina-cli/src/ui/mod.rs
-assertion_line: 4813
+assertion_line: 4676
 expression: "stable_frame(&mut app, 120, 36)"
 ---
 ┌ 6 faces ───────────────┐┌ Inter · 2 face(s) ──────────────────────┐┌ Details ────────────────────────────────────────┐
@@ -21,11 +21,11 @@ expression: "stable_frame(&mut app, 120, 36)"
 │Variable                ││                                         ││  pnum [ ] Proportional figures                  │
 │  variable            2 ││                                         ││  tnum [ ] Tabular figures                       │
 │Color                   ││                                         ││                                                 │
-│  color               1 ││                                         ││                                                 │
-│Spacing                 ││                                         ││                                                 │
-│  proportional        6 ││                                         ││                                                 │
-│Script                  ││                                         ││                                                 │
-│  Latn                6 ││                                         ││                                                 │
+│  color               1 ││                                         ││metrics   2048 upm · asc 1984 · desc -494 · gap 0│
+│Spacing                 ││                                         ││shape     cap 1490 · x-height 1118 · x/em 0.55   │
+│  proportional        6 ││                                         ││Latn      ██████████ 119                         │
+│Script                  ││                                         ││Zyyy      █████████░ 104                         │
+│  Latn                6 ││                                         ││Zinh      █░░░░░░░░░ 7                           │
 │  Arab                1 ││                                         ││                                                 │
 │  Zyyy                6 ││                                         ││                                                 │
 │  Cyrl                1 ││                                         ││                                                 │

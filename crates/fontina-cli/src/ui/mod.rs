@@ -4014,6 +4014,11 @@ mod tests {
                 std::time::Instant::now() < deadline,
                 "the worker never answered"
             );
+            // Yield. Spinning here starves the very thread being waited on: the suite
+            // runs these in parallel and every one of them owns a worker, so a hot
+            // loop per test is a core each taken away from the work they are waiting
+            // for. It passed alone and timed out in company, which is the signature.
+            std::thread::sleep(std::time::Duration::from_millis(1));
         }
     }
 
