@@ -10,7 +10,7 @@ What the browser looks like. A font manager whose list is set in the fonts it li
 
 ### backlog
 
-- [ ] [`0027`](https://github.com/oddurs/fontina/blob/main/cairn/items/0027-the-script-section-ranks-by-codepoints-in-a-panel-that-counts-families.md) The script section ranks by codepoints, in a panel that counts families <sup>fix · p1 · core</sup>
+- [ ] [`0029`](https://github.com/oddurs/fontina/blob/main/cairn/items/0029-the-script-section-ranks-by-codepoints-in-a-panel-that-counts-families.md) The script section ranks by codepoints, in a panel that counts families <sup>fix · p1 · core</sup>
 
 ### ready to start
 
