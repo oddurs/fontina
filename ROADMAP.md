@@ -4,9 +4,13 @@
 
 ## tui-craft — TUI 1 — Craft
 
-`########··` 75% · 3 of 4 done
+`######····` 60% · 3 of 5 done
 
 What the browser looks like. A font manager whose list is set in the fonts it lists, drawn with real glyphs, in a layout that holds at any size.
+
+### backlog
+
+- [ ] [`0027`](https://github.com/oddurs/fontina/blob/main/cairn/items/0027-the-script-section-ranks-by-codepoints-in-a-panel-that-counts-families.md) The script section ranks by codepoints, in a panel that counts families <sup>fix · p1 · core</sup>
 
 ### ready to start
 
