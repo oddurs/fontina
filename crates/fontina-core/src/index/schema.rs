@@ -200,8 +200,13 @@ WHERE vendor IS NOT NULL;
     // A new index rather than a corrected one: migrations are append-only, and an index
     // is cheap enough that dropping the old one is not worth the risk of an index still
     // being useful to a query someone adds later on the exact-case column.
+    //
+    // `IF NOT EXISTS` because a migration can be replayed. `a_vendor_id_padded_with_nul`
+    // winds `user_version` back to simulate an index written by an older build, and the
+    // reopen then runs every migration after it a second time — on a database where
+    // this index already exists.
     r#"
-CREATE INDEX face_scripts_script_nocase ON face_scripts(script COLLATE NOCASE, codepoints);
+CREATE INDEX IF NOT EXISTS face_scripts_script_nocase ON face_scripts(script COLLATE NOCASE, codepoints);
 "#,
 ];
 
