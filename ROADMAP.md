@@ -68,6 +68,17 @@ Helping someone find the right face rather than the one they asked for: comparis
 - [x] [`0015`](https://github.com/oddurs/fontina/blob/main/cairn/items/0015-paste-text-see-who-can-set-it.md) Paste text, see who can set it <sup>feat · p1 · ui</sup>
 - [x] [`0016`](https://github.com/oddurs/fontina/blob/main/cairn/items/0016-suggest-a-face-to-pair-with-this-one.md) Suggest a face to pair with this one <sup>feat · p2 · ui</sup>
 
+## integrity — Integrity — what the file claims against what it is
+
+`··········` 0% · 0 of 2 done
+
+Every check today reads the metadata and asks whether it is sensible. None asks whether the file agrees with itself. The first tractable piece of PLAN.md §12's closing question: report the disagreement, never resolve it.
+
+### in review
+
+- [ ] [`0029`](https://github.com/oddurs/fontina/blob/main/cairn/items/0029-a-monospaced-font-whose-advances-are-not-all-equal.md) A monospaced font whose advances are not all equal <sup>feat · p1 · core</sup>
+- [ ] [`0031`](https://github.com/oddurs/fontina/blob/main/cairn/items/0031-two-files-claiming-to-be-the-same-font-with-different-bytes.md) Two files claiming to be the same font, with different bytes <sup>feat · p2 · cli</sup>
+
 ## unfiled — Found, not yet scheduled
 
 `####······` 33% · 2 of 6 done
