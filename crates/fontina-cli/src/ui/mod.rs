@@ -1981,21 +1981,37 @@ impl App {
             self.focus = Focus::List;
         }
         let panes = layout::split(body, self.pane());
-        self.draw_filter(f, vertical[0]);
+        // The three chrome rows are inset by the column the panes' borders occupy, so
+        // that the filter, the status line and the key hints start where the panes'
+        // text starts. One left edge down the whole screen is most of what makes a
+        // terminal look composed rather than assembled.
+        let chrome = |row: Rect| {
+            row.inner(ratatui::layout::Margin {
+                horizontal: 1,
+                vertical: 0,
+            })
+        };
+        self.draw_filter(f, chrome(vertical[0]));
         if let Some(area) = panes.list {
             self.draw_list(f, area);
         }
         if let Some(area) = panes.detail {
             self.draw_detail(f, area);
         }
-        // Last, and over the top: the panel is a drawer, not a pane.
+        // Last, and over the top: the panel is a drawer, not a pane. The whole list
+        // pane is cleared under it, not just the columns the drawer covers — the list
+        // is wider than the drawer at most widths, and the stripe left showing down its
+        // right edge is the end of every row: the counts, the flags, and its own
+        // scrollbar. A margin of nothing there reads as a drawer standing open; three
+        // columns of somebody else's table reads as a drawing bug.
         if self.focus == Focus::Facets {
-            let drawer = layout::panel(body);
-            f.render_widget(Clear, drawer);
-            self.draw_facets(f, drawer);
+            if let Some(under) = panes.list {
+                f.render_widget(Clear, under);
+            }
+            self.draw_facets(f, layout::panel(body));
         }
-        self.draw_status(f, vertical[2]);
-        self.draw_keys(f, vertical[3]);
+        self.draw_status(f, chrome(vertical[2]));
+        self.draw_keys(f, chrome(vertical[3]));
         if self.glyphs.is_some() {
             self.draw_glyphs(f, body);
         }
@@ -2149,10 +2165,7 @@ impl App {
                 palette.total()
             ),
         };
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(self.theme.accent())
-            .title(title);
+        let block = self.pane_block(title, true);
         let inner = block.inner(rect);
         f.render_widget(Clear, rect);
         f.render_widget(block, rect);
@@ -2190,8 +2203,7 @@ impl App {
                 ]))
             })
             .collect();
-        let list =
-            List::new(items).highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+        let list = List::new(items).highlight_style(self.theme.selection(true));
         f.render_stateful_widget(list, rows, &mut windowed(Some(palette.cursor()), &win));
     }
 
@@ -2199,11 +2211,12 @@ impl App {
     fn draw_pairing(&mut self, f: &mut ratatui::Frame, area: Rect) {
         let Some(view) = &self.pairing else { return };
         f.render_widget(Clear, area);
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(self.theme.accent())
-            .title(format!(" {} ", view.title()))
-            .title_bottom(" ⏎ goes to it · P or Esc closes ");
+        let block = self
+            .pane_block(format!(" {} ", view.title()), true)
+            .title_bottom(Span::styled(
+                " ⏎ goes to it · P or Esc closes ",
+                self.theme.dim(),
+            ));
         let inner = block.inner(area);
         f.render_widget(block, area);
         if inner.width < 24 || inner.height < 1 {
@@ -2215,8 +2228,7 @@ impl App {
             .iter()
             .map(|r| ListItem::new(Line::from(view.row_text(r, inner.width as usize))))
             .collect();
-        let list =
-            List::new(items).highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+        let list = List::new(items).highlight_style(self.theme.selection(true));
         f.render_stateful_widget(list, inner, &mut windowed(Some(view.cursor()), &win));
     }
 
@@ -2224,11 +2236,12 @@ impl App {
     fn draw_related(&mut self, f: &mut ratatui::Frame, area: Rect) {
         let Some(view) = &self.related else { return };
         f.render_widget(Clear, area);
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(self.theme.accent())
-            .title(format!(" {} ", view.title()))
-            .title_bottom(" ⏎ goes to it · r or Esc closes ");
+        let block = self
+            .pane_block(format!(" {} ", view.title()), true)
+            .title_bottom(Span::styled(
+                " ⏎ goes to it · r or Esc closes ",
+                self.theme.dim(),
+            ));
         let inner = block.inner(area);
         f.render_widget(block, area);
         if inner.width < 24 || inner.height < 1 {
@@ -2245,8 +2258,7 @@ impl App {
             .iter()
             .map(|c| ListItem::new(Line::from(view.row_text(c, inner.width as usize))))
             .collect();
-        let list =
-            List::new(items).highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+        let list = List::new(items).highlight_style(self.theme.selection(true));
         f.render_stateful_widget(list, inner, &mut windowed(Some(view.cursor()), &win));
     }
 
@@ -2254,11 +2266,12 @@ impl App {
     fn draw_covering(&mut self, f: &mut ratatui::Frame, area: Rect) {
         let Some(view) = &self.covering else { return };
         f.render_widget(Clear, area);
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(self.theme.accent())
-            .title(format!(" {} ", view.title()))
-            .title_bottom(" ⏎ goes to it · e asks again · Esc closes ");
+        let block = self
+            .pane_block(format!(" {} ", view.title()), true)
+            .title_bottom(Span::styled(
+                " ⏎ goes to it · e asks again · Esc closes ",
+                self.theme.dim(),
+            ));
         let inner = block.inner(area);
         f.render_widget(block, area);
         if inner.width < 24 || inner.height < 1 {
@@ -2280,19 +2293,19 @@ impl App {
                 )))
             })
             .collect();
-        let list =
-            List::new(items).highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+        let list = List::new(items).highlight_style(self.theme.selection(true));
         f.render_stateful_widget(list, inner, &mut windowed(Some(view.cursor()), &win));
     }
 
     fn draw_glyphs(&mut self, f: &mut ratatui::Frame, area: Rect) {
         let Some(map) = &self.glyphs else { return };
         f.render_widget(Clear, area);
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(self.theme.accent())
-            .title(" glyph map ")
-            .title_bottom(" / finds a codepoint or a block · m or Esc closes ");
+        let block = self
+            .pane_block(" glyph map ".into(), true)
+            .title_bottom(Span::styled(
+                " / finds a codepoint or a block · m or Esc closes ",
+                self.theme.dim(),
+            ));
         let inner = block.inner(area);
         f.render_widget(block, area);
 
@@ -2696,6 +2709,54 @@ impl App {
         }
     }
 
+    /// The box every pane is drawn in: one shape, one weight, one indent.
+    ///
+    /// Rounded, because a browser is a place you sit in for an hour and square corners
+    /// at every junction of four rules read as scaffolding. Padded by a column on each
+    /// side, because text set against a border is text a border is holding up, and the
+    /// one thing every pane here has in common is that the border is not the point. The
+    /// name goes on the top edge in bold and anything the pane wants to say about how
+    /// to work it goes on the bottom edge, dim: the top says what this is, the bottom
+    /// says what to press.
+    fn pane_block<'a>(&self, title: String, focused: bool) -> Block<'a> {
+        Block::default()
+            .borders(Borders::ALL)
+            .border_type(ratatui::widgets::BorderType::Rounded)
+            .border_style(self.border(focused))
+            .padding(ratatui::widgets::Padding::horizontal(1))
+            .title(Span::styled(title, self.theme.title()))
+    }
+
+    /// A hairline down the right edge of a pane, saying where in the list you are.
+    ///
+    /// Only when there is more than a screenful: a bar that is always full is a column
+    /// of noise that says "there is nothing to scroll", which the absence of a bar says
+    /// better. Drawn over the border rather than inside the pane, so it costs a pane
+    /// nothing to have one — seven hundred families is where this browser lives, and
+    /// until now the only way to know you were forty rows into them was to count.
+    fn draw_scrollbar(&self, f: &mut ratatui::Frame, area: Rect, len: usize, at: usize) {
+        let rows = pane_rows(area);
+        if len <= rows || area.height < 4 {
+            return;
+        }
+        use ratatui::widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState};
+        f.render_stateful_widget(
+            Scrollbar::new(ScrollbarOrientation::VerticalRight)
+                .begin_symbol(None)
+                .end_symbol(None)
+                .track_symbol(Some("│"))
+                .thumb_symbol("┃")
+                .track_style(self.theme.dim())
+                .thumb_style(self.border(true)),
+            // Inside the corners, so the rounded ends of the box stay whole.
+            area.inner(ratatui::layout::Margin {
+                horizontal: 0,
+                vertical: 1,
+            }),
+            &mut ScrollbarState::new(len.saturating_sub(rows)).position(at),
+        );
+    }
+
     fn border(&self, focused: bool) -> Style {
         if focused {
             self.theme.accent()
@@ -2721,7 +2782,7 @@ impl App {
         // Whatever the list beside the panel is counting, the panel counts too. Faces
         // under a list of families cannot say what pressing a row will do to it.
         let families = self.open_family.is_none();
-        let width = area.width.saturating_sub(4) as usize;
+        let width = pane_cols(area);
         let items: Vec<ListItem> = self.rows[win.clone()]
             .iter()
             .map(|r| match r.kind {
@@ -2744,7 +2805,7 @@ impl App {
                     } else {
                         r.count.to_string()
                     };
-                    let room = width.saturating_sub(count.chars().count() + 2);
+                    let room = width.saturating_sub(count.chars().count() + 3);
                     let text = format!(
                         "{mark} {:<room$} {count}",
                         truncate(&label, room),
@@ -2761,14 +2822,11 @@ impl App {
             .collect();
         let list = List::new(items)
             .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(self.theme.accent())
-                    .title(" Narrow by ")
+                self.pane_block(" Narrow by ".into(), true)
                     // Whole phrases again, longest first. A hint the border cuts in
                     // half — `Esc cl` — is worse than no hint, because it looks like
                     // the program is broken rather than like the panel is narrow.
-                    .title_bottom(
+                    .title_bottom(Span::styled(
                         [
                             " ⏎ picks · x clears · Esc closes ",
                             " ⏎ picks · Esc closes ",
@@ -2778,10 +2836,12 @@ impl App {
                         .into_iter()
                         .find(|h| h.chars().count() <= area.width.saturating_sub(2) as usize)
                         .unwrap_or(""),
-                    ),
+                        self.theme.dim(),
+                    )),
             )
-            .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+            .highlight_style(self.theme.selection(true));
         f.render_stateful_widget(list, area, &mut windowed(self.facet_list.selected(), &win));
+        self.draw_scrollbar(f, area, self.rows.len(), win.start);
     }
 
     /// The three flag columns of a list row, coloured so the eye can find them.
@@ -2812,7 +2872,7 @@ impl App {
     }
 
     fn draw_list(&mut self, f: &mut ratatui::Frame, area: Rect) {
-        let width = area.width.saturating_sub(2) as usize;
+        let width = pane_cols(area);
         let win = layout::window(
             self.list_len(),
             self.list.selected().unwrap_or(0),
@@ -2853,7 +2913,17 @@ impl App {
                     } else {
                         format!("  [{}]", face.tags.join(", "))
                     };
-                    let left = format!("{} {}{}", face.subfamily, face.container, tags);
+                    // The weight is the number that tells two faces of one family
+                    // apart, and it is the one thing the subfamily name is unreliable
+                    // about: `Book`, `Text`, `Normal` and `Regular` are all 400 in some
+                    // libraries and 350, 400, 400 and 450 in others.
+                    let left = format!(
+                        "{}  {} {}{}",
+                        face.subfamily,
+                        axis_text(face.weight, face.weight_range),
+                        face.container,
+                        tags
+                    );
                     let mut spans = vec![Span::raw(format!(
                         "{}{:<w$} ",
                         marks[row],
@@ -2909,15 +2979,12 @@ impl App {
             self.draw_empty_list(f, area, title);
             return;
         }
+        let focused = self.focus == Focus::List;
         let list = List::new(items)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(self.border(self.focus == Focus::List))
-                    .title(title),
-            )
-            .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+            .block(self.pane_block(title, focused))
+            .highlight_style(self.theme.selection(focused));
         f.render_stateful_widget(list, area, &mut windowed(self.list.selected(), &win));
+        self.draw_scrollbar(f, area, self.list_len(), win.start);
     }
 
     /// What the list pane says when there is nothing in it.
@@ -2928,10 +2995,7 @@ impl App {
     /// undo it down with the rest. So the pane they are looking at names every filter
     /// that is on and the two keys that take them off again.
     fn draw_empty_list(&self, f: &mut ratatui::Frame, area: Rect, title: String) {
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(self.border(self.focus == Focus::List))
-            .title(title);
+        let block = self.pane_block(title, self.focus == Focus::List);
         let inner = block.inner(area);
         f.render_widget(block, area);
         let mut lines: Vec<Line<'static>> = Vec::new();
@@ -2986,13 +3050,11 @@ impl App {
         // Borrowed, never cloned: this runs on every frame, four times a second while
         // the browser sits idle. `refresh_detail` is what queries the index.
         let face = self.detail.as_ref();
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(self.border(self.focus == Focus::Detail))
-            // The pane is named by what is in it. It used to be titled `Details` and to
-            // spend its first row repeating the name of the face, which is a row and a
-            // border saying the same nothing.
-            .title(match face {
+        // The pane is named by what is in it. It used to be titled `Details` and to
+        // spend its first row repeating the name of the face, which is a row and a
+        // border saying the same nothing.
+        let block = self.pane_block(
+            match face {
                 Some(face) => format!(
                     " {} ",
                     fontina_core::unicode::fit(
@@ -3001,7 +3063,9 @@ impl App {
                     )
                 ),
                 None => " Details ".into(),
-            });
+            },
+            self.focus == Focus::Detail,
+        );
         let inner = block.inner(area);
         f.render_widget(block, area);
         let Some(face) = face else {
@@ -3016,6 +3080,10 @@ impl App {
         let mut groups: Vec<Vec<Line>> = Vec::new();
         /// Which group the coverage list is spliced into, once its height is known.
         const COVERAGE: usize = 1;
+        /// The licence, whose verdict may take a line of prose to explain.
+        const LICENCE: usize = 2;
+        /// And which one the two name rows go into, if there is room for them.
+        const WHENCE: usize = 3;
 
         // What it is, and what the reader has done to it. `state` changes when a key is
         // pressed, so it belongs where a key-presser is looking rather than eleventh.
@@ -3087,8 +3155,12 @@ impl App {
         }
         groups.push(has);
 
-        // What may be done with it.
-        groups.push(license_lines(face, &self.theme, cols));
+        // What may be done with it. The reason a licence is not free is prose, and
+        // prose is the first thing a short pane can do without, so it waits below with
+        // the rest of what is optional.
+        let (licence, reason) = license_lines(face, &self.theme, cols);
+        let reason_at = 1.min(licence.len());
+        groups.push(licence);
 
         // Where it came from. Last, because it is the one group a reader can go and get
         // from `fontina info` when the pane runs out of room.
@@ -3100,6 +3172,19 @@ impl App {
             .or(face.names.manufacturer.as_deref())
         {
             whence.extend(kv("designer", d.to_string()));
+        }
+        // The name other software calls this face by, and which build of it this is:
+        // the answer to a question the browser used to send people to `fontina info`
+        // for — "is this the same cut I have somewhere else?" Detail rather than
+        // substance, so they are spliced in below only if the pane has the rows to
+        // spare, ahead of the path, which does not.
+        let detail_at = whence.len();
+        let mut detail = Vec::new();
+        if let Some(p) = &face.names.postscript_name {
+            detail.extend(kv("postscript", p.clone()));
+        }
+        if let Some(v) = &face.names.version {
+            detail.extend(kv("version", v.clone()));
         }
         whence.extend(kv(
             "file",
@@ -3130,7 +3215,7 @@ impl App {
             // licence and the path off an eighty-by-twenty-four terminal. The block
             // scrolls to keep the cursor inside it, so it can be bounded: a third of
             // the pane, and never fewer than a title and three rows.
-            let want = self.controls.len() as u16 + 2;
+            let want = self.controls.len() as u16 + 1;
             want.min((inner.height / 3).max(4))
                 .min(inner.height.saturating_sub(3))
         };
@@ -3142,10 +3227,20 @@ impl App {
         // Two scripts are the floor — one script and a bar says nothing a reader could
         // not have guessed from the family name.
         let blanks = body + gaps + 2 <= avail;
-        let most = avail
-            .saturating_sub(body + if blanks { gaps } else { 0 })
-            .clamp(2, 6);
+        let spare = avail.saturating_sub(body + if blanks { gaps } else { 0 });
+        let most = spare.clamp(2, 6);
         groups[COVERAGE].splice(coverage_at..coverage_at, self.coverage_lines(face, most));
+        // What is spare goes, in order, to: the coverage, because it says what the font
+        // is *for*; then the reason a licence is not free; then the two name rows. Each
+        // takes what the one before it left.
+        let mut spare = spare.saturating_sub(most);
+        if spare >= reason.len() {
+            spare -= reason.len();
+            groups[LICENCE].splice(reason_at..reason_at, reason);
+        }
+        if spare >= detail.len() {
+            groups[WHENCE].splice(detail_at..detail_at, detail);
+        }
 
         // The controls go under the first group and above the rest, so the one thing in
         // this pane a key does anything to is where a key-presser is looking, whatever
@@ -3183,6 +3278,31 @@ impl App {
         }
     }
 
+    /// A quantity as `cells` columns of bar, in eighths.
+    ///
+    /// Eighths so that a script a face barely touches is a visible sliver rather than
+    /// an empty row: the difference between four Greek letters and no Greek is the
+    /// difference this column exists to show. The track is drawn dim rather than left
+    /// blank, because a column of bars is read by comparing their ends, and an end you
+    /// have to find is a comparison you have to make twice.
+    fn bar(&self, of: u32, whole: u32, cells: usize) -> Vec<Span<'static>> {
+        let eighths = if whole == 0 {
+            0
+        } else {
+            ((of.min(whole) as usize) * cells * 8).div_ceil(whole as usize)
+        };
+        let (full, rest) = (eighths / 8, eighths % 8);
+        let mut filled = "█".repeat(full);
+        if rest > 0 && full < cells {
+            filled.push(['▏', '▎', '▍', '▌', '▋', '▊', '▉'][rest - 1]);
+        }
+        let drawn = filled.chars().count();
+        vec![
+            Span::raw(filled),
+            Span::styled("░".repeat(cells - drawn), self.theme.dim()),
+        ]
+    }
+
     /// Coverage per script: a bar for the eye, the count for the answer.
     fn coverage_lines(&self, face: &FaceMetadata, most: usize) -> Vec<Line<'static>> {
         // A face's scripts are already sorted by how much of each it has.
@@ -3198,13 +3318,13 @@ impl App {
             .iter()
             .take(most)
             .map(|script| {
-                let filled = (script.codepoints * 10).div_ceil(deepest).min(10) as usize;
-                Line::from(vec![
-                    Span::styled(format!("{:<LABEL$}", script.script), self.theme.dim()),
-                    Span::raw("█".repeat(filled)),
-                    Span::styled("░".repeat(10 - filled), self.theme.dim()),
-                    Span::raw(format!(" {}", script.codepoints)),
-                ])
+                let mut spans = vec![Span::styled(
+                    format!("{:<LABEL$}", script.script),
+                    self.theme.dim(),
+                )];
+                spans.extend(self.bar(script.codepoints, deepest, 10));
+                spans.push(Span::raw(format!(" {}", script.codepoints)));
+                Line::from(spans)
             })
             .collect()
     }
@@ -3281,24 +3401,28 @@ impl App {
                 Style::default()
             };
             let text = match row {
+                // An axis is a position on a range, not a quantity, so it gets a knob
+                // on a track rather than a bar filled from the left. A `wght` sitting
+                // at its minimum used to draw an empty box, which looks like an axis
+                // that is switched off rather than one that is turned all the way down.
                 controls::Row::Axis(a) => {
                     let span = (a.max - a.min).max(f32::EPSILON);
-                    let filled = (((a.value - a.min) / span) * 12.0).round() as usize;
+                    let at = ((((a.value - a.min) / span) * 11.0).round() as usize).min(11);
                     format!(
-                        "{marker} {:<4} {:>8}  [{}{}] {}",
+                        "{marker} {:<4} {:>8}  {}●{} {}",
                         a.tag,
                         fmt_axis(a.value),
-                        "=".repeat(filled.min(12)),
-                        " ".repeat(12 - filled.min(12)),
+                        "─".repeat(at),
+                        "─".repeat(11 - at),
                         // The designer's own name for the axis, when it differs from
                         // the tag; `wght` labelled "wght" is noise.
                         if a.label == a.tag { "" } else { &a.label },
                     )
                 }
                 controls::Row::Feature(feature) => format!(
-                    "{marker} {:<4} [{}] {}",
+                    "{marker} {:<4} {} {}",
                     feature.tag,
-                    if feature.on { "x" } else { " " },
+                    if feature.on { "◉" } else { "○" },
                     feature.label
                 ),
             };
@@ -3441,12 +3565,7 @@ impl App {
             Paragraph::new(text)
                 .wrap(Wrap { trim: false })
                 .scroll((scroll, 0))
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .border_style(self.theme.accent())
-                        .title(title),
-                ),
+                .block(self.pane_block(title, true)),
             rect,
         );
     }
@@ -3648,8 +3767,11 @@ fn kv(k: &str, v: String, theme: &theme::Theme) -> Line<'static> {
     ])
 }
 
-/// The label column every readout in the face pane hangs from.
-const LABEL: usize = 10;
+/// The label column every readout in the face pane hangs from, gap included.
+///
+/// Eleven rather than ten because `postscript` is ten characters long, and a label that
+/// exactly fills its own column runs into the value beside it.
+const LABEL: usize = 11;
 
 /// A labelled value, wrapped so that what runs on lines up under what it belongs to.
 ///
@@ -3701,7 +3823,11 @@ fn wrap_kv(k: &str, v: &str, cols: u16, theme: &theme::Theme) -> Vec<Line<'stati
 /// The verdict and its reason, not an SPDX string on its own: whether a font may be
 /// studied, changed and passed on is the fact that decides whether it can be used at
 /// all, and an identifier only answers that for a reader who already knows the list.
-fn license_lines(face: &FaceMetadata, theme: &theme::Theme, cols: u16) -> Vec<Line<'static>> {
+fn license_lines(
+    face: &FaceMetadata,
+    theme: &theme::Theme,
+    cols: u16,
+) -> (Vec<Line<'static>>, Vec<Line<'static>>) {
     let verdict = fontina_core::freedom::assess(face.license.spdx.as_deref());
     // One row, not two. The identifier and the verdict are one answer — "OFL-1.1, free"
     // — and splitting them across two labelled rows made the pane look as though it had
@@ -3728,18 +3854,24 @@ fn license_lines(face: &FaceMetadata, theme: &theme::Theme, cols: u16) -> Vec<Li
             .add_modifier(Modifier::BOLD),
         ),
     ])];
-    if verdict.freedom != fontina_core::Freedom::Free {
-        // "free" needs no explaining, and the pane shares its height with everything
-        // below it. Every other verdict is a reason to go and read something.
-        for line in wrap_kv("", verdict.reason, cols, theme) {
-            lines.push(Line::from(
-                line.spans
-                    .into_iter()
-                    .map(|s| Span::styled(s.content, theme.dim()))
-                    .collect::<Vec<_>>(),
-            ));
-        }
-    }
+    // "free" needs no explaining. Every other verdict is a reason to go and read
+    // something — but it is prose, and prose is the first thing a short pane can do
+    // without, so it goes back to the caller to place if there is room.
+    let reason = if verdict.freedom == fontina_core::Freedom::Free {
+        Vec::new()
+    } else {
+        wrap_kv("", verdict.reason, cols, theme)
+            .into_iter()
+            .map(|line| {
+                Line::from(
+                    line.spans
+                        .into_iter()
+                        .map(|s| Span::styled(s.content, theme.dim()))
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect()
+    };
     if !face.license.reserved_font_names.is_empty() {
         lines.extend(wrap_kv(
             "reserved",
@@ -3762,7 +3894,7 @@ fn license_lines(face: &FaceMetadata, theme: &theme::Theme, cols: u16) -> Vec<Li
             Span::styled("  reported, not enforced", theme.dim()),
         ]));
     }
-    lines
+    (lines, reason)
 }
 
 fn ctrl_c(key: &event::KeyEvent) -> bool {
@@ -3770,6 +3902,20 @@ fn ctrl_c(key: &event::KeyEvent) -> bool {
 }
 
 /// Axis values without trailing noise: `400`, not `400.0`; `87.5` kept as it is.
+/// A face's weight for a list row: the number it is, or the range it can be set to.
+///
+/// A variable face reaches further than the one number it reports, and a row that shows
+/// only the default instance says the same thing about `Bricolage 200..800` as about a
+/// static Regular.
+fn axis_text(value: f32, range: Option<[f32; 2]>) -> String {
+    match range {
+        Some([lo, hi]) if (hi - lo).abs() >= 0.5 => {
+            format!("{}–{}", lo.round() as i64, hi.round() as i64)
+        }
+        _ => format!("{}", value.round() as i64),
+    }
+}
+
 fn fmt_axis(v: f32) -> String {
     if v.fract() == 0.0 {
         format!("{}", v as i64)
@@ -3790,6 +3936,16 @@ fn activation_mark(a: Option<ActivationState>) -> &'static str {
 /// Rows a bordered pane has for its list.
 fn pane_rows(area: Rect) -> usize {
     area.height.saturating_sub(2) as usize
+}
+
+/// The columns a pane has for its content: its width, less the two border columns and
+/// the column of padding inside each of them.
+///
+/// A number rather than a guess, because a pane that guesses wrong by one draws its
+/// last column under the scrollbar. Every pane asks this; nothing subtracts its own
+/// idea of a border.
+fn pane_cols(area: Rect) -> usize {
+    area.width.saturating_sub(4) as usize
 }
 
 /// A `ListState` for a pane that has already been handed only the rows it draws: the
@@ -4042,7 +4198,12 @@ mod tests {
         let face = app.detail.as_mut().expect("a face on show");
         face.license.spdx = Some("LicenseRef-Proprietary".into());
         let drawn = frame(&mut app, 90, 44);
-        let pane: Vec<&str> = drawn.lines().filter_map(|l| l.rsplit('│').nth(1)).collect();
+        let pane: Vec<&str> = drawn
+            .lines()
+            .filter_map(|l| l.rsplit('│').nth(1))
+            // Past the column of padding inside the border.
+            .map(|l| l.strip_prefix(' ').unwrap_or(l))
+            .collect();
         let at = pane
             .iter()
             .position(|l| l.starts_with("licence"))
@@ -4083,7 +4244,12 @@ mod tests {
         let mut app = app();
         select_family(&mut app, "Bricolage Grotesque");
         let drawn = frame(&mut app, 120, 44);
-        let pane: Vec<&str> = drawn.lines().filter_map(|l| l.rsplit('│').nth(1)).collect();
+        let pane: Vec<&str> = drawn
+            .lines()
+            .filter_map(|l| l.rsplit('│').nth(1))
+            // Past the column of padding inside the border.
+            .map(|l| l.strip_prefix(' ').unwrap_or(l))
+            .collect();
         // The label column, so that the controls' own title — `axes & features` — is
         // not mistaken for a readout labelled `axes`.
         let labelled = |label: &str| {
@@ -4794,6 +4960,14 @@ mod tests {
     }
 
     /// Flatten a pane's lines to plain text, the way a reader sees them.
+    /// The licence rows and the reason under them, the way the pane places them when
+    /// it has the room.
+    fn joined((mut lines, reason): (Vec<Line<'static>>, Vec<Line<'static>>)) -> Vec<Line<'static>> {
+        let at = 1.min(lines.len());
+        lines.splice(at..at, reason);
+        lines
+    }
+
     fn text_of(lines: &[Line<'_>]) -> String {
         lines
             .iter()
@@ -4812,7 +4986,7 @@ mod tests {
         let mut app = app();
         select_family(&mut app, "Amiri");
         let mut face = app.detail.clone().unwrap();
-        let shown = text_of(&license_lines(&face, &theme::Theme::default(), 60));
+        let shown = text_of(&joined(license_lines(&face, &theme::Theme::default(), 60)));
         assert!(shown.contains("OFL-1.1"), "{shown}");
         // Not `contains("free")`: the label "freedom" contains it, so that would hold
         // even if the verdict were missing or said the opposite.
@@ -4829,13 +5003,13 @@ mod tests {
 
         // A nonfree licence says so, and says why.
         face.license.spdx = Some("LicenseRef-Proprietary".into());
-        let shown = text_of(&license_lines(&face, &theme::Theme::default(), 60));
+        let shown = text_of(&joined(license_lines(&face, &theme::Theme::default(), 60)));
         assert!(shown.contains("nonfree"), "{shown}");
         assert!(shown.contains("withholds"), "{shown}");
 
         // A font with nothing embedded is not silently called free.
         face.license.spdx = None;
-        let shown = text_of(&license_lines(&face, &theme::Theme::default(), 60));
+        let shown = text_of(&joined(license_lines(&face, &theme::Theme::default(), 60)));
         assert!(shown.contains("none embedded"), "{shown}");
         assert!(shown.contains("unstated"), "{shown}");
         assert!(shown.contains("no permission"), "{shown}");
@@ -4898,13 +5072,14 @@ mod tests {
         let mut face = app.detail.clone().unwrap();
         // Installable is the ordinary case and says nothing.
         assert!(
-            !text_of(&license_lines(&face, &theme::Theme::default(), 60)).contains("embedding")
+            !text_of(&joined(license_lines(&face, &theme::Theme::default(), 60)))
+                .contains("embedding")
         );
 
         let os2 = face.os2.as_mut().unwrap();
         os2.fs_type = 0x0002;
         os2.embedding = fontina_core::model::EmbeddingRights::from_fs_type(0x0002);
-        let shown = text_of(&license_lines(&face, &theme::Theme::default(), 60));
+        let shown = text_of(&joined(license_lines(&face, &theme::Theme::default(), 60)));
         assert!(shown.contains("RestrictedLicense"), "{shown}");
         assert!(
             shown.contains("not enforced"),
@@ -6420,7 +6595,9 @@ mod tests {
         let drawn = stable_frame(&mut app, 120, 36);
         assert!(drawn.contains("5 families"), "{drawn}");
         assert!(
-            drawn.lines().next_back().unwrap().starts_with(" / search"),
+            // Inset to the column the panes' text starts in, which is the border and
+            // the padding inside it.
+            drawn.lines().next_back().unwrap().starts_with("  / search"),
             "the key line is the last row on the screen"
         );
         insta::assert_snapshot!(drawn);
@@ -6572,7 +6749,7 @@ mod tests {
         // The pane's own title, not the word: the filter line at the top counts
         // families too, and an assertion that both satisfy asserts nothing.
         assert!(
-            drawn.contains("┌ families"),
+            drawn.contains("╭ families"),
             "the list has the focus: {drawn}"
         );
         assert!(
@@ -6590,7 +6767,7 @@ mod tests {
             "Tab reaches the face: {face}"
         );
         assert!(
-            !face.contains("┌ families"),
+            !face.contains("╭ families"),
             "and the list is not under it: {face}"
         );
         app.open_narrow();

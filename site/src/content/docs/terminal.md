@@ -84,8 +84,20 @@ $ fontina ui
 ```
 
 opens the index with a keyboard on it. A filter line across the top, families or faces
-on the left, the face itself on the right. It uses the terminal's own sixteen colours,
-so it looks like your terminal rather than like a website. The mouse works. The
+on the left, the face itself on the right.
+
+It uses the terminal's own sixteen colours, so it looks like your terminal rather than
+like a website — and it uses them by *reversing* rather than by painting, so the cursor
+in the glyph map and the row your list is on are your own foreground and background,
+whichever way round you have them. Six roles, no more: the pane you are in, a label, a
+thing that worked, a thing to notice, a thing that failed, and the thing being pointed
+at. Colour carries hierarchy and never meaning; a failing check says `FAIL` whether or
+not the red arrives.
+
+Every pane is the same box — rounded, a column of padding inside it, dim until it has
+the focus, its name on the top edge and what to press on the bottom. Every quantity is
+the same bar, in eighths: what a script covers, how far along its range an axis is set.
+A list longer than its pane says so, down the right-hand border. The mouse works. The
 keyboard is the design.
 
 It shows what is *in* a font rather than a picture of one. A terminal cell is about one
