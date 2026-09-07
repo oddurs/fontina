@@ -1052,6 +1052,49 @@ fn the_script_filter_searches_its_index_rather_than_scanning() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A name collision is not automatically benign, and the group already knew.
+///
+/// `duplicates` drops a PostScript-name group that is exactly an identity group, so every
+/// group that survives holds files which claim one name and do not hold the same bytes.
+/// Nothing said so: `FaceSummary` does not publish the identity hash, so a reader could
+/// not tell a WOFF beside its WOFF2 from a font that had been swapped.
+///
+/// The count says it. Builds rather than fonts — the two Inter fixtures are one typeface
+/// subset two ways, 515 glyphs against 518, and calling that "two fonts" would alarm
+/// about the ordinary case while saying nothing more.
+#[test]
+fn a_group_says_how_many_builds_hide_under_one_name() {
+    let index = indexed();
+    let groups = index.duplicates().unwrap();
+
+    let by_name: Vec<_> = groups
+        .iter()
+        .filter(|g| g.reason.starts_with("same"))
+        .collect();
+    assert_eq!(by_name.len(), 1, "the Inter pair: {groups:?}");
+    let inter = by_name[0];
+    assert_eq!(inter.key, "Inter-Regular");
+    assert_eq!(inter.faces.len(), 2);
+    assert_eq!(
+        inter.distinct, 2,
+        "two builds — the WOFF and the WOFF2 differ by three glyphs"
+    );
+
+    // The count is of builds, not files. Every face in a group could be its own build,
+    // or they could all be one; the number has to distinguish those.
+    for g in &groups {
+        assert!(
+            g.distinct >= 1 && g.distinct as usize <= g.faces.len(),
+            "{g:?}"
+        );
+    }
+
+    // An identity group is by construction one build, however many files carry it.
+    for g in groups.iter().filter(|g| g.reason.starts_with("identical")) {
+        assert_eq!(g.distinct, 1, "identical outlines are one build: {g:?}");
+    }
+}
+
 /// The script facet is ordered by how much of each script there is.
 ///
 /// `Zyyy` and `Zinh` — common punctuation and inherited marks — are in almost every font
