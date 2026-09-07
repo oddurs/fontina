@@ -9,7 +9,7 @@
 #   cairn check           validate every item (CI runs this)
 #   cairn agent           how a coding agent should use it
 
-format = 1
+format = 2
 
 [project]
 name = "fontina"
@@ -89,6 +89,10 @@ name = "chore"
 icon = "~"
 color = "gray"
 
+[[type]]
+name = "milestone"
+description = "a release, or whatever this project ships"
+
 # ─── Statuses ────────────────────────────────────────────────────────────────
 
 [[status]]
@@ -153,42 +157,19 @@ values = ["core", "platform", "cli", "ui", "site", "workspace"]
 column = true
 description = "Where the change lands. `ui` is crates/fontina-cli/src/ui"
 
-# ─── Milestones ──────────────────────────────────────────────────────────────
+[[field]]
+name = "due"
+kind = "date"
+description = "when a milestone is meant to land"
 
-[[milestone]]
-name = "tui-craft"
-title = "TUI 1 — Craft"
-description = "What the browser looks like. A font manager whose list is set in the fonts it lists, drawn with real glyphs, in a layout that holds at any size."
-
-[[milestone]]
-name = "tui-speed"
-title = "TUI 2 — Speed"
-description = "Instant on a library that is not the fixtures. Ten thousand faces, no perceptible lag on any keystroke, and a budget in CI that says so."
-
-[[milestone]]
-name = "tui-depth"
-title = "TUI 3 — Depth"
-description = "What you can do without leaving it. Multi-select, batch work, undo, a command palette, and filters you compose while watching the count."
-
-[[milestone]]
-name = "tui-discovery"
-title = "TUI 4 — Discovery"
-description = "Helping someone find the right face rather than the one they asked for: comparison, similarity, coverage against real text."
-
-[[milestone]]
-name = "integrity"
-title = "Integrity — what the file claims against what it is"
-description = "Every check today reads the metadata and asks whether it is sensible. None asks whether the file agrees with itself. The first tractable piece of PLAN.md \u00a712's closing question: report the disagreement, never resolve it."
-
-[[milestone]]
-name = "unfiled"
-title = "Found, not yet scheduled"
-description = "Real findings with no milestone. Triage moves them or drops them; nothing sits here by default."
-
-[[milestone]]
-name = "m5-ship"
-title = "M5 — Ship"
-description = "Who can run it, rather than what else it can do. Package managers on every desktop, the two unmeasured budgets measured. PLAN.md §5."
+[[field]]
+name = "milestone"
+kind = "ref"
+target = "milestone"
+by = "key"
+rollup = true
+inverse = "scheduled"
+description = "what this ships in"
 
 # ─── Views ───────────────────────────────────────────────────────────────────
 
