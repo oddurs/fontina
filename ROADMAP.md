@@ -23,7 +23,7 @@ What the browser looks like. A font manager whose list is set in the fonts it li
 
 ## tui-speed — TUI 2 — Speed
 
-`##########` 100% · 4 of 4 done
+`##########` 100% · 5 of 5 done
 
 Instant on a library that is not the fixtures. Ten thousand faces, no perceptible lag on any keystroke, and a budget in CI that says so.
 
@@ -33,6 +33,7 @@ Instant on a library that is not the fixtures. Ten thousand faces, no perceptibl
 - [x] [`0006`](https://github.com/oddurs/fontina/blob/main/cairn/items/0006-search-off-the-drawing-thread-cancelled-by-the-next-key.md) Search off the drawing thread, cancelled by the next key <sup>perf · p0 · ui</sup>
 - [x] [`0007`](https://github.com/oddurs/fontina/blob/main/cairn/items/0007-cache-a-rasterised-preview-by-face-size-and-axes.md) Cache a rasterised preview by face, size and axes <sup>perf · p1 · ui</sup>
 - [x] [`0008`](https://github.com/oddurs/fontina/blob/main/cairn/items/0008-a-frame-budget-at-ten-thousand-faces-enforced-in-ci.md) A frame budget at ten thousand faces, enforced in CI <sup>test · p1 · ui</sup>
+- [x] [`0025`](https://github.com/oddurs/fontina/blob/main/cairn/items/0025-the-search-worker-could-drop-a-request-and-freeze-the-browser.md) The search worker could drop a request and freeze the browser <sup>fix · p0 · ui</sup>
 
 ## tui-depth — TUI 3 — Depth
 
