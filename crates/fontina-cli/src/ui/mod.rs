@@ -2450,10 +2450,9 @@ impl App {
              n/p step through named instances   0 resets everything
  Glyphs      m opens the glyph map: h/l pick a block, j/k scroll, / finds a
              codepoint (U+0041, 0x41, 41) or a block by name
- Sheets      w waterfalls the face down the size ladder; C compares every face
-             the selection stands for; P sets every family in its own face, the
-             one view that answers what a typeface looks like without opening it.
-             j/k scroll, +/- resize
+ Sheets      w waterfalls a face down the size ladder, C compares every face the
+             selection stands for, P sets every family in its own. j/k scroll,
+             +/- resize
  Specimen    s writes an HTML specimen and opens it, for what a terminal cannot
              show honestly
  Panes       Three side by side at {three} columns and up; under that the facets
