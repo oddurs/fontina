@@ -409,6 +409,16 @@ fn parse_one(font: &FontRef, index: u32, file: &FileInfo) -> Result<FaceMetadata
             (Some(a), Some(b)) => Some([a, b]),
             _ => None,
         },
+        family_class: o.s_family_class(),
+        panose: {
+            // Ten bytes by the specification; a truncated table is a font saying
+            // nothing rather than a reason to refuse the whole face.
+            let mut p = [0u8; 10];
+            let read = o.panose_10();
+            let n = read.len().min(10);
+            p[..n].copy_from_slice(&read[..n]);
+            p
+        },
         typo_ascender: Some(o.s_typo_ascender()),
         typo_descender: Some(o.s_typo_descender()),
     });

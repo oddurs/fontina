@@ -26,22 +26,28 @@
 //! scripts shared" — and the reader decides. A program that ranked type by taste and
 //! then said so would be lying twice.
 //!
-//! ## What is measured, and what is not
+//! ## What is measured
 //!
-//! Four things, all of them already in the index: contrast in weight, contrast in
-//! width, whether the spacing class differs, and how close the x-heights are at a
-//! common size. Plus one gate: scripts in common, because two faces that cannot set the
-//! same text are not a pair whatever else they are.
+//! Five things, all of them in the index: contrast in weight, contrast in width,
+//! whether the spacing class differs, how close the x-heights are at a common size,
+//! and whether the two are different kinds of typeface. Plus one gate: scripts in
+//! common, because two faces that cannot set the same text are not a pair whatever else
+//! they are.
 //!
-//! The item that asked for this also asked for "a different outline class", meaning
-//! serif against sans. **The index does not store that.** There is no PANOSE and no
-//! `OS/2.sFamilyClass` in the model, and the acceptance criteria say nothing new is to
-//! be parsed — so the honest thing is to leave it out and say so, rather than dress a
-//! `glyf`-versus-`CFF` difference up as a typographic one. The nearest thing the index
-//! does hold is the spacing class, which is a real pairing signal on its own: a
-//! monospace against a proportional is a contrast anybody would recognise.
+//! That last one is the axis a person would name first — serif against sans — and it is
+//! the weakest of the five, because it is a report of what the font *claims*. Of the
+//! five fixtures this repository ships, not one fills in `OS/2.sFamilyClass`, three
+//! decline to classify themselves at all, and the chromatic display face calls itself a
+//! normal sans. So an unclassified face is not scored on it either way, and the row says
+//! "kind not stated" rather than guessing. A ranking that treated silence as sans-serif
+//! would be inventing the very fact it was ranking on.
 
 use fontina_core::model::FaceMetadata;
+
+/// The verdict a font gives when it declines to say what kind of typeface it is.
+fn unstated() -> fontina_core::Classification {
+    fontina_core::Classification::Unclassified
+}
 
 /// One candidate, measured against the target.
 #[derive(Debug, Clone, PartialEq)]
@@ -58,6 +64,10 @@ pub struct Measured {
     pub target_x_em: Option<f32>,
     /// Whether one is monospaced and the other is not.
     pub spacing_differs: bool,
+    /// What each font says it is. `Unclassified` on either side means the pair is not
+    /// scored on it — silence is not a third kind of typeface.
+    pub kind: fontina_core::Classification,
+    pub target_kind: fontina_core::Classification,
     /// Scripts both cover.
     pub shared_scripts: Vec<String>,
 }
@@ -80,6 +90,11 @@ impl Measured {
         if self.spacing_differs {
             parts.push("spacing differs".into());
         }
+        parts.push(match (self.target_kind, self.kind) {
+            (t, c) if t == unstated() || c == unstated() => "kind not stated".into(),
+            (t, c) if t == c => format!("both {}", c.as_str()),
+            (t, c) => format!("{} vs {}", t.as_str(), c.as_str()),
+        });
         parts.push(match (self.target_x_em, self.x_em) {
             (Some(t), Some(c)) => format!("x/em {t:.2} vs {c:.2}"),
             _ => "x/em not reported".into(),
@@ -109,6 +124,14 @@ impl Measured {
         let weight = 1.0 - (self.weight_delta.abs() / 400.0).min(1.0);
         let width = 1.0 - (self.width_delta.abs() / 40.0).min(1.0);
         let spacing = if self.spacing_differs { 0.0 } else { 0.5 };
+        // Contrast wanted here too, and silence scored in the middle: a font that did
+        // not say what it is has neither earned a place near the top nor a place at the
+        // bottom, and pretending otherwise would rank on a fact nobody stated.
+        let kind = match (self.target_kind, self.kind) {
+            (t, c) if t == unstated() || c == unstated() => 0.5,
+            (t, c) if t == c => 1.0,
+            _ => 0.0,
+        };
         // Closeness wanted here: two faces set together want to look the same size,
         // and x-height at a common size is most of what "the same size" means.
         let x = match self.x_height_gap() {
@@ -117,7 +140,7 @@ impl Measured {
             // not report an x-height is neither a good nor a bad match on it.
             None => 0.5,
         };
-        weight * 2.0 + width + spacing + x * 2.0
+        weight * 2.0 + width + spacing + kind + x * 2.0
     }
 }
 
@@ -146,6 +169,8 @@ pub fn measure(target: &FaceMetadata, face: &FaceMetadata, id: i64) -> Measured 
         .collect();
     Measured {
         id,
+        kind: face.classification(),
+        target_kind: target.classification(),
         label: format!("{} {}", face.names.family, face.names.subfamily),
         weight_delta: face.style.weight - target.style.weight,
         width_delta: face.style.width - target.style.width,
@@ -248,6 +273,7 @@ impl View {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fontina_core::Classification;
 
     fn fixture(name: &str) -> FaceMetadata {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -375,6 +401,48 @@ mod tests {
 
         let view = View::new(&target, vec![same, contrasting], 2, false);
         assert_eq!(view.rows().first().map(|r| r.id), Some(2));
+    }
+
+    /// The axis a person would name first, and the reason it is the weakest of the
+    /// five: it reports what the font claims, and most fonts claim nothing.
+    #[test]
+    fn a_font_that_did_not_say_what_it_is_is_not_scored_on_it() {
+        let target = serif();
+        assert_eq!(target.classification(), Classification::Serif);
+
+        // Inter's PANOSE says "Latin text, serif style any" — a sans that does not say
+        // so — and Amiri says nothing at all.
+        let quiet = measure(&target, &inter(), 1);
+        assert_eq!(quiet.kind, Classification::Unclassified);
+        assert!(
+            quiet.summary().contains("kind not stated"),
+            "{}",
+            quiet.summary()
+        );
+
+        // Two that did say, and disagree, is a contrast worth naming.
+        let mut sans = inter();
+        sans.os2.as_mut().expect("an OS/2 table").panose[1] = 11;
+        let contrasting = measure(&target, &sans, 2);
+        assert_eq!(contrasting.kind, Classification::SansSerif);
+        assert!(
+            contrasting.summary().contains("serif vs sans-serif"),
+            "{}",
+            contrasting.summary()
+        );
+
+        // Silence sits between agreement and contrast rather than at either end.
+        let mut same = inter();
+        same.os2.as_mut().expect("an OS/2 table").panose[1] = 4;
+        let matching = measure(&target, &same, 3);
+        assert_eq!(matching.kind, Classification::Serif);
+        assert!(
+            contrasting.rank() < quiet.rank() && quiet.rank() < matching.rank(),
+            "contrast {}, silence {}, sameness {}",
+            contrasting.rank(),
+            quiet.rank(),
+            matching.rank()
+        );
     }
 
     /// The title is a claim about what was measured, not about what is good.

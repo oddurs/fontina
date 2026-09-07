@@ -56,7 +56,7 @@ pub use index::{
     Family, ImportReport, Index, Interrupt, LanguageSource, Related, Source, SourceKind, TagInfo,
     TagSyncChange, TagSyncReport, TagSyncSkip,
 };
-pub use model::{Container, FaceMetadata, FileInfo};
+pub use model::{Classification, Container, FaceMetadata, FileInfo};
 pub use scan::{ScanOptions, ScanReport};
 
 /// Version of the `FaceMetadata` JSON shape. Bump when the schema changes incompatibly.
