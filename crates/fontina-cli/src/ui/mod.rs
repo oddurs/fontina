@@ -3115,6 +3115,17 @@ fn facet_value_label(facet: Facet, value: &str) -> String {
             "{value}% {}",
             fontina_core::index::width_name(value.parse().unwrap_or(100.0))
         ),
+        // The three ISO 15924 codes that are not scripts, said in words. A reader
+        // scanning for Arabic should not have to know that Zinh is where combining
+        // marks go.
+        Facet::Script if PSEUDO_SCRIPTS.contains(&value) => format!(
+            "{value} {}",
+            match value {
+                "Zyyy" => "common",
+                "Zinh" => "inherited",
+                _ => "unassigned",
+            }
+        ),
         Facet::Source => Path::new(value)
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
@@ -4379,6 +4390,20 @@ mod tests {
     }
 
     /// Zyyy, Zinh and Zzzz are in nearly every font and are never what one is for.
+    /// And when the reader does go looking for them, they are named rather than
+    /// spelled: nobody should have to know that Zinh is where combining marks go.
+    #[test]
+    fn a_pseudo_script_is_said_in_words() {
+        assert_eq!(facet_value_label(Facet::Script, "Zyyy"), "Zyyy common");
+        assert_eq!(facet_value_label(Facet::Script, "Zinh"), "Zinh inherited");
+        assert_eq!(facet_value_label(Facet::Script, "Zzzz"), "Zzzz unassigned");
+        assert_eq!(
+            facet_value_label(Facet::Script, "Arab"),
+            "Arab",
+            "a real script is its own code and nothing else"
+        );
+    }
+
     #[test]
     fn the_pseudo_scripts_do_not_take_the_top_of_the_script_section() {
         let app = app();
