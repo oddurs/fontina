@@ -635,6 +635,14 @@
         "embedding": {
           "$ref": "#/$defs/EmbeddingRights"
         },
+        "family_class": {
+          "default": 0,
+          "description": "`OS/2.sFamilyClass`: the IBM font class in the high byte, the subclass in the\nlow one. Zero means the font declined to classify itself, which a great many do.",
+          "format": "int16",
+          "maximum": 32767,
+          "minimum": -32768,
+          "type": "integer"
+        },
         "fs_selection": {
           "format": "uint16",
           "maximum": 65535,
@@ -646,6 +654,30 @@
           "maximum": 65535,
           "minimum": 0,
           "type": "integer"
+        },
+        "panose": {
+          "default": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "description": "The ten PANOSE digits, as they are in the table.\n\nAll zeroes is \"any\" and all ones is \"no fit\"; both mean the font is not saying.\nKept whole rather than interpreted here, because the digits mean different\nthings depending on the first of them, and a reader with the ten numbers can\nlook up what this program does not.",
+          "items": {
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "maxItems": 10,
+          "minItems": 10,
+          "type": "array"
         },
         "typo_ascender": {
           "format": "int16",
