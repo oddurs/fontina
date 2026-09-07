@@ -1,9 +1,9 @@
 ---
 source: crates/fontina-cli/src/ui/mod.rs
-assertion_line: 5957
+assertion_line: 6164
 expression: drawn
 ---
- filter  nothin┌ fontina ui — 34/37 lines, j/k scrolls ─────────────────────────────────────────────────┐  5 families
+ filter  nothin┌ fontina ui — 34/39 lines, j/k scrolls ─────────────────────────────────────────────────┐  5 families
 ┌ 5 families ──│                                                                                        │──────────────┐
 │Amiri         │ Move        j/k ↑/↓ PgUp/PgDn g/G        Tab cycles the panes                          │              │
 │Bricolage Grot│ Search      / types a query, Esc clears it, x clears every filter                      │              │
@@ -25,6 +25,8 @@ expression: drawn
 │              │             and the metrics that say whether that means one design. ⏎ goes to it       │              │
 │              │ Who sets    e asks who can set a line of text: paste it and the answer names,          │              │
 │              │             per face, the characters and scripts it lacks. The text is kept            │              │
+│              │ Pairing     P ranks the library against this face on weight, width, spacing and        │              │
+│              │             x-height, showing the numbers. It is a shortlist, not a judgement          │              │
 │              │ Glyphs      m opens the glyph map: h/l pick a block, / finds a codepoint               │              │
 │              │             (U+0041, 0x41, 41) or a block by name                                      │              │
 │              │ Specimen    s writes an HTML specimen and opens it. A terminal cannot show a           │              │
@@ -34,8 +36,6 @@ expression: drawn
 │              │             that, the other a Tab away. Narrow by opens over the list, never the face  │              │
 │              │ Undo        U takes back the last change to the index, Ctrl-R does it again. A         │              │
 │              │             whole selection is one undo; what cannot be put back exactly is not        │              │
-│              │ Commands    : lists every command the program has, filtered as you type. What the      │              │
-│              │             browser implements it runs; what prints, it writes out for you             │              │
-└──────────────│ Index       R rescans every source (fontina scan --prune)          Quit  q             │──────────────┘
- $ fontina fami│                                                                                        │
+└──────────────│ Commands    : lists every command the program has, filtered as you type. What the      │──────────────┘
+ $ fontina fami│             browser implements it runs; what prints, it writes out for you             │
  / search  f na└────────────────────────────────────────────────────────────────────────────────────────┘e  ? help

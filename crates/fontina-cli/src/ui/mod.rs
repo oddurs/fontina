@@ -27,6 +27,7 @@ mod filter;
 mod glyphs;
 mod history;
 mod layout;
+mod pairing;
 mod palette;
 mod related;
 mod search;
@@ -318,6 +319,10 @@ pub struct App {
     /// rather than a pane, for the reason the glyph map is one: the evidence beside
     /// each score is what makes it worth reading, and it needs the width.
     related: Option<related::View>,
+    /// Faces ranked against this one for pairing, while the list is open.
+    pairing: Option<pairing::View>,
+    /// Rows the pairing list had on the last frame, so a PageDown moves by a screen.
+    pairing_rows: usize,
     /// Rows the related list had on the last frame, so a PageDown moves by a screen.
     related_rows: usize,
     /// Who can set the pasted text, while the answer is on the screen.
@@ -420,6 +425,8 @@ impl App {
             controls: controls::Controls::default(),
             glyphs: None,
             related: None,
+            pairing: None,
+            pairing_rows: 0,
             related_rows: 0,
             covering: None,
             covering_rows: 0,
@@ -949,6 +956,10 @@ impl App {
             self.handle_glyph_key(key.code)?;
             return Ok(Flow::Continue);
         }
+        if !ctrl_c(&key) && self.pairing.is_some() {
+            self.handle_pairing_key(key.code)?;
+            return Ok(Flow::Continue);
+        }
         if !ctrl_c(&key) && self.related.is_some() {
             self.handle_related_key(key.code)?;
             return Ok(Flow::Continue);
@@ -1029,6 +1040,7 @@ impl App {
             // Pre-filled with the last question, because retyping a sentence to change
             // one word in it is the friction this is here to remove.
             KeyCode::Char('e') => self.start_input(InputKind::Cover, self.cover_text.clone()),
+            KeyCode::Char('P') => self.open_pairing()?,
             KeyCode::Char('s') => self.open_specimen()?,
             KeyCode::Tab => self.cycle_focus(),
             KeyCode::Char('/') => self.start_input(InputKind::Search, self.query.clone()),
@@ -1122,6 +1134,81 @@ impl App {
 
     /// Open the glyph map on the face on show. A face with no coverage at all — a
     /// broken font, or one still being scanned — has nothing to map.
+    /// How many faces the pairing ranking will read the metadata of.
+    ///
+    /// x-height and spacing come out of each face's own metrics, which is a row and a
+    /// JSON parse each. Two hundred of whatever the reader has already filtered to is
+    /// far more than the twenty this is meant to put in front of them, and the title
+    /// says when the number is a floor.
+    const PAIR_CAP: usize = 200;
+
+    /// Rank the library against the face on show, for pairing.
+    fn open_pairing(&mut self) -> Result<()> {
+        let (Some(id), Some(target)) = (self.detail_id, self.detail.clone()) else {
+            self.status = "no face on show".into();
+            return Ok(());
+        };
+        // Without the open family, deliberately. A partner is something the reader
+        // does not already have on the screen, and ranking inside an open family can
+        // only ever return that family's own weights.
+        let listed = self.index.list(&FaceFilter {
+            family: None,
+            ..self.filter()
+        })?;
+        let capped = listed.len() > Self::PAIR_CAP;
+        let considered = listed.len();
+        let mut rows = Vec::new();
+        for summary in listed.into_iter().take(Self::PAIR_CAP) {
+            // Not itself, and not another face of the same family: pairing a typeface
+            // with its own bold is a weight, not a pairing.
+            if summary.id == id || summary.family == target.names.family {
+                continue;
+            }
+            let Some(face) = self.index.get_face(summary.id)? else {
+                continue;
+            };
+            rows.push(pairing::measure(&target, &face, summary.id));
+        }
+        let view = pairing::View::new(&target, rows, considered, capped);
+        if view.is_empty() {
+            self.status = format!(
+                "nothing in this filter shares a script with {} {}   (fontina list --script ...)",
+                target.names.family, target.names.subfamily
+            );
+            self.pairing = None;
+            return Ok(());
+        }
+        self.status = view.title();
+        self.pairing = Some(view);
+        Ok(())
+    }
+
+    /// Keys while the pairing list is up.
+    fn handle_pairing_key(&mut self, code: KeyCode) -> Result<()> {
+        let page = self.pairing_rows.max(1) as i32;
+        let Some(view) = self.pairing.as_mut() else {
+            return Ok(());
+        };
+        match code {
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('P') => self.pairing = None,
+            KeyCode::Down | KeyCode::Char('j') => view.move_cursor(1),
+            KeyCode::Up | KeyCode::Char('k') => view.move_cursor(-1),
+            KeyCode::PageDown => view.move_cursor(page),
+            KeyCode::PageUp => view.move_cursor(-page),
+            KeyCode::Home | KeyCode::Char('g') => view.jump(0),
+            KeyCode::End | KeyCode::Char('G') => view.jump(usize::MAX),
+            KeyCode::Enter => {
+                let Some(id) = view.selected().map(|r| r.id) else {
+                    return Ok(());
+                };
+                self.pairing = None;
+                return self.go_to_face(id);
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     /// List what else in the library covers nearly the same characters.
     ///
     /// Every candidate's metadata is read here, once, rather than per frame: the four
@@ -1918,6 +2005,9 @@ impl App {
         if self.covering.is_some() {
             self.draw_covering(f, body);
         }
+        if self.pairing.is_some() {
+            self.draw_pairing(f, body);
+        }
         if self.palette.is_some() {
             self.draw_palette(f, area);
         }
@@ -2103,6 +2193,33 @@ impl App {
         let list =
             List::new(items).highlight_style(Style::default().add_modifier(Modifier::REVERSED));
         f.render_stateful_widget(list, rows, &mut windowed(Some(palette.cursor()), &win));
+    }
+
+    /// The pairing list: a name, and the measurements it was ranked on.
+    fn draw_pairing(&mut self, f: &mut ratatui::Frame, area: Rect) {
+        let Some(view) = &self.pairing else { return };
+        f.render_widget(Clear, area);
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(self.theme.accent())
+            .title(format!(
+                " {} — ⏎ goes to it, P or Esc closes ",
+                view.title()
+            ));
+        let inner = block.inner(area);
+        f.render_widget(block, area);
+        if inner.width < 24 || inner.height < 1 {
+            return;
+        }
+        self.pairing_rows = inner.height as usize;
+        let win = layout::window(view.rows().len(), view.cursor(), inner.height as usize, 0);
+        let items: Vec<ListItem> = view.rows()[win.clone()]
+            .iter()
+            .map(|r| ListItem::new(Line::from(view.row_text(r, inner.width as usize))))
+            .collect();
+        let list =
+            List::new(items).highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+        f.render_stateful_widget(list, inner, &mut windowed(Some(view.cursor()), &win));
     }
 
     /// The related list: a score, a name, and the evidence for the score.
@@ -3192,6 +3309,8 @@ impl App {
              and the metrics that say whether that means one design. ⏎ goes to it
  Who sets    e asks who can set a line of text: paste it and the answer names,
              per face, the characters and scripts it lacks. The text is kept
+ Pairing     P ranks the library against this face on weight, width, spacing and
+             x-height, showing the numbers. It is a shortlist, not a judgement
  Glyphs      m opens the glyph map: h/l pick a block, / finds a codepoint
              (U+0041, 0x41, 41) or a block by name
  Specimen    s writes an HTML specimen and opens it. A terminal cannot show a
@@ -5918,6 +6037,94 @@ mod tests {
         assert_eq!(app.status, "nothing to set: type some text");
     }
 
+    /// A shortlist, with the numbers it was made from, and no adjective anywhere.
+    #[test]
+    fn p_ranks_the_library_against_the_face_on_show() {
+        let mut app = app();
+        select_family(&mut app, "Source Serif");
+        press(&mut app, KeyCode::Char('P'));
+
+        let view = app.pairing.as_ref().expect("the fixtures share Latin");
+        assert!(!view.is_empty());
+        assert!(
+            view.rows()
+                .iter()
+                .all(|r| r.label != "Source Serif 4 Regular"),
+            "a face was ranked against itself"
+        );
+
+        let drawn = stable_frame(&mut app, 120, 36);
+        assert!(drawn.contains("ranked against Source Serif"), "{drawn}");
+        assert!(
+            drawn.contains("weight "),
+            "the measurements are shown: {drawn}"
+        );
+        assert!(
+            drawn.contains("x/em ") || drawn.contains("not reported"),
+            "{drawn}"
+        );
+        assert!(drawn.contains("script"), "{drawn}");
+        for word in ["best", "good match", "ideal", "perfect"] {
+            assert!(!drawn.contains(word), "{word:?} is taste: {drawn}");
+        }
+    }
+
+    /// Pairing a typeface with its own bold is a weight, not a pairing.
+    #[test]
+    fn the_same_family_is_not_a_pairing() {
+        let mut app = app();
+        select_family(&mut app, "Inter");
+        app.open_family().unwrap();
+        press(&mut app, KeyCode::Char('P'));
+        let view = app.pairing.as_ref().expect("something to rank");
+        assert!(
+            view.rows().iter().all(|r| !r.label.starts_with("Inter")),
+            "the other Inter was offered as a partner: {:?}",
+            view.rows().iter().map(|r| &r.label).collect::<Vec<_>>()
+        );
+    }
+
+    /// A face with no plausible partner says so, rather than showing a list that is
+    /// not one.
+    #[test]
+    fn a_face_with_no_partner_in_the_filter_says_so() {
+        let mut app = app();
+        select_family(&mut app, "Amiri");
+        // Narrow to Amiri alone, so there is nothing else to pair with at all.
+        app.query = "Amiri".into();
+        app.reload().unwrap();
+        press(&mut app, KeyCode::Char('P'));
+        assert!(app.pairing.is_none());
+        assert!(
+            app.status
+                .starts_with("nothing in this filter shares a script"),
+            "{}",
+            app.status
+        );
+    }
+
+    /// Enter goes to the face, and P closes the list again.
+    #[test]
+    fn enter_goes_to_the_partner_and_p_closes_the_list() {
+        let mut app = app();
+        select_family(&mut app, "Source Serif");
+        press(&mut app, KeyCode::Char('P'));
+        assert!(app.pairing.is_some());
+        press(&mut app, KeyCode::Char('P'));
+        assert!(app.pairing.is_none(), "P did not close it");
+
+        press(&mut app, KeyCode::Char('P'));
+        let to = app
+            .pairing
+            .as_ref()
+            .and_then(|v| v.selected())
+            .map(|r| r.id)
+            .expect("something to go to");
+        press(&mut app, KeyCode::Enter);
+        assert!(app.pairing.is_none());
+        assert_eq!(app.detail_id, Some(to), "{}", app.status);
+    }
+
     #[test]
     fn the_browser_opens_on_the_family_list() {
         let mut app = app();
@@ -6192,7 +6399,10 @@ mod tests {
     fn the_help_says_when_it_does_not_fit_and_scrolls_when_it_does_not() {
         let mut app = app();
         app.help = true;
-        let tall = stable_frame(&mut app, 100, 40);
+        // Taller than the list is long, with room to spare: the list grows with the
+        // browser, and a test that pins the exact height it needs would be a test
+        // somebody has to edit every time a key is added.
+        let tall = stable_frame(&mut app, 100, 60);
         assert!(tall.contains("any key to close"), "all of it fits: {tall}");
         assert!(!tall.contains("j/k scrolls"), "so it says nothing about it");
 
