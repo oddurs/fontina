@@ -4,13 +4,9 @@
 
 ## tui-craft — TUI 1 — Craft
 
-`#####·····` 50% · 2 of 4 done
+`########··` 75% · 3 of 4 done
 
 What the browser looks like. A font manager whose list is set in the fonts it lists, drawn with real glyphs, in a layout that holds at any size.
-
-### backlog
-
-- [ ] [`0024`](https://github.com/oddurs/fontina/blob/main/cairn/items/0024-nobody-knows-what-the-left-pane-is.md) Nobody knows what the left pane is <sup>feat · p0 · ui</sup>
 
 ### ready to start
 
@@ -20,6 +16,7 @@ What the browser looks like. A font manager whose list is set in the fonts it li
 
 - [x] [`0003`](https://github.com/oddurs/fontina/blob/main/cairn/items/0003-one-colour-scheme-three-colour-depths.md) One colour scheme, three colour depths <sup>feat · p1 · ui</sup>
 - [x] [`0004`](https://github.com/oddurs/fontina/blob/main/cairn/items/0004-three-panes-two-panes-one-pane.md) Three panes, two panes, one pane <sup>feat · p1 · ui</sup>
+- [x] [`0024`](https://github.com/oddurs/fontina/blob/main/cairn/items/0024-nobody-knows-what-the-left-pane-is.md) Nobody knows what the left pane is <sup>feat · p0 · ui</sup>
 
 ## tui-speed — TUI 2 — Speed
 
@@ -50,7 +47,7 @@ What you can do without leaving it. Multi-select, batch work, undo, a command pa
 
 ## tui-discovery — TUI 4 — Discovery
 
-`··········` 0% · 0 of 4 done
+`··········` 0% · 0 of 5 done
 
 Helping someone find the right face rather than the one they asked for: comparison, similarity, coverage against real text.
 
@@ -60,6 +57,7 @@ Helping someone find the right face rather than the one they asked for: comparis
 - [ ] [`0014`](https://github.com/oddurs/fontina/blob/main/cairn/items/0014-show-me-faces-like-this-one.md) Show me faces like this one <sup>feat · p1 · ui</sup>
 - [ ] [`0015`](https://github.com/oddurs/fontina/blob/main/cairn/items/0015-paste-text-see-who-can-set-it.md) Paste text, see who can set it <sup>feat · p1 · ui</sup>
 - [ ] [`0016`](https://github.com/oddurs/fontina/blob/main/cairn/items/0016-suggest-a-face-to-pair-with-this-one.md) Suggest a face to pair with this one <sup>feat · p2 · ui</sup>
+- [ ] [`0026`](https://github.com/oddurs/fontina/blob/main/cairn/items/0026-several-values-in-one-facet-in-the-browser-and-on-the-command-line.md) Several values in one facet, in the browser and on the command line <sup>feat · p1 · core</sup>
 
 ## unfiled — Found, not yet scheduled
 

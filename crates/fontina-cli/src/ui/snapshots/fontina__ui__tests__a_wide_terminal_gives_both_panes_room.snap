@@ -19,22 +19,10 @@ expression: drawn
 │                                            ││  liga [ ] Standard ligatures                                           │
 │                                            ││  pnum [ ] Proportional figures                                         │
 │                                            ││  ss01 [ ] Stylistic set 1                                              │
-│                                            ││  ss02 [ ] Stylistic set 2                                              │
-│                                            ││  ss03 [ ] Stylistic set 3                                              │
-│                                            ││  ss04 [ ] Stylistic set 4                                              │
-│                                            ││  ss05 [ ] Stylistic set 5                                              │
-│                                            ││  ss06 [ ] Stylistic set 6                                              │
-│                                            ││  ss07 [ ] Stylistic set 7                                              │
-│                                            ││  ss08 [ ] Stylistic set 8                                              │
 │                                            ││                                                                        │
 │                                            ││metrics   1000 upm · asc 1124 · desc -634 · gap 0                       │
 │                                            ││shape     cap 646 · x-height 433 · x/em 0.43                            │
 │                                            ││Arab      ██████████ 1217                                               │
-│                                            ││Latn      ███░░░░░░░ 291                                                │
-│                                            ││Zyyy      ██░░░░░░░░ 160                                                │
-│                                            ││Zinh      █░░░░░░░░░ 31                                                 │
-│                                            ││                                                                        │
-│                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
  $ fontina families
  / search  f narrow  F flags  x clear  ⇥ pane  ⏎ open  ⌫ back  ␣ select  t tag  c collection  a/A activate  ? help

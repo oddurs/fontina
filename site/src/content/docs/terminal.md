@@ -83,10 +83,10 @@ background; `--max-width` clips.
 $ fontina ui
 ```
 
-opens the index with a keyboard on it. Three panes: every facet of the library down
-the left, families or faces in the middle, the face itself on the right. It uses the
-terminal's own sixteen colours, so it looks like your terminal rather than like a
-website. The mouse works. The keyboard is the design.
+opens the index with a keyboard on it. A filter line across the top, families or faces
+on the left, the face itself on the right. It uses the terminal's own sixteen colours,
+so it looks like your terminal rather than like a website. The mouse works. The
+keyboard is the design.
 
 It shows what is *in* a font rather than a picture of one. A terminal cell is about one
 pixel wide and two tall, so type drawn with block characters arrives through a filter
@@ -97,10 +97,28 @@ one. The browser is where you decide what to look at.
 
 <!--frame:the_browser_opens_on_the_family_list "families"-->
 
-The left column is the library counted rather than searched: how many faces are Light,
-how many are condensed, which scripts they cover, which vendors made them, what
-licences they carry. Selecting one filters everything; `x` clears them all. Nothing
-here is a saved list you have to build first.
+The top line is the filter, and it is there whether or not anything is filtered. With
+nothing on it says so and says which key would change that. With something on it names
+every filter in your own words, says what they did to the count — `341 → 12 families`
+— and names the key that clears them.
+
+### Narrow by
+
+`f` opens the library counted rather than searched.
+
+<!--frame:narrow_by_opens_over_the_list_and_says_how_to_leave "f — narrow by"-->
+
+Script first, then language, foundry, your own tags and collections, then what a face
+can do, then weight, width and style, licence, source and format. That is the order a
+person walks into a font library; nobody has ever opened a font manager thinking "show
+me the 500 Mediums". Each section shows its top three and ends with `+N more`, which
+Enter opens. Enter on a value filters everything; `x` clears them all; Esc closes the
+panel. Nothing here is a saved list you have to build first.
+
+Every count is a pair: families, and faces in brackets. The list beside the panel is a
+list of families, so the number that leads is the one that says what pressing the row
+will do to it. And a value you have selected is drawn at every count, including zero —
+narrowing to nothing must not take away the row that undoes it.
 
 ### Opening a family
 
@@ -251,8 +269,9 @@ facet to `--variable=false`.
 | `j` `k`, arrows, PageUp, PageDown, `g`, `G` | move |
 | Tab | cycle the panes this width has |
 | `/` | search; type, then Enter. Esc clears |
+| `f` | Narrow by: the facets, as a panel. Esc closes it |
 | `F` | the filter bar: `fontina list` flags, applied as you type |
-| Enter | open a family, or toggle a facet |
+| Enter | open a family, or pick a value in Narrow by |
 | Space | mark the row under the cursor |
 | `v` | start a range; `v` again ends it |
 | `*` | mark everything the filter matches, again to unmark |
