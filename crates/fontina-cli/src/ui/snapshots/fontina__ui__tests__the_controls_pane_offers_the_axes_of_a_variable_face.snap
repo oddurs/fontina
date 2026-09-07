@@ -1,6 +1,5 @@
 ---
 source: crates/fontina-cli/src/ui/mod.rs
-assertion_line: 3513
 expression: drawn
 ---
 ┌ 6 faces ───────────────┐┌ 5 families ─────────────────────────────┐┌ Details ────────────────────────────────────────┐
@@ -33,9 +32,9 @@ expression: drawn
 │  Grek                2 ││                                         ││  subs [ ] Subscript                             │
 │Language                ││                                         ││  sups [ ] Superscript                           │
 │  en                  6 ││                                         ││                                                 │
-│  CAT                 3 ││                                         ││                                                 │
-│  TRK                 3 ││                                         ││                                                 │
-│  AZE                 2 ││                                         ││                                                 │
+│  CAT                 3 ││                                         ││metrics   1000 upm · asc 930 · desc -270 · gap 0 │
+│  TRK                 3 ││                                         ││shape     cap 660 · x-height 528 · x/em 0.53     │
+│  AZE                 2 ││                                         ││Latn      ██████████ 327                         │
 └────────────────────────┘└─────────────────────────────────────────┘└─────────────────────────────────────────────────┘
  $ fontina families
  / search  ⇥ pane  ⏎ open  ⌫ back  ␣ select  t tag  c collection  a/A activate  d deactivate  i install  ? help

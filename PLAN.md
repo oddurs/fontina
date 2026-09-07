@@ -294,7 +294,10 @@ Laid out as pull requests in §10 and shipped in that order.
 3. **See the coverage** (#48). A glyph map by Unicode block with a codepoint search, and
    `unicode::cell_for`, which stopped `glyphs` printing U+202E raw into the terminal.
 4. **Compare** (#49). Waterfall and comparison as one scrolling sheet, laid out once per
-   width rather than per frame.
+   width rather than per frame. Both were removed again on 2026-09-06: a terminal cell
+   is one pixel wide and two tall, so what they drew was a picture of something that is
+   not the font (ADR 0010). The browser shows structure; `s` opens a real specimen and
+   `fontina preview` draws a true image where the terminal has a protocol for one.
 5. **Say whether it is free** (#55). The freedom verdict and its reason in the details
    pane, and a `freedom` facet, so `--free` is reachable from the browser.
 6. **Check more** (#60). `name/empty`, `name/whitespace`, `metrics/line-gap`,

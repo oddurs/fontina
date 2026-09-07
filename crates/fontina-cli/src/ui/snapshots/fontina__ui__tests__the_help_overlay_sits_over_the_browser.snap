@@ -1,35 +1,34 @@
 ---
 source: crates/fontina-cli/src/ui/mod.rs
-assertion_line: 4599
 expression: drawn
 ---
-┌ 6 faces ─────┌ fontina ui ────────────────────────────────────────────────────────────────────────────┐──────────────┐
-│Weight        │                                                                                        │              │
-│  200 ExtraLig│ Move        j/k ↑/↓ PgUp/PgDn g/G        Tab cycles the panes                          │ normal       │
-│  300 Light   │ Filter      / type to search  Esc clears   Enter/Space toggles a facet   x clears all  │Arab Latn Zyyy│
-│  400 Regular │ Families    Enter opens a family, Backspace/Esc closes it                              │              │
-│  500 Medium  │ Select      Space marks a row, v starts and ends a range, * takes everything           │iga locl mark │
-│  600 SemiBold│             the filter matches. Every action applies to the marks when there           │              │
-│  700 Bold    │             are any, and to the cursor when there are not. Esc clears them             │              │
-│  800 ExtraBol│ Organise    t tag the selection   c add it to a collection                             │              │
-│Width         │ Activate    a for the user, A until logout, i install a copy, d deactivate, u uninstall│              │
-│  75% Condense│ Preview     e sets the sample text   + / - change the size                             │              │
+┌ 6 faces ───────────────┐┌ 5 families ─────────────────────────────┐┌ Details ────────────────────────────────────────┐
+│Weight        ┌ fontina ui ────────────────────────────────────────────────────────────────────────────┐              │
+│  200 ExtraLig│                                                                                        │ normal       │
+│  300 Light   │ Move        j/k ↑/↓ PgUp/PgDn g/G        Tab cycles the panes                          │Arab Latn Zyyy│
+│  400 Regular │ Filter      / type to search  Esc clears   Enter/Space toggles a facet   x clears all  │              │
+│  500 Medium  │ Families    Enter opens a family, Backspace/Esc closes it                              │iga locl mark │
+│  600 SemiBold│ Select      Space marks a row, v starts and ends a range, * takes everything           │              │
+│  700 Bold    │             the filter matches. Every action applies to the marks when there           │              │
+│  800 ExtraBol│             are any, and to the cursor when there are not. Esc clears them             │              │
+│Width         │ Organise    t tag the selection   c add it to a collection                             │              │
+│  75% Condense│ Activate    a for the user, A until logout, i install a copy, d deactivate, u uninstall│              │
 │  87.5% SemiCo│ Controls    h/l ←/→ move an axis (H/L by ten)   Space toggles a feature                │lar.ttf       │
-│  100% Normal │             n/p step through named instances   0 resets everything                     │              │
-│Style         │ Glyphs      m opens the glyph map: h/l pick a block, j/k scroll, / finds a             │              │
-│  upright     │             codepoint (U+0041, 0x41, 41) or a block by name                            │              │
-│Variable      │ Sheets      w waterfalls the face down the size ladder; C compares every face          │              │
-│  variable    │             the selection stands for. j/k scroll, +/- resize a comparison              │              │
-│Color         │ Specimen    s writes an HTML specimen and opens it, for what a terminal cannot         │              │
-│  color       │             show honestly                                                              │              │
+│  100% Normal │             n/p step through named instances   0 resets everything. The status         │              │
+│Style         │             line carries the command that draws what you have set                      │              │
+│  upright     │ Glyphs      m opens the glyph map: h/l pick a block, j/k scroll, / finds a             │              │
+│Variable      │             codepoint (U+0041, 0x41, 41) or a block by name                            │              │
+│  variable    │ Specimen    s writes an HTML specimen and opens it. A terminal cannot show a           │              │
+│Color         │             typeface honestly, so this program does not try: it shows what is          │              │
+│  color       │             in one, and hands the looking to something that can draw                   │              │
 │Spacing       │ Panes       Three side by side at 112 columns and up; under that the facets            │              │
 │  proportional│             move over the list and Tab opens them; under 76, one pane at a             │              │
 │Script        │             time, the others still a Tab away                                          │              │
 │  Latn        │ Undo        U takes back the last change to the index, Ctrl-R does it again. A         │              │
 │  Arab        │             whole selection is one undo, and what cannot be put back exactly —         │              │
 │  Zyyy        │             a rescan — is not offered                                                  │              │
-│  Cyrl        │ Commands    : lists every command the program has, filtered as you type. The           │              │
-│  Zinh        │             ones the browser implements it runs; the ones that print it writes         │              │
+│  Cyrl        │ Commands    : lists every command the program has, filtered as you type. The           │c -634 · gap 0│
+│  Zinh        │             ones the browser implements it runs; the ones that print it writes         │x/em 0.43     │
 │  Grek        │             out with your selection already in them                                    │              │
 │Language      │ Index       R rescans every source (fontina scan --prune)                              │              │
 │  en          │ Quit        q                                                                          │              │

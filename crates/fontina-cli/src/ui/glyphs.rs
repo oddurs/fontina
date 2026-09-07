@@ -859,10 +859,9 @@ mod tests {
         let mut index = fontina_core::Index::open_in_memory().unwrap();
         let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures");
         fontina_core::scan::scan(&mut index, &[fixtures], &Default::default()).unwrap();
-        let mut app = crate::ui::App::new(index).unwrap();
+        let app = crate::ui::App::new(index).unwrap();
         // A blank sample text keeps the rasteriser out of these frames; what the
         // preview draws has its own tests in `ui::mod`.
-        app.preview_text = Some(" ".into());
         app
     }
 
