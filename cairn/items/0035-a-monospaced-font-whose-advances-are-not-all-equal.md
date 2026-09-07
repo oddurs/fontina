@@ -2,10 +2,10 @@
 id: 35
 title: A monospaced font whose advances are not all equal
 type: feat
-status: review
+status: done
 milestone: integrity
 created: 2026-09-06
-updated: 2026-09-06
+updated: 2026-09-07
 priority: p1
 effort: s
 crate: core
@@ -38,9 +38,26 @@ combining mark is normal and is not a contradiction.
 
 ## Acceptance criteria
 
-- [ ] the model carries whether the advances are uniform
-- [ ] `metrics/fixed-pitch` warns when the flag and the advances disagree, in either
-      direction
-- [ ] a fixture-backed test, and one over a mutated fixture for the direction no fixture
-      can honestly show
-- [ ] `schemas/face.json` regenerated; `SCHEMA_VERSION` does not move, the field is additive
+- [x] the model carries whether the advances are uniform (#174)
+- [x] `metrics/fixed-pitch` warns when the flag and the advances disagree, in either
+      direction (#174)
+- [x] a fixture-backed test, and one over a mutated fixture for the direction no fixture
+      can honestly show (#174)
+- [x] `schemas/face.json` regenerated; `SCHEMA_VERSION` does not move, the field is additive
+
+## Closed
+
+Shipped in #174. Verified against `main` rather than against the pull request:
+`Metrics::distinct_advances` is in `model.rs`, the check fires in both directions in
+`check.rs`, and `schemas/face.json` carries the field while `SCHEMA_VERSION` stays at 1 —
+#174 does not touch `lib.rs`, where the constant lives.
+
+Both tests are in `tests/checks.rs`. The warn direction runs the whole path from bytes on
+disk: `post.isFixedPitch` is a uint32 at offset 12, so four bytes of surgery on Amiri
+makes a font that claims to be monospaced over its own real, unequal advances. The info
+direction edits the parsed measurement instead, because rewriting `hmtx` so every advance
+matched would be more fragile than the thing it tests and would prove nothing the first
+case does not.
+
+The headline finding when it ran over 932 system faces: Hack Nerd Font, 11,970 glyphs, all
+one advance, `isFixedPitch` unset.

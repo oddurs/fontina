@@ -71,14 +71,14 @@ Helping someone find the right face rather than the one they asked for: comparis
 
 ## integrity — Integrity — what the file claims against what it is
 
-`··········` 0% · 0 of 2 done
+`##########` 100% · 2 of 2 done
 
 Every check today reads the metadata and asks whether it is sensible. None asks whether the file agrees with itself. The first tractable piece of PLAN.md §12's closing question: report the disagreement, never resolve it.
 
-### in review
+### done
 
-- [ ] [`0035`](https://github.com/oddurs/fontina/blob/main/cairn/items/0035-a-monospaced-font-whose-advances-are-not-all-equal.md) A monospaced font whose advances are not all equal <sup>feat · p1 · core</sup>
-- [ ] [`0037`](https://github.com/oddurs/fontina/blob/main/cairn/items/0037-two-files-claiming-to-be-the-same-font-with-different-bytes.md) Two files claiming to be the same font, with different bytes <sup>feat · p2 · cli</sup>
+- [x] [`0035`](https://github.com/oddurs/fontina/blob/main/cairn/items/0035-a-monospaced-font-whose-advances-are-not-all-equal.md) A monospaced font whose advances are not all equal <sup>feat · p1 · core</sup>
+- [x] [`0037`](https://github.com/oddurs/fontina/blob/main/cairn/items/0037-two-files-claiming-to-be-the-same-font-with-different-bytes.md) Two files claiming to be the same font, with different bytes <sup>feat · p2 · cli</sup>
 
 ## unfiled — Found, not yet scheduled
 
