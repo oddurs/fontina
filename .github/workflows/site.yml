@@ -81,10 +81,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Every job above either passed or did not need to run
+        # Through the environment, not interpolated into the script. An expression
+        # substituted into a `run:` body is spliced in as text before bash sees it, so
+        # the shell's quoting cannot contain it; here bash reads an ordinary variable.
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
         run: |
-          results='${{ join(needs.*.result, " ") }}'
-          echo "dependencies: $results"
-          for r in $results; do
+          echo "dependencies: $RESULTS"
+          for r in $RESULTS; do
             case "$r" in
               success|skipped) ;;
               *) echo "::error::a job this gate stands for reported $r"; exit 1 ;;
