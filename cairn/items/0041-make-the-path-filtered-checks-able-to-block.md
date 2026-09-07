@@ -5,7 +5,7 @@ type: chore
 status: review
 milestone: m5-ship
 created: 2026-09-06
-updated: 2026-09-06
+updated: 2026-09-07
 priority: p1
 effort: s
 crate: workspace
@@ -31,7 +31,7 @@ dependency is a pass, because the guarded paths were untouched.
 ## Acceptance criteria
 
 - [x] a gate job in each of the four workflows (#112)
-- [ ] the gates have reported on at least one pull request
+- [x] the gates have reported on at least one pull request (#183)
 - [ ] `perf`, `fuzz`, `linux`, `site` added to branch protection
 
 ## Notes
@@ -42,3 +42,20 @@ never run, and every pull request waits for ever. #112 first, one green run, the
 settings change.
 
 GitHub issue #67 has the longer write-up.
+
+The gates took two attempts. #112 added them and every one of the four workflows then
+failed on `main` for a day, with no jobs and no logs — an invalid expression stops a run
+before the first job, so the only thing GitHub says is "This run likely failed because of
+a workflow file issue". The expression language takes single-quoted strings and nothing
+else, and the separator passed to `join` was double-quoted: valid YAML, ordinary-looking
+bash, wrong in the third language sharing the line. #183 fixed it, and #184 put
+`actionlint` in `ci.yml` — which has no path filter, so it still runs when one of these
+four cannot.
+
+So the second criterion is met, and by the strongest evidence there is: all four gates
+reported `pass` on #183 itself, and `perf`, `linux` and `site` are green on `main` at
+`0dc19599` (`fuzz` has no `push` trigger, so it correctly does not run there).
+
+What is left is the settings change, which needs repository admin and is the maintainer's
+to make. The order in the note above still holds and is now satisfied: gates first, green
+runs observed, then protection.
