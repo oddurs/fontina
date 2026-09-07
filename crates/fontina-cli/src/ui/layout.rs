@@ -195,6 +195,7 @@ const KEYS: &[(&str, &str)] = &[
     ("u", "uninstall"),
     ("r", "alike"),
     ("e", "who sets"),
+    ("P", "pairing"),
     ("m", "glyphs"),
     ("s", "specimen"),
     ("U", "undo"),
@@ -218,13 +219,23 @@ pub fn keys(width: u16) -> String {
         return String::new();
     }
     let mut line = String::from(" ");
+    let mut cut = false;
     for (key, label) in KEYS {
         let hint = format!("{key} {label}  ");
-        // Two columns of gap before `? help` so it reads as its own thing.
-        if line.chars().count() + hint.chars().count() + help.len() > width {
+        // Two columns of gap before `? help` so it reads as its own thing, and two more
+        // for the `… ` that says the line was cut. Reserved whether or not it is
+        // needed, so that adding the mark can never be what pushes `? help` off.
+        if line.chars().count() + hint.chars().count() + help.len() + 2 > width {
+            cut = true;
             break;
         }
         line.push_str(&hint);
+    }
+    // A line that stops has to say it stopped. It used to end wherever it ran out, and
+    // a reader with a sixty-column window had no way to know there were nine more keys
+    // — or that `?` would list them, which is the one hint that stands for the rest.
+    if cut && line.chars().count() + 2 + help.len() <= width {
+        line.push_str("… ");
     }
     line.push_str(help);
     line

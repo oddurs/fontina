@@ -27,6 +27,7 @@ mod filter;
 mod glyphs;
 mod history;
 mod layout;
+mod pairing;
 mod palette;
 mod related;
 mod search;
@@ -318,6 +319,10 @@ pub struct App {
     /// rather than a pane, for the reason the glyph map is one: the evidence beside
     /// each score is what makes it worth reading, and it needs the width.
     related: Option<related::View>,
+    /// Faces ranked against this one for pairing, while the list is open.
+    pairing: Option<pairing::View>,
+    /// Rows the pairing list had on the last frame, so a PageDown moves by a screen.
+    pairing_rows: usize,
     /// Rows the related list had on the last frame, so a PageDown moves by a screen.
     related_rows: usize,
     /// Who can set the pasted text, while the answer is on the screen.
@@ -420,6 +425,8 @@ impl App {
             controls: controls::Controls::default(),
             glyphs: None,
             related: None,
+            pairing: None,
+            pairing_rows: 0,
             related_rows: 0,
             covering: None,
             covering_rows: 0,
@@ -949,6 +956,10 @@ impl App {
             self.handle_glyph_key(key.code)?;
             return Ok(Flow::Continue);
         }
+        if !ctrl_c(&key) && self.pairing.is_some() {
+            self.handle_pairing_key(key.code)?;
+            return Ok(Flow::Continue);
+        }
         if !ctrl_c(&key) && self.related.is_some() {
             self.handle_related_key(key.code)?;
             return Ok(Flow::Continue);
@@ -1029,6 +1040,7 @@ impl App {
             // Pre-filled with the last question, because retyping a sentence to change
             // one word in it is the friction this is here to remove.
             KeyCode::Char('e') => self.start_input(InputKind::Cover, self.cover_text.clone()),
+            KeyCode::Char('P') => self.open_pairing()?,
             KeyCode::Char('s') => self.open_specimen()?,
             KeyCode::Tab => self.cycle_focus(),
             KeyCode::Char('/') => self.start_input(InputKind::Search, self.query.clone()),
@@ -1122,6 +1134,81 @@ impl App {
 
     /// Open the glyph map on the face on show. A face with no coverage at all — a
     /// broken font, or one still being scanned — has nothing to map.
+    /// How many faces the pairing ranking will read the metadata of.
+    ///
+    /// x-height and spacing come out of each face's own metrics, which is a row and a
+    /// JSON parse each. Two hundred of whatever the reader has already filtered to is
+    /// far more than the twenty this is meant to put in front of them, and the title
+    /// says when the number is a floor.
+    const PAIR_CAP: usize = 200;
+
+    /// Rank the library against the face on show, for pairing.
+    fn open_pairing(&mut self) -> Result<()> {
+        let (Some(id), Some(target)) = (self.detail_id, self.detail.clone()) else {
+            self.status = "no face on show".into();
+            return Ok(());
+        };
+        // Without the open family, deliberately. A partner is something the reader
+        // does not already have on the screen, and ranking inside an open family can
+        // only ever return that family's own weights.
+        let listed = self.index.list(&FaceFilter {
+            family: None,
+            ..self.filter()
+        })?;
+        let capped = listed.len() > Self::PAIR_CAP;
+        let considered = listed.len();
+        let mut rows = Vec::new();
+        for summary in listed.into_iter().take(Self::PAIR_CAP) {
+            // Not itself, and not another face of the same family: pairing a typeface
+            // with its own bold is a weight, not a pairing.
+            if summary.id == id || summary.family == target.names.family {
+                continue;
+            }
+            let Some(face) = self.index.get_face(summary.id)? else {
+                continue;
+            };
+            rows.push(pairing::measure(&target, &face, summary.id));
+        }
+        let view = pairing::View::new(&target, rows, considered, capped);
+        if view.is_empty() {
+            self.status = format!(
+                "nothing in this filter shares a script with {} {}   (fontina list --script ...)",
+                target.names.family, target.names.subfamily
+            );
+            self.pairing = None;
+            return Ok(());
+        }
+        self.status = view.title();
+        self.pairing = Some(view);
+        Ok(())
+    }
+
+    /// Keys while the pairing list is up.
+    fn handle_pairing_key(&mut self, code: KeyCode) -> Result<()> {
+        let page = self.pairing_rows.max(1) as i32;
+        let Some(view) = self.pairing.as_mut() else {
+            return Ok(());
+        };
+        match code {
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('P') => self.pairing = None,
+            KeyCode::Down | KeyCode::Char('j') => view.move_cursor(1),
+            KeyCode::Up | KeyCode::Char('k') => view.move_cursor(-1),
+            KeyCode::PageDown => view.move_cursor(page),
+            KeyCode::PageUp => view.move_cursor(-page),
+            KeyCode::Home | KeyCode::Char('g') => view.jump(0),
+            KeyCode::End | KeyCode::Char('G') => view.jump(usize::MAX),
+            KeyCode::Enter => {
+                let Some(id) = view.selected().map(|r| r.id) else {
+                    return Ok(());
+                };
+                self.pairing = None;
+                return self.go_to_face(id);
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     /// List what else in the library covers nearly the same characters.
     ///
     /// Every candidate's metadata is read here, once, rather than per frame: the four
@@ -1918,6 +2005,9 @@ impl App {
         if self.covering.is_some() {
             self.draw_covering(f, body);
         }
+        if self.pairing.is_some() {
+            self.draw_pairing(f, body);
+        }
         if self.palette.is_some() {
             self.draw_palette(f, area);
         }
@@ -2105,6 +2195,31 @@ impl App {
         f.render_stateful_widget(list, rows, &mut windowed(Some(palette.cursor()), &win));
     }
 
+    /// The pairing list: a name, and the measurements it was ranked on.
+    fn draw_pairing(&mut self, f: &mut ratatui::Frame, area: Rect) {
+        let Some(view) = &self.pairing else { return };
+        f.render_widget(Clear, area);
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(self.theme.accent())
+            .title(format!(" {} ", view.title()))
+            .title_bottom(" ⏎ goes to it · P or Esc closes ");
+        let inner = block.inner(area);
+        f.render_widget(block, area);
+        if inner.width < 24 || inner.height < 1 {
+            return;
+        }
+        self.pairing_rows = inner.height as usize;
+        let win = layout::window(view.rows().len(), view.cursor(), inner.height as usize, 0);
+        let items: Vec<ListItem> = view.rows()[win.clone()]
+            .iter()
+            .map(|r| ListItem::new(Line::from(view.row_text(r, inner.width as usize))))
+            .collect();
+        let list =
+            List::new(items).highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+        f.render_stateful_widget(list, inner, &mut windowed(Some(view.cursor()), &win));
+    }
+
     /// The related list: a score, a name, and the evidence for the score.
     fn draw_related(&mut self, f: &mut ratatui::Frame, area: Rect) {
         let Some(view) = &self.related else { return };
@@ -2112,10 +2227,8 @@ impl App {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_style(self.theme.accent())
-            .title(format!(
-                " {} — ⏎ goes to it, r or Esc closes ",
-                view.title()
-            ));
+            .title(format!(" {} ", view.title()))
+            .title_bottom(" ⏎ goes to it · r or Esc closes ");
         let inner = block.inner(area);
         f.render_widget(block, area);
         if inner.width < 24 || inner.height < 1 {
@@ -2144,10 +2257,8 @@ impl App {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_style(self.theme.accent())
-            .title(format!(
-                " {} — e asks again, ⏎ goes to it, Esc closes ",
-                view.title()
-            ));
+            .title(format!(" {} ", view.title()))
+            .title_bottom(" ⏎ goes to it · e asks again · Esc closes ");
         let inner = block.inner(area);
         f.render_widget(block, area);
         if inner.width < 24 || inner.height < 1 {
@@ -2180,7 +2291,8 @@ impl App {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_style(self.theme.accent())
-            .title(" glyph map — / to search, m or Esc to close ");
+            .title(" glyph map ")
+            .title_bottom(" / finds a codepoint or a block · m or Esc closes ");
         let inner = block.inner(area);
         f.render_widget(block, area);
 
@@ -2672,6 +2784,33 @@ impl App {
         f.render_stateful_widget(list, area, &mut windowed(self.facet_list.selected(), &win));
     }
 
+    /// The three flag columns of a list row, coloured so the eye can find them.
+    ///
+    /// A column of `V`s is what a reader scans for when they want a variable font, and
+    /// a column of dots is how they see at a glance what is already active. Unset is a
+    /// space rather than a dim mark: there are three positions here, not six, and blank
+    /// is quieter than anything that could be printed in it.
+    fn flag_spans(
+        &self,
+        variable: bool,
+        color: bool,
+        active: bool,
+        activation: &str,
+    ) -> Vec<Span<'static>> {
+        vec![
+            Span::styled(if variable { "V" } else { " " }, self.theme.accent()),
+            Span::styled(if color { "C" } else { " " }, self.theme.accent()),
+            Span::styled(
+                if active {
+                    activation.to_string()
+                } else {
+                    " ".into()
+                },
+                self.theme.good(),
+            ),
+        ]
+    }
+
     fn draw_list(&mut self, f: &mut ratatui::Frame, area: Rect) {
         let width = area.width.saturating_sub(2) as usize;
         let win = layout::window(
@@ -2709,24 +2848,25 @@ impl App {
                 .iter()
                 .enumerate()
                 .map(|(row, face)| {
-                    let flags = format!(
-                        "{}{}{}",
-                        if face.variable { "V" } else { " " },
-                        if face.color { "C" } else { " " },
-                        activation_mark(face.activation),
-                    );
                     let tags = if face.tags.is_empty() {
                         String::new()
                     } else {
                         format!("  [{}]", face.tags.join(", "))
                     };
                     let left = format!("{} {}{}", face.subfamily, face.container, tags);
-                    ListItem::new(Line::from(format!(
-                        "{}{:<w$} {flags}",
+                    let mut spans = vec![Span::raw(format!(
+                        "{}{:<w$} ",
                         marks[row],
                         truncate(&left, width.saturating_sub(5)),
                         w = width.saturating_sub(5)
-                    )))
+                    ))];
+                    spans.extend(self.flag_spans(
+                        face.variable,
+                        face.color,
+                        face.activation.is_some(),
+                        activation_mark(face.activation),
+                    ));
+                    ListItem::new(Line::from(spans))
                 })
                 .collect()
         } else {
@@ -2734,30 +2874,36 @@ impl App {
                 .iter()
                 .enumerate()
                 .map(|(row, fam)| {
-                    let flags = format!(
-                        "{}{}{}",
-                        if fam.variable { "V" } else { " " },
-                        if fam.color { "C" } else { " " },
-                        if fam.active > 0 { "●" } else { " " },
-                    );
-                    let count = format!("{:>3}", fam.faces);
                     let room = width.saturating_sub(9);
-                    ListItem::new(Line::from(format!(
-                        "{}{:<room$} {count} {flags}",
-                        marks[row],
-                        truncate(&fam.name, room),
-                        room = room
-                    )))
+                    let mut spans = vec![
+                        Span::raw(format!(
+                            "{}{:<room$} ",
+                            marks[row],
+                            truncate(&fam.name, room),
+                            room = room
+                        )),
+                        // The count is a fact about the family and the name is the
+                        // answer, so the count gets out of the way of it.
+                        Span::styled(format!("{:>3} ", fam.faces), self.theme.dim()),
+                    ];
+                    spans.extend(self.flag_spans(fam.variable, fam.color, fam.active > 0, "●"));
+                    ListItem::new(Line::from(spans))
                 })
                 .collect()
         };
         let title = match (&self.open_family, self.marked.len()) {
-            // The count goes in the title rather than only in the status line, which
-            // the next message overwrites: what an action is about to touch has to be
-            // readable at the moment the reader reaches for the key.
+            // What an action is about to touch goes in the title rather than only in
+            // the status line, which the next message overwrites: it has to be readable
+            // at the moment the reader reaches for the key.
             (_, n) if n > 0 => format!(" {n} of {} selected ", self.visible_face_ids().len()),
-            (Some(fam), _) => format!(" {} · {} face(s) ", fam, self.faces.len()),
-            (None, _) => format!(" {} families ", self.families.len()),
+            // The name of the family, not the name and a count. The filter line one row
+            // above says how many there are, and a number printed twice on one screen
+            // is a number a reader has to check against itself.
+            (Some(fam), _) => format!(
+                " {} ",
+                fontina_core::unicode::fit(fam, area.width.saturating_sub(4) as usize)
+            ),
+            (None, _) => " families ".into(),
         };
         if items.is_empty() {
             self.draw_empty_list(f, area, title);
@@ -2829,66 +2975,102 @@ impl App {
         f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
     }
 
+    /// The face, in the order a reader asks about it.
+    ///
+    /// Six groups, a blank line between them, and the bottom is what falls off a pane
+    /// too short to hold them all — so what a reader loses first is where the file came
+    /// from, and what they keep is what it is, what they have done to it, and what it
+    /// can set. The order used to be the order the rows were written in, over a year,
+    /// with the licence between the coverage and the metrics.
     fn draw_detail(&mut self, f: &mut ratatui::Frame, area: Rect) {
+        // Borrowed, never cloned: this runs on every frame, four times a second while
+        // the browser sits idle. `refresh_detail` is what queries the index.
+        let face = self.detail.as_ref();
         let block = Block::default()
             .borders(Borders::ALL)
             .border_style(self.border(self.focus == Focus::Detail))
-            .title(" Details ");
+            // The pane is named by what is in it. It used to be titled `Details` and to
+            // spend its first row repeating the name of the face, which is a row and a
+            // border saying the same nothing.
+            .title(match face {
+                Some(face) => format!(
+                    " {} ",
+                    fontina_core::unicode::fit(
+                        &format!("{} {}", face.names.family, face.names.subfamily),
+                        area.width.saturating_sub(4) as usize,
+                    )
+                ),
+                None => " Details ".into(),
+            });
         let inner = block.inner(area);
         f.render_widget(block, area);
-        // Borrowed, never cloned: this runs on every frame, four times a second while
-        // the browser sits idle. `refresh_detail` is what queries the index.
-        let Some(face) = self.detail.as_ref() else {
-            f.render_widget(Paragraph::new("Nothing selected."), inner);
+        let Some(face) = face else {
+            f.render_widget(
+                Paragraph::new(Span::styled("Nothing selected.", self.theme.dim())),
+                inner,
+            );
             return;
         };
-        let mut lines: Vec<Line> = Vec::new();
-        let bold = Style::default().add_modifier(Modifier::BOLD);
-        lines.push(Line::from(vec![
-            Span::styled(face.names.family.clone(), bold),
-            Span::raw(" "),
-            Span::raw(face.names.subfamily.clone()),
-        ]));
-        lines.push(kv(
+        let cols = inner.width;
+        let kv = |k: &str, v: String| wrap_kv(k, &v, cols, &self.theme);
+        let mut groups: Vec<Vec<Line>> = Vec::new();
+        /// Which group the coverage list is spliced into, once its height is known.
+        const COVERAGE: usize = 1;
+
+        // What it is, and what the reader has done to it. `state` changes when a key is
+        // pressed, so it belongs where a key-presser is looking rather than eleventh.
+        let mut what = kv(
             "style",
             format!(
-                "weight {} · width {}% · {}",
+                "weight {} · width {}% · {}{}",
                 face.style.weight.round(),
                 face.style.width.round(),
-                face.style.css.style
+                face.style.css.style,
+                match &face.variable {
+                    Some(v) => format!(
+                        " · variable ({})",
+                        v.axes
+                            .iter()
+                            .map(|a| a.tag.as_str())
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    ),
+                    None => String::new(),
+                }
             ),
-            &self.theme,
-        ));
-        if let Some(v) = &face.variable {
-            lines.push(kv(
-                "axes",
-                v.axes
-                    .iter()
-                    .map(|a| format!("{} {}–{} ({})", a.tag, a.min, a.max, a.default))
-                    .collect::<Vec<_>>()
-                    .join(", "),
-                &self.theme,
-            ));
+        );
+        if let Some(s) = self.detail_summary.as_ref() {
+            what.push(Line::from(vec![
+                Span::styled(format!("{:<LABEL$}", "state"), self.theme.dim()),
+                match s.activation {
+                    Some(a) => Span::styled(a.as_str().to_string(), self.theme.good()),
+                    None => Span::styled("not active", self.theme.dim()),
+                },
+            ]));
+            if !s.tags.is_empty() {
+                what.extend(kv("tags", s.tags.join(", ")));
+            }
         }
-        lines.push(kv(
+        groups.push(what);
+
+        // What it can set. The scripts used to be named at the end of the `glyphs` row
+        // and then counted again, with a bar, four rows further down.
+        let mut has = kv(
             "glyphs",
             format!(
-                "{} · {} codepoints · {}",
-                face.glyph_count,
-                face.coverage.codepoints,
-                face.coverage
-                    .scripts
-                    .iter()
-                    .take(5)
-                    .map(|s| s.script.as_str())
-                    .collect::<Vec<_>>()
-                    .join(" ")
+                "{} · {} codepoints",
+                face.glyph_count, face.coverage.codepoints
             ),
-            &self.theme,
-        ));
+        );
+        // Filled in below, once everything else has been measured: the coverage list is
+        // the elastic part of this pane, and it is what gives ground when the terminal
+        // is short. What must not give ground is the last group — a font manager whose
+        // face pane cannot say where the file is has stopped answering the question it
+        // exists for — so the scripts go before the path does.
+        let coverage_at = has.len();
         let feats = face.features.gsub.len() + face.features.gpos.len();
         if feats > 0 {
-            lines.push(kv(
+            has.extend(kv(
                 "features",
                 format!(
                     "{feats}: {}",
@@ -2901,32 +3083,25 @@ impl App {
                         .collect::<Vec<_>>()
                         .join(" ")
                 ),
-                &self.theme,
             ));
         }
-        lines.extend(license_lines(face, &self.theme));
+        groups.push(has);
+
+        // What may be done with it.
+        groups.push(license_lines(face, &self.theme, cols));
+
+        // Where it came from. Last, because it is the one group a reader can go and get
+        // from `fontina info` when the pane runs out of room.
+        let mut whence = Vec::new();
         if let Some(d) = face
             .names
             .designer
             .as_deref()
             .or(face.names.manufacturer.as_deref())
         {
-            lines.push(kv("designer", d.to_string(), &self.theme));
+            whence.extend(kv("designer", d.to_string()));
         }
-        if let Some(s) = self.detail_summary.as_ref() {
-            if !s.tags.is_empty() {
-                lines.push(kv("tags", s.tags.join(", "), &self.theme));
-            }
-            lines.push(kv(
-                "state",
-                match s.activation {
-                    Some(a) => a.as_str().to_string(),
-                    None => "not active".into(),
-                },
-                &self.theme,
-            ));
-        }
-        lines.push(kv(
+        whence.extend(kv(
             "file",
             format!(
                 "{}{}",
@@ -2937,54 +3112,104 @@ impl App {
                     String::new()
                 }
             ),
-            &self.theme,
         ));
-        lines.push(Line::from(""));
-        // Rows the block will actually occupy once wrapped, not how many lines were
-        // pushed. The paragraph wraps, so a long value — a file path, a licence reason —
-        // takes several rows, and counting them as one pushed the bottom of the pane off
-        // the screen.
-        let text_rows: u16 = lines.iter().map(|l| wrapped_rows(l, inner.width)).sum();
-        // Controls take the rows they need, capped so the preview never disappears.
-        // The pane asks for a title plus a row per control, but never takes so much that
-        // the preview vanishes, and never less than a title plus one row: a pane Tab can
-        // reach has to show the cursor sitting in it.
+        groups.push(whence);
+
+        // How it is drawn. Last, because these are the numbers a reader compares
+        // between two faces — a question you go looking for — and everything above is
+        // one they arrive with. A pane too short for all six drops this one, and
+        // `fontina info` has it.
+        groups.push(self.measurements(face, cols));
+
+        // Rows for everything but the coverage, plus the blank between each group.
         let control_rows = if self.controls.is_empty() {
             0
         } else {
-            let spare = inner.height.saturating_sub(text_rows + 4);
-            // Either a title and at least one control, or nothing: a pane showing only
-            // its own title would hide the cursor sitting in it.
-            if spare < 2 {
-                0
-            } else {
-                (self.controls.len() as u16 + 1).min(spare)
-            }
+            // A face with eleven stylistic sets must not spend two thirds of the pane
+            // on checkboxes. Amiri does exactly that, and it pushed the coverage, the
+            // licence and the path off an eighty-by-twenty-four terminal. The block
+            // scrolls to keep the cursor inside it, so it can be bounded: a third of
+            // the pane, and never fewer than a title and three rows.
+            let want = self.controls.len() as u16 + 2;
+            want.min((inner.height / 3).max(4))
+                .min(inner.height.saturating_sub(3))
         };
+        let body: usize = groups.iter().map(Vec::len).sum();
+        let gaps = groups.len() - 1;
+        let avail = (inner.height as usize).saturating_sub(control_rows as usize);
+        // The blank lines between the groups are the grouping, and the grouping is a
+        // luxury: on a pane too short to hold the content with them, the content wins.
+        // Two scripts are the floor — one script and a bar says nothing a reader could
+        // not have guessed from the family name.
+        let blanks = body + gaps + 2 <= avail;
+        let most = avail
+            .saturating_sub(body + if blanks { gaps } else { 0 })
+            .clamp(2, 6);
+        groups[COVERAGE].splice(coverage_at..coverage_at, self.coverage_lines(face, most));
+
+        // The controls go under the first group and above the rest, so the one thing in
+        // this pane a key does anything to is where a key-presser is looking, whatever
+        // the terminal's height. Counted rather than searched for: a group that grows a
+        // row must not silently push the controls into the middle of the next one.
+        let head = groups[0].len() + usize::from(blanks);
+        let mut lines: Vec<Line> = Vec::new();
+        for group in groups {
+            if group.is_empty() {
+                continue;
+            }
+            if blanks && !lines.is_empty() {
+                lines.push(Line::from(""));
+            }
+            lines.extend(group);
+        }
+        // Every line was wrapped to `cols` above, so the count is the height and there
+        // is nothing left for the pane to estimate about itself.
+        let head = head.min(lines.len());
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(text_rows.min(inner.height)),
+                Constraint::Length((head as u16).min(inner.height)),
                 Constraint::Length(control_rows),
                 Constraint::Min(0),
             ])
             .split(inner);
-        f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), chunks[0]);
+        let rest = lines.split_off(head);
+        f.render_widget(Paragraph::new(lines), chunks[0]);
         if control_rows > 0 {
             self.draw_controls(f, chunks[1], face);
         }
-        let rest = chunks[2];
-        if rest.height < 2 || rest.width < 4 {
-            return;
+        if chunks[2].height > 0 {
+            f.render_widget(Paragraph::new(rest), chunks[2]);
         }
-        f.render_widget(
-            Paragraph::new(self.measurements(face)).wrap(Wrap { trim: false }),
-            rest,
-        );
     }
 
-    /// What the pane says below the controls: the numbers, and the coverage they came
-    /// from.
+    /// Coverage per script: a bar for the eye, the count for the answer.
+    fn coverage_lines(&self, face: &FaceMetadata, most: usize) -> Vec<Line<'static>> {
+        // A face's scripts are already sorted by how much of each it has.
+        let deepest = face
+            .coverage
+            .scripts
+            .first()
+            .map(|s| s.codepoints)
+            .unwrap_or(0)
+            .max(1);
+        face.coverage
+            .scripts
+            .iter()
+            .take(most)
+            .map(|script| {
+                let filled = (script.codepoints * 10).div_ceil(deepest).min(10) as usize;
+                Line::from(vec![
+                    Span::styled(format!("{:<LABEL$}", script.script), self.theme.dim()),
+                    Span::raw("█".repeat(filled)),
+                    Span::styled("░".repeat(10 - filled), self.theme.dim()),
+                    Span::raw(format!(" {}", script.codepoints)),
+                ])
+            })
+            .collect()
+    }
+
+    /// How the face is drawn: the numbers a reader compares between two of them.
     ///
     /// This was a rasterised sample of the face, drawn in half-block characters. A
     /// terminal cell is about one pixel wide and two tall, so a typeface met that way is
@@ -2992,18 +3217,18 @@ impl App {
     /// detail — a judgement made on something that is not the font. `s` writes a real
     /// specimen and opens it in a browser, and `fontina preview` draws a true image
     /// where the terminal has a protocol for one. What a terminal is good at is this:
-    /// the measurements, in a column, comparable at a glance between two faces.
-    fn measurements(&self, face: &FaceMetadata) -> Vec<Line<'static>> {
+    /// the measurements, in a column, comparable at a glance.
+    fn measurements(&self, face: &FaceMetadata, cols: u16) -> Vec<Line<'static>> {
         let m = &face.metrics;
-        let mut lines = vec![Line::from("")];
-        lines.push(kv(
+        let mut lines = wrap_kv(
             "metrics",
-            format!(
+            &format!(
                 "{} upm · asc {} · desc {} · gap {}",
                 m.units_per_em, m.ascender, m.descender, m.line_gap
             ),
+            cols,
             &self.theme,
-        ));
+        );
         let mut shape = Vec::new();
         if let Some(cap) = m.cap_height {
             shape.push(format!("cap {cap}"));
@@ -3023,28 +3248,7 @@ impl App {
             shape.push(format!("italic {}°", m.italic_angle));
         }
         if !shape.is_empty() {
-            lines.push(kv("shape", shape.join(" · "), &self.theme));
-        }
-        // Coverage by script, deepest first, with a bar for the eye and the count for
-        // the answer. A face's scripts are already sorted by how much of each it has.
-        let deepest = face
-            .coverage
-            .scripts
-            .first()
-            .map(|s| s.codepoints)
-            .unwrap_or(0)
-            .max(1);
-        for script in face.coverage.scripts.iter().take(6) {
-            let filled = (script.codepoints * 10).div_ceil(deepest).min(10) as usize;
-            lines.push(kv(
-                &script.script,
-                format!(
-                    "{:<10} {}",
-                    "█".repeat(filled) + &"░".repeat(10 - filled),
-                    script.codepoints
-                ),
-                &self.theme,
-            ));
+            lines.extend(wrap_kv("shape", &shape.join(" · "), cols, &self.theme));
         }
         lines
     }
@@ -3172,40 +3376,35 @@ impl App {
 
     fn draw_help(&self, f: &mut ratatui::Frame, area: Rect) {
         let text = "
- Move        j/k ↑/↓ PgUp/PgDn g/G        Tab cycles the panes
- Search      / types a query, Esc clears it, x clears every filter
- Narrow by   f opens the facets as a panel: Enter picks a value, Enter on +N more
-             opens a section, Esc closes it. The top line says what is on
- Filter bar  F takes the flags fontina list takes — ranges, two scripts at once,
-             --variable=false — applied as you type, with the count beside them.
-             Ctrl-S saves what it matched as a collection
- Families    Enter opens a family, Backspace or Esc closes it
- Select      Space marks a row, v starts and ends a range, * takes everything the
-             filter matches. Actions below apply to the marks when there are any,
-             to the cursor when there are not; Esc clears them
- Organise    t tags the selection, c adds it to a collection
- Activate    a for the user, A until logout, i installs a copy, d and u undo those
- Controls    h/l ←/→ move an axis (H/L by ten), Space toggles a feature, n/p step
-             through named instances, 0 resets everything. The status line carries
-             the command that draws what you have set
- Alike       r lists what else covers nearly the same characters, with the score
-             and the metrics that say whether that means one design. ⏎ goes to it
- Who sets    e asks who can set a line of text: paste it and the answer names,
-             per face, the characters and scripts it lacks. The text is kept
- Glyphs      m opens the glyph map: h/l pick a block, / finds a codepoint
-             (U+0041, 0x41, 41) or a block by name
- Specimen    s writes an HTML specimen and opens it. A terminal cannot show a
-             typeface honestly, so this program does not try: it shows what is in
-             one, and hands the looking to something that can draw
- Panes       The list and the face at {two} columns and up, one at a time under
-             that, the other a Tab away. Narrow by opens over the list, never the face
- Undo        U takes back the last change to the index, Ctrl-R does it again. A
-             whole selection is one undo; what cannot be put back exactly is not
- Commands    : lists every command the program has, filtered as you type. What the
-             browser implements it runs; what prints, it writes out for you
- Index       R rescans every source (fontina scan --prune)          Quit  q
+ MOVING
+ j/k ↑/↓ PgUp/PgDn g/G   move        ⇥  cycle the panes
+ ⏎  open a family        ⌫ or Esc  close it
+ The list and the face side by side at {two} columns and up, one at a time below
 
- The status line shows the CLI command for what you see. Everything here is a command.
+ FINDING
+ /  search names, Esc clears it      x  clear every filter
+ f  Narrow by, the facets as a panel: ⏎ picks, ⏎ on +N more opens, Esc closes
+ F  the filter bar: the flags fontina list takes, applied as you type
+    Ctrl-S saves what it matched as a collection
+
+ DOING — to the marks when there are any, to the row under the cursor when not
+ ␣  mark a row   v  a range   *  all the filter matches   Esc  clear the marks
+ t  tag          c  add to a collection
+ a  activate for the user   A  until logout   i  install a copy   d/u  undo those
+ U  undo the last change to the index   Ctrl-R  do it again
+
+ LOOKING
+ h/l ←/→  move an axis (H/L by ten)   ␣  a feature   n/p  instances   0  reset
+ m  the glyph map: h/l pick a block, / finds a codepoint or a block by name
+ r  what else covers nearly the same characters, with the score and the metrics
+ e  who can set a line of text: paste it, and see what each face lacks
+ P  the library ranked against this face: weight, width, spacing, x-height
+ s  write an HTML specimen and open it, because a terminal cannot set type
+
+ THE PROGRAM
+ :  every command, filtered as you type    R  rescan every source    q  quit
+
+ The status line is the command that would give you what is on the screen.
 
  any key to close";
         // The widths the panes change at are stated rather than described, so the
@@ -3444,9 +3643,57 @@ fn facet_value_label(facet: Facet, value: &str) -> String {
 /// A labelled line in the details pane.
 fn kv(k: &str, v: String, theme: &theme::Theme) -> Line<'static> {
     Line::from(vec![
-        Span::styled(format!("{k:<10}"), theme.dim()),
+        Span::styled(format!("{k:<LABEL$}"), theme.dim()),
         Span::raw(v),
     ])
+}
+
+/// The label column every readout in the face pane hangs from.
+const LABEL: usize = 10;
+
+/// A labelled value, wrapped so that what runs on lines up under what it belongs to.
+///
+/// `Paragraph`'s own wrapping puts the overflow at column zero, and the label column is
+/// the only structural device this pane has — the thing an eye runs down. Breaking it
+/// happens on exactly the rows long enough to be worth reading:
+///
+///     glyphs    80 · 73 codepoints · Zyyy Arab Deva
+///     Khmr Mymr
+///
+/// So the wrapping happens here, on whitespace, and every line after the first is laid
+/// out under the value rather than under the label. The pane then hands `Paragraph`
+/// lines it will not touch, which has a second use: the number of lines *is* the number
+/// of rows, so the pane no longer has to estimate its own height.
+fn wrap_kv(k: &str, v: &str, cols: u16, theme: &theme::Theme) -> Vec<Line<'static>> {
+    let room = (cols as usize).saturating_sub(LABEL).max(8);
+    let mut lines = Vec::new();
+    let mut label = format!("{k:<LABEL$}");
+    let mut used = String::new();
+    let mut flush = |label: &mut String, used: &mut String| {
+        lines.push(Line::from(vec![
+            Span::styled(std::mem::take(label), theme.dim()),
+            Span::raw(std::mem::take(used)),
+        ]));
+        *label = " ".repeat(LABEL);
+    };
+    for word in v.split(' ') {
+        let w = fontina_core::unicode::columns(word);
+        let have = fontina_core::unicode::columns(&used);
+        if used.is_empty() {
+            // A single word longer than the column goes on its own line and overflows
+            // it. Cutting a path or a PostScript name in half to make it fit would be
+            // the one thing worse than a line that reaches the edge.
+            used.push_str(word);
+        } else if have + 1 + w <= room {
+            used.push(' ');
+            used.push_str(word);
+        } else {
+            flush(&mut label, &mut used);
+            used.push_str(word);
+        }
+    }
+    flush(&mut label, &mut used);
+    lines
 }
 
 /// What the details pane says about a face's licence.
@@ -3454,45 +3701,50 @@ fn kv(k: &str, v: String, theme: &theme::Theme) -> Line<'static> {
 /// The verdict and its reason, not an SPDX string on its own: whether a font may be
 /// studied, changed and passed on is the fact that decides whether it can be used at
 /// all, and an identifier only answers that for a reader who already knows the list.
-fn license_lines(face: &FaceMetadata, theme: &theme::Theme) -> Vec<Line<'static>> {
+fn license_lines(face: &FaceMetadata, theme: &theme::Theme, cols: u16) -> Vec<Line<'static>> {
     let verdict = fontina_core::freedom::assess(face.license.spdx.as_deref());
-    let mut lines = vec![
-        kv(
-            "license",
+    // One row, not two. The identifier and the verdict are one answer — "OFL-1.1, free"
+    // — and splitting them across two labelled rows made the pane look as though it had
+    // twice as much to say about the licence as about anything else.
+    let mut lines = vec![Line::from(vec![
+        Span::styled(format!("{:<LABEL$}", "licence"), theme.dim()),
+        Span::raw(
             face.license
                 .spdx
                 .clone()
                 .unwrap_or_else(|| "none embedded".into()),
-            theme,
         ),
-        Line::from(vec![
-            Span::styled(format!("{:<10}", "freedom"), theme.dim()),
-            // Bold as well as coloured, because the verdict is the one thing in this
-            // pane a reader may act on and colour alone cannot carry it: on a terminal
-            // with none, every role here collapses to the same nothing.
-            Span::styled(
-                verdict.freedom.to_string(),
-                match verdict.freedom {
-                    fontina_core::Freedom::Free => theme.good(),
-                    fontina_core::Freedom::Nonfree => theme.bad(),
-                    _ => theme.warn(),
-                }
-                .add_modifier(Modifier::BOLD),
-            ),
-        ]),
-    ];
+        Span::raw("  "),
+        // Bold as well as coloured, because the verdict is the one thing in this pane a
+        // reader may act on and colour alone cannot carry it: on a terminal with none,
+        // every role here collapses to the same nothing.
+        Span::styled(
+            verdict.freedom.to_string(),
+            match verdict.freedom {
+                fontina_core::Freedom::Free => theme.good(),
+                fontina_core::Freedom::Nonfree => theme.bad(),
+                _ => theme.warn(),
+            }
+            .add_modifier(Modifier::BOLD),
+        ),
+    ])];
     if verdict.freedom != fontina_core::Freedom::Free {
-        // "free" needs no explaining, and the pane shares its height with the controls
-        // and the preview. Every other verdict is a reason to go and read something.
-        lines.push(Line::from(Span::styled(
-            format!("{:<10}{}", "", verdict.reason),
-            theme.dim(),
-        )));
+        // "free" needs no explaining, and the pane shares its height with everything
+        // below it. Every other verdict is a reason to go and read something.
+        for line in wrap_kv("", verdict.reason, cols, theme) {
+            lines.push(Line::from(
+                line.spans
+                    .into_iter()
+                    .map(|s| Span::styled(s.content, theme.dim()))
+                    .collect::<Vec<_>>(),
+            ));
+        }
     }
     if !face.license.reserved_font_names.is_empty() {
-        lines.push(kv(
+        lines.extend(wrap_kv(
             "reserved",
-            face.license.reserved_font_names.join(", "),
+            &face.license.reserved_font_names.join(", "),
+            cols,
             theme,
         ));
     }
@@ -3500,17 +3752,19 @@ fn license_lines(face: &FaceMetadata, theme: &theme::Theme) -> Vec<Line<'static>
         && !matches!(os2.embedding.level, EmbeddingLevel::Installable)
     {
         // Reported, never acted on: these bits are the file's assertion about itself,
-        // not a term of the licence. `freedom.rs` says why at length.
-        lines.push(kv(
-            "embedding",
-            format!("{:?} (reported, not enforced)", os2.embedding.level),
-            theme,
-        ));
+        // not a term of the licence. `freedom.rs` says why at length. The pane goes on
+        // saying so — a reader meeting `RestrictedLicense` deserves to be told in the
+        // same breath that nothing here will act on it — but says it dimly, because it
+        // is a promise the program is making rather than a fact about this font.
+        lines.push(Line::from(vec![
+            Span::styled(format!("{:<LABEL$}", "embedding"), theme.dim()),
+            Span::raw(format!("{:?}", os2.embedding.level)),
+            Span::styled("  reported, not enforced", theme.dim()),
+        ]));
     }
     lines
 }
 
-/// The one key that quits from anywhere, including out of a full-screen mode.
 fn ctrl_c(key: &event::KeyEvent) -> bool {
     key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL)
 }
@@ -3729,6 +3983,156 @@ mod tests {
         let db = scratch().join(format!("app-{n}.db"));
         std::fs::copy(template(), &db).expect("copying the scanned fixtures");
         App::with_activator(Index::open(&db).unwrap(), Box::new(Harmless)).unwrap()
+    }
+
+    /// The pane's one structural device is a label column you can run your eye down,
+    /// and `Paragraph`'s wrapping used to break it on exactly the rows long enough to
+    /// be worth reading — the overflow went to column zero.
+    #[test]
+    fn a_wrapped_value_hangs_under_the_value_it_belongs_to() {
+        let theme = theme::Theme::default();
+        let values = [
+            "the license withholds the freedom to change or redistribute the font",
+            "80 · 73 codepoints",
+            "/System/Library/Fonts/Supplemental/AVeryLongFontFileName.ttc #4",
+            "a b c d e f g h i j k l m n o p q r s t u v w x y z",
+            "",
+        ];
+        for value in values {
+            // From a label plus a word: below that the label column is itself the
+            // overflow, and `wrap_kv` keeps the column rather than pretending the pane
+            // is wide enough. No layout ever draws the face pane that narrow — `FACE`
+            // is forty-six — so nothing reaches it.
+            for cols in (LABEL as u16 + 8)..=200u16 {
+                let lines = wrap_kv("licence", value, cols, &theme);
+                assert!(!lines.is_empty());
+                for (i, line) in lines.iter().enumerate() {
+                    let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+                    let head: String = text.chars().take(LABEL).collect();
+                    if i == 0 {
+                        assert!(head.starts_with("licence"), "{text:?}");
+                    } else {
+                        assert!(
+                            head.trim().is_empty(),
+                            "{cols} columns: {text:?} runs on at the left edge"
+                        );
+                    }
+                    // One word longer than the column is the one thing allowed past it:
+                    // cutting a path in half to make it fit would be worse than a line
+                    // that reaches the edge.
+                    let value_words = text[LABEL.min(text.len())..].split(' ').count();
+                    assert!(
+                        fontina_core::unicode::columns(&text) <= cols as usize || value_words == 1,
+                        "{cols} columns: {text:?} is {} wide",
+                        fontina_core::unicode::columns(&text)
+                    );
+                }
+            }
+        }
+    }
+
+    /// And the pane really draws them that way: a nonfree licence explains itself in
+    /// prose, which is the longest value any face has and the one that used to wrap to
+    /// the left edge in front of everybody.
+    #[test]
+    fn the_pane_draws_a_long_value_under_its_label() {
+        let mut app = app();
+        select_family(&mut app, "Amiri");
+        // A verdict with a reason attached, without needing a nonfree fixture.
+        let face = app.detail.as_mut().expect("a face on show");
+        face.license.spdx = Some("LicenseRef-Proprietary".into());
+        let drawn = frame(&mut app, 90, 44);
+        let pane: Vec<&str> = drawn.lines().filter_map(|l| l.rsplit('│').nth(1)).collect();
+        let at = pane
+            .iter()
+            .position(|l| l.starts_with("licence"))
+            .expect("a licence row");
+        let reason = pane.get(at + 1).expect("the reason under it");
+        assert!(
+            reason.starts_with(&" ".repeat(LABEL)) && !reason.trim().is_empty(),
+            "the reason runs on at the left edge: {reason:?}"
+        );
+    }
+
+    /// The pane names the face, and does not then spend its first row saying it again.
+    #[test]
+    fn the_face_pane_is_titled_with_the_face() {
+        let mut app = app();
+        select_family(&mut app, "Amiri");
+        let drawn = frame(&mut app, 120, 40);
+        let title = drawn.lines().nth(1).unwrap_or_default();
+        assert!(
+            title.contains("Amiri Regular"),
+            "the border names the face: {title:?}"
+        );
+        assert!(
+            !title.contains("Details"),
+            "and does not name itself: {title:?}"
+        );
+        assert_eq!(
+            drawn.matches("Amiri Regular").count(),
+            1,
+            "and the name is on the screen once:\n{drawn}"
+        );
+    }
+
+    /// Nothing in the pane is said twice. The axes used to be a row above the axis
+    /// controls, and the scripts a list at the end of `glyphs` and again as bars.
+    #[test]
+    fn the_face_pane_says_nothing_twice() {
+        let mut app = app();
+        select_family(&mut app, "Bricolage Grotesque");
+        let drawn = frame(&mut app, 120, 44);
+        let pane: Vec<&str> = drawn.lines().filter_map(|l| l.rsplit('│').nth(1)).collect();
+        // The label column, so that the controls' own title — `axes & features` — is
+        // not mistaken for a readout labelled `axes`.
+        let labelled = |label: &str| {
+            pane.iter()
+                .filter(|l| l.chars().take(LABEL).collect::<String>().trim() == label)
+                .count()
+        };
+        assert_eq!(labelled("axes"), 0, "the axes are the controls:\n{drawn}");
+        assert_eq!(labelled("freedom"), 0, "the verdict is on the licence row");
+        assert_eq!(labelled("licence"), 1);
+        let glyphs = pane
+            .iter()
+            .find(|l| l.starts_with("glyphs"))
+            .expect("a glyphs row");
+        assert!(
+            !glyphs.contains("Latn"),
+            "the scripts are counted below, with bars: {glyphs:?}"
+        );
+        assert!(
+            pane.iter().any(|l| l.starts_with("Latn")),
+            "and they are counted below:\n{drawn}"
+        );
+    }
+
+    /// Frames of a real library, for looking at. `FONTINA_LOOK=<db> cargo test -p
+    /// fontina-cli --bin fontina look -- --ignored --nocapture`
+    #[test]
+    #[ignore = "a way of looking, not an assertion"]
+    fn look() {
+        let db = std::env::var("FONTINA_LOOK").expect("FONTINA_LOOK=<db>");
+        let mut app = App::with_activator(
+            Index::open(std::path::Path::new(&db)).unwrap(),
+            Box::new(Harmless),
+        )
+        .unwrap();
+        let w: u16 = std::env::var("LOOK_W")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(120);
+        let h: u16 = std::env::var("LOOK_H")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(40);
+        for key in std::env::var("LOOK_KEYS").unwrap_or_default().chars() {
+            frame(&mut app, w, h);
+            app.on_key(event::KeyEvent::new(KeyCode::Char(key), KeyModifiers::NONE))
+                .unwrap();
+        }
+        println!("{}", frame(&mut app, w, h));
     }
 
     /// The activation keys record what they did, and the keys that undo them clear it.
@@ -4408,13 +4812,15 @@ mod tests {
         let mut app = app();
         select_family(&mut app, "Amiri");
         let mut face = app.detail.clone().unwrap();
-        let shown = text_of(&license_lines(&face, &theme::Theme::default()));
+        let shown = text_of(&license_lines(&face, &theme::Theme::default(), 60));
         assert!(shown.contains("OFL-1.1"), "{shown}");
         // Not `contains("free")`: the label "freedom" contains it, so that would hold
         // even if the verdict were missing or said the opposite.
         assert!(
-            shown.lines().any(|l| l.trim_end() == "freedom   free"),
-            "the verdict is on its own line: {shown}"
+            shown
+                .lines()
+                .any(|l| l.starts_with("licence") && l.trim_end().ends_with("free")),
+            "the verdict is on the licence row, not a row of its own: {shown}"
         );
         assert!(
             !shown.contains("grants the freedom"),
@@ -4423,13 +4829,13 @@ mod tests {
 
         // A nonfree licence says so, and says why.
         face.license.spdx = Some("LicenseRef-Proprietary".into());
-        let shown = text_of(&license_lines(&face, &theme::Theme::default()));
+        let shown = text_of(&license_lines(&face, &theme::Theme::default(), 60));
         assert!(shown.contains("nonfree"), "{shown}");
         assert!(shown.contains("withholds"), "{shown}");
 
         // A font with nothing embedded is not silently called free.
         face.license.spdx = None;
-        let shown = text_of(&license_lines(&face, &theme::Theme::default()));
+        let shown = text_of(&license_lines(&face, &theme::Theme::default(), 60));
         assert!(shown.contains("none embedded"), "{shown}");
         assert!(shown.contains("unstated"), "{shown}");
         assert!(shown.contains("no permission"), "{shown}");
@@ -4491,12 +4897,14 @@ mod tests {
         select_family(&mut app, "Amiri");
         let mut face = app.detail.clone().unwrap();
         // Installable is the ordinary case and says nothing.
-        assert!(!text_of(&license_lines(&face, &theme::Theme::default())).contains("embedding"));
+        assert!(
+            !text_of(&license_lines(&face, &theme::Theme::default(), 60)).contains("embedding")
+        );
 
         let os2 = face.os2.as_mut().unwrap();
         os2.fs_type = 0x0002;
         os2.embedding = fontina_core::model::EmbeddingRights::from_fs_type(0x0002);
-        let shown = text_of(&license_lines(&face, &theme::Theme::default()));
+        let shown = text_of(&license_lines(&face, &theme::Theme::default(), 60));
         assert!(shown.contains("RestrictedLicense"), "{shown}");
         assert!(
             shown.contains("not enforced"),
@@ -5918,6 +6326,94 @@ mod tests {
         assert_eq!(app.status, "nothing to set: type some text");
     }
 
+    /// A shortlist, with the numbers it was made from, and no adjective anywhere.
+    #[test]
+    fn p_ranks_the_library_against_the_face_on_show() {
+        let mut app = app();
+        select_family(&mut app, "Source Serif");
+        press(&mut app, KeyCode::Char('P'));
+
+        let view = app.pairing.as_ref().expect("the fixtures share Latin");
+        assert!(!view.is_empty());
+        assert!(
+            view.rows()
+                .iter()
+                .all(|r| r.label != "Source Serif 4 Regular"),
+            "a face was ranked against itself"
+        );
+
+        let drawn = stable_frame(&mut app, 120, 36);
+        assert!(drawn.contains("ranked against Source Serif"), "{drawn}");
+        assert!(
+            drawn.contains("weight "),
+            "the measurements are shown: {drawn}"
+        );
+        assert!(
+            drawn.contains("x/em ") || drawn.contains("not reported"),
+            "{drawn}"
+        );
+        assert!(drawn.contains("script"), "{drawn}");
+        for word in ["best", "good match", "ideal", "perfect"] {
+            assert!(!drawn.contains(word), "{word:?} is taste: {drawn}");
+        }
+    }
+
+    /// Pairing a typeface with its own bold is a weight, not a pairing.
+    #[test]
+    fn the_same_family_is_not_a_pairing() {
+        let mut app = app();
+        select_family(&mut app, "Inter");
+        app.open_family().unwrap();
+        press(&mut app, KeyCode::Char('P'));
+        let view = app.pairing.as_ref().expect("something to rank");
+        assert!(
+            view.rows().iter().all(|r| !r.label.starts_with("Inter")),
+            "the other Inter was offered as a partner: {:?}",
+            view.rows().iter().map(|r| &r.label).collect::<Vec<_>>()
+        );
+    }
+
+    /// A face with no plausible partner says so, rather than showing a list that is
+    /// not one.
+    #[test]
+    fn a_face_with_no_partner_in_the_filter_says_so() {
+        let mut app = app();
+        select_family(&mut app, "Amiri");
+        // Narrow to Amiri alone, so there is nothing else to pair with at all.
+        app.query = "Amiri".into();
+        app.reload().unwrap();
+        press(&mut app, KeyCode::Char('P'));
+        assert!(app.pairing.is_none());
+        assert!(
+            app.status
+                .starts_with("nothing in this filter shares a script"),
+            "{}",
+            app.status
+        );
+    }
+
+    /// Enter goes to the face, and P closes the list again.
+    #[test]
+    fn enter_goes_to_the_partner_and_p_closes_the_list() {
+        let mut app = app();
+        select_family(&mut app, "Source Serif");
+        press(&mut app, KeyCode::Char('P'));
+        assert!(app.pairing.is_some());
+        press(&mut app, KeyCode::Char('P'));
+        assert!(app.pairing.is_none(), "P did not close it");
+
+        press(&mut app, KeyCode::Char('P'));
+        let to = app
+            .pairing
+            .as_ref()
+            .and_then(|v| v.selected())
+            .map(|r| r.id)
+            .expect("something to go to");
+        press(&mut app, KeyCode::Enter);
+        assert!(app.pairing.is_none());
+        assert_eq!(app.detail_id, Some(to), "{}", app.status);
+    }
+
     #[test]
     fn the_browser_opens_on_the_family_list() {
         let mut app = app();
@@ -6013,7 +6509,10 @@ mod tests {
         let mut app = app();
         let drawn = stable_frame(&mut app, 120, 24);
         assert!(drawn.contains("families"), "the list is there: {drawn}");
-        assert!(drawn.contains("Details"), "and the face");
+        assert!(
+            drawn.contains("Amiri Regular"),
+            "and the face, which names itself"
+        );
         assert!(
             drawn.contains("filter") && drawn.contains("f narrows"),
             "and the filter line says what it is for"
@@ -6028,7 +6527,7 @@ mod tests {
         let mut app = app();
         select_family(&mut app, "Amiri");
         let drawn = stable_frame(&mut app, 80, 24);
-        assert!(drawn.contains("Details"), "{drawn}");
+        assert!(drawn.contains("Amiri Regular"), "{drawn}");
         assert!(
             !drawn.contains(" faces "),
             "the facet pane is a Tab away, not on the screen"
@@ -6036,7 +6535,7 @@ mod tests {
         let file = drawn
             .lines()
             .find(|l| l.contains("file "))
-            .expect("the face names its file");
+            .unwrap_or_else(|| panic!("the face names its file:\n{drawn}"));
         assert!(
             file.contains("Amiri-Regular.ttf"),
             "the path fits on its own row rather than wrapping: {file}"
@@ -6059,7 +6558,7 @@ mod tests {
             "and says how to put it back: {drawn}"
         );
         assert!(
-            drawn.contains("Details"),
+            drawn.contains("Amiri Regular"),
             "and it only covers the list, not the face"
         );
         insta::assert_snapshot!(drawn);
@@ -6073,11 +6572,11 @@ mod tests {
         // The pane's own title, not the word: the filter line at the top counts
         // families too, and an assertion that both satisfy asserts nothing.
         assert!(
-            drawn.contains("┌ 5 families"),
+            drawn.contains("┌ families"),
             "the list has the focus: {drawn}"
         );
         assert!(
-            !drawn.contains("Details"),
+            !drawn.contains("Amiri Regular"),
             "and nothing else is competing for the width"
         );
         insta::assert_snapshot!(drawn);
@@ -6086,9 +6585,12 @@ mod tests {
         // are a panel now, and `f` is the way in.
         app.cycle_focus();
         let face = stable_frame(&mut app, 60, 24);
-        assert!(face.contains("Details"), "Tab reaches the face: {face}");
         assert!(
-            !face.contains("┌ 5 families"),
+            face.contains("Amiri Regular"),
+            "Tab reaches the face: {face}"
+        );
+        assert!(
+            !face.contains("┌ families"),
             "and the list is not under it: {face}"
         );
         app.open_narrow();
@@ -6192,7 +6694,10 @@ mod tests {
     fn the_help_says_when_it_does_not_fit_and_scrolls_when_it_does_not() {
         let mut app = app();
         app.help = true;
-        let tall = stable_frame(&mut app, 100, 40);
+        // Taller than the list is long, with room to spare: the list grows with the
+        // browser, and a test that pins the exact height it needs would be a test
+        // somebody has to edit every time a key is added.
+        let tall = stable_frame(&mut app, 100, 60);
         assert!(tall.contains("any key to close"), "all of it fits: {tall}");
         assert!(!tall.contains("j/k scrolls"), "so it says nothing about it");
 

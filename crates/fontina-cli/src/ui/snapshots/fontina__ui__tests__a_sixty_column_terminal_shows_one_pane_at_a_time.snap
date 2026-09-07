@@ -3,7 +3,7 @@ source: crates/fontina-cli/src/ui/mod.rs
 expression: drawn
 ---
  filter  nothing narrowed — f narrows          5 families
-┌ 5 families ──────────────────────────────────────────────┐
+┌ families ────────────────────────────────────────────────┐
 │Amiri                                               1     │
 │Bricolage Grotesque                                 1 V   │
 │Inter                                               2     │
@@ -25,4 +25,4 @@ expression: drawn
 │                                                          │
 └──────────────────────────────────────────────────────────┘
  $ fontina families
- / search  f narrow  F flags  x clear  ⇥ pane  ? help
+ / search  f narrow  F flags  x clear  ⇥ pane  … ? help
