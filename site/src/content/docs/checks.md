@@ -53,6 +53,7 @@ was found.
 | `os2/fs-type` | info | `fsType` restricts embedding: no embedding, preview and print only, or bitmap only |
 | `os2/vendor-id` | info | `achVendID` is unset or `UKWN` |
 | `metrics/typo-vs-hhea` | warn | `OS/2` typo metrics differ from `hhea` and USE_TYPO_METRICS is not set; line height will vary by platform |
+| `metrics/fixed-pitch` | warn | `post.isFixedPitch` and the advance widths disagree, in either direction |
 | `metrics/line-gap` | info | `hhea.lineGap` is not zero, so line height varies by platform |
 | `metrics/x-height` | warn | `sxHeight` is above `sCapHeight` |
 | `head/units-per-em` | error | `unitsPerEm` outside 16..16384 |

@@ -2,27 +2,27 @@
 source: crates/fontina-cli/src/ui/mod.rs
 expression: drawn
 ---
- filter  nothing narrowed — f narrows, / searches                  5 families
-┌ Narrow by ─────────────────┐┌ Details ───────────────────────────────────────┐
-│Script                      ││Amiri Regular                                   │
-│  Latn                5 (6) ││style     weight 400 · width 100% · normal      │
-│  Arab                1 (1) ││glyphs    6710 · 1699 codepoints · Arab Latn    │
-│  Cyrl                1 (1) ││Zyyy Zinh                                       │
-│  +3 more                   ││features  25: ccmp dnom fina init liga locl mark│
-│Language                    ││medi numr pnum rlig rtlm                        │
-│  en                  5 (6) ││license   OFL-1.1                               │
-│  TRK                 3 (3) ││freedom   free                                  │
-│  CAT                 2 (3) ││designer  Khaled Hosny                          │
-│  +17 more                  ││state     not active                            │
-│Foundry                     ││file      ../../fixtures/Amiri-Regular.ttf      │
-│  RSMS                1 (2) ││                                                │
-│  ADBO                1 (1) ││features                                        │
-│  ALIF                1 (1) ││  liga [ ] Standard ligatures                   │
-│  +2 more                   ││  pnum [ ] Proportional figures                 │
-│Capability                  ││                                                │
-│  proportional        5 (6) ││metrics   1000 upm · asc 1124 · desc -634 · gap │
-│  variable            2 (2) ││0                                               │
-│  color               1 (1) ││shape     cap 646 · x-height 433 · x/em 0.43    │
-└ ⏎ picks · Esc closes ──────┘└────────────────────────────────────────────────┘
- $ fontina families
- / search  f narrow  F flags  x clear  ⇥ pane  ⏎ open  ⌫ back  ␣ select  ? help
+  filter  nothing narrowed — f narrows, / searches                5 families
+╭ Narrow by ─────────────────╮╭ Amiri Regular ─────────────────────────────────╮
+│ Script                     ┃│ style      weight 400 · width 100% · normal    │
+│   Latn               5 (6) ┃│ state      not active                          │
+│   Arab               1 (1) ┃│ features                                       │
+│   Cyrl               1 (1) ┃│   liga ○ Standard ligatures                    │
+│   +3 more                  ┃│   pnum ○ Proportional figures                  │
+│ Language                   ┃│   ss01 ○ Stylistic set 1                       │
+│   en                 5 (6) ┃│   ss02 ○ Stylistic set 2                       │
+│   TRK                3 (3) ┃│   ss03 ○ Stylistic set 3                       │
+│   CAT                2 (3) ┃│ glyphs     6710 · 1699 codepoints              │
+│   +17 more                 ┃│ Arab       ██████████ 1217                     │
+│ Foundry                    ││ Latn       ██▌░░░░░░░ 291                      │
+│   RSMS               1 (2) ││ features   25: ccmp dnom fina init liga locl   │
+│   ADBO               1 (1) ││            mark medi numr pnum rlig rtlm       │
+│   ALIF               1 (1) ││ licence    OFL-1.1  free                       │
+│   +2 more                  ││ designer   Khaled Hosny                        │
+│ Capability                 ││ file       ../../fixtures/Amiri-Regular.ttf    │
+│   proportional       5 (6) ││ metrics    1000 upm · asc 1124 · desc -634 ·   │
+│   variable           2 (2) ││            gap 0                               │
+│   color              1 (1) ││ shape      cap 646 · x-height 433 · x/em 0.43  │
+╰ ⏎ picks · Esc closes ──────╯╰────────────────────────────────────────────────╯
+  $ fontina families
+  / search  f narrow  F flags  x clear  ⇥ pane  ⏎ open  ⌫ back  … ? help
