@@ -1,0 +1,102 @@
+# Updates open pull requests that are ready to merge and only waiting to be up to date.
+#
+# Branch protection requires branches to be current, and GitHub's auto-merge does not
+# update them — it waits. So every merge into main leaves every other open pull request
+# `BEHIND`, and somebody has to run `gh pr update-branch` on each one. On a busy day that
+# is every pull request, several times each, and it is the single largest piece of manual
+# toil in this repository's workflow. An agent that finishes its work and stops is not
+# wrong to; nothing told it the branch would go stale a minute later.
+#
+# The filter is deliberately narrow: a pull request is updated only when updating it is
+# the *last* thing standing between it and merging — auto-merge armed, not a draft,
+# mergeable, no failing check. Updating anything else would burn CI on work that is not
+# ready and cannot merge anyway.
+#
+# Each update is a merge commit on the pull request's branch, which starts its checks
+# again. Those runs are not extra: branch protection requires them before the merge, so
+# this only makes them happen sooner and without a person asking.
+
+name: keep current
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: List what would be updated and change nothing
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  # One at a time. Two runs updating the same branch race, and the loser reports a
+  # conflict that is not real.
+  group: keep-current
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: keep current
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update the pull requests that are only waiting to be current
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+
+          # `BEHIND` is the state this exists for. `DIRTY` is a real conflict and the
+          # author has to resolve it; `BLOCKED` is a missing review or a failing check.
+          # Neither is helped by an update, so neither is touched.
+          armed_in_state() {
+            gh pr list --state open --limit 100 \
+              --json number,title,isDraft,mergeStateStatus,autoMergeRequest,statusCheckRollup \
+              --jq '
+                .[]
+                | select(.isDraft == false)
+                | select(.autoMergeRequest != null)
+                | select(.mergeStateStatus == "'"$1"'")
+                | select([.statusCheckRollup[]? | select(.conclusion == "FAILURE")] | length == 0)
+                | "\(.number)\t\(.title)"
+              '
+          }
+
+          # GitHub computes mergeability lazily and reports `UNKNOWN` until it has. A push
+          # to main invalidates it for every open pull request at once, which is exactly
+          # when this runs — so asking immediately gets `UNKNOWN` for all of them and this
+          # job would do nothing, every time. Asking is what starts the computation, so
+          # ask, wait, and ask again.
+          for attempt in 1 2 3 4 5 6; do
+            unknown=$(armed_in_state UNKNOWN | wc -l | tr -d ' ')
+            [ "$unknown" -eq 0 ] && break
+            echo "$unknown pull request(s) still computing; waiting ($attempt/6)"
+            sleep 10
+          done
+
+          candidates=$(armed_in_state BEHIND)
+
+          if [ -z "$candidates" ]; then
+            echo "nothing to update: no open pull request is armed, green and behind"
+            exit 0
+          fi
+
+          echo "$candidates" | while IFS=$'\t' read -r number title; do
+            [ -n "$number" ] || continue
+            if [ "${DRY_RUN:-false}" = "true" ]; then
+              echo "would update #$number  $title"
+              continue
+            fi
+            echo "updating #$number  $title"
+            # A pull request can go from BEHIND to merged between the listing and here,
+            # and a fork's branch cannot be updated with this token. Neither is a reason
+            # to fail the run: the next push to main tries again.
+            if ! gh pr update-branch "$number" 2>&1; then
+              echo "  could not update #$number; leaving it for the next push"
+            fi
+          done
