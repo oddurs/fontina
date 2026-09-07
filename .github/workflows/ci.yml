@@ -111,6 +111,25 @@ jobs:
           done < <(git diff --name-only --diff-filter=AM "$base" HEAD)
           exit $fail
 
+  workflows:
+    name: workflows are valid
+    runs-on: ubuntu-latest
+    # An invalid workflow file produces no run, and therefore no failing check: GitHub
+    # reports "This run likely failed because of a workflow file issue" against the whole
+    # file and stops before the first job. So the workflow that would report the problem
+    # is the one that cannot start. #112 shipped `join(needs.*.result, " ")` — valid YAML,
+    # ordinary-looking bash, and a syntax error in a language that has only single-quoted
+    # strings — and took four workflows off main until somebody noticed they were quiet.
+    #
+    # This job is in ci.yml, which has no path filter and every pull request runs, so a
+    # broken workflow file is caught by a workflow that still works.
+    steps:
+      - uses: actions/checkout@v7
+      - name: actionlint
+        uses: docker://rhysd/actionlint:1.7.12
+        with:
+          args: -color
+
   schema:
     name: schema is current
     runs-on: ubuntu-latest
