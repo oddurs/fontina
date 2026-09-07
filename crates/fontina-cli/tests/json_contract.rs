@@ -244,6 +244,7 @@ const PUBLISHED_TYPES: &[&str] = &[
     "Setting",
     "SettingSource",
     "Severity",
+    "SkippedFile",
     "Source",
     "SourceKind",
     "Stats",
