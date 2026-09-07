@@ -584,6 +584,10 @@ mod tests {
     /// the user, and it runs `restore`.
     #[test]
     fn the_plan_stays_in_the_users_own_directory() {
+        // Both `plan` and `BaseDirs::new()` below read the environment, and this test
+        // compares one against the other. Without the lock a neighbour can move
+        // `XDG_CONFIG_HOME` between the two reads and the comparison is meaningless.
+        let _g = crate::env_lock();
         let Some(plan) = plan(Path::new("/opt/fontina"), &args()) else {
             return; // no home directory in this environment
         };

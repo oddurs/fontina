@@ -194,3 +194,103 @@ fn check_ids_are_stable_and_shaped_area_slash_check() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Every type `fontina --json` can print, sorted.
+///
+/// ADR 0008 makes these a published interface: a type or a field may be added, and
+/// nothing may be removed or renamed.
+///
+/// This has to live in the CLI, and that is the point of it. `schemas/cli-output.json`
+/// is assembled from two halves — `fontina_core::cli_output_schema()` contributes 29,
+/// and the CLI adds the rest itself: the agent reports, the config report, the licence
+/// row, the paths. The test that guarded this before lives in `fontina-core`, so it could
+/// only ever see core's half, and roughly a third of the published surface had no test at
+/// all. Running the binary is what makes the whole artefact visible.
+///
+/// CI already diffs the committed schema, which catches an accidental edit — but a
+/// removal reaches that diff looking exactly like an addition, and whoever regenerates
+/// the file commits it and goes green. Pinning the set makes removing a type mean
+/// deleting a line from a list that says not to, the way `ALL_IDS` does for check ids.
+const PUBLISHED_TYPES: &[&str] = &[
+    "ActivationRecord",
+    "ActivationState",
+    "AgentInstalled",
+    "AgentRemoved",
+    "AgentStatus",
+    "BlockCoverage",
+    "BundleReport",
+    "CheckReport",
+    "CollectionExport",
+    "CollectionFace",
+    "CollectionInfo",
+    "ConfigReport",
+    "Conflict",
+    "DuplicateGroup",
+    "EmbeddingLevel",
+    "EmbeddingRights",
+    "FaceSummary",
+    "FacetCount",
+    "Facets",
+    "Family",
+    "Finding",
+    "Freedom",
+    "ImportReport",
+    "LicenseRow",
+    "Paths",
+    "Related",
+    "RestoreReport",
+    "ScanFailure",
+    "ScanReport",
+    "Setting",
+    "SettingSource",
+    "Severity",
+    "Source",
+    "SourceKind",
+    "Stats",
+    "SystemFontDir",
+    "TagInfo",
+    "TagSyncChange",
+    "TagSyncReport",
+    "TagSyncSkip",
+    "WatchEvent",
+];
+
+#[test]
+fn the_published_json_types_are_exactly_the_pinned_set() {
+    let dir = std::env::temp_dir().join(format!("fontina-schema-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let db = dir.join("index.db");
+
+    // Through the binary, so this sees the artefact a consumer is handed rather than
+    // whatever one crate happens to know about.
+    let out = fontina(&db, &["schema", "cli-output"]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let schema: Value = serde_json::from_slice(&out.stdout).expect("the schema is JSON");
+
+    let published: std::collections::BTreeSet<&str> = schema["$defs"]
+        .as_object()
+        .expect("$defs is an object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    let pinned: std::collections::BTreeSet<&str> = PUBLISHED_TYPES.iter().copied().collect();
+
+    let added: Vec<&&str> = published.difference(&pinned).collect();
+    assert!(
+        added.is_empty(),
+        "published and not pinned — add them to PUBLISHED_TYPES: {added:?}"
+    );
+    let removed: Vec<&&str> = pinned.difference(&published).collect();
+    assert!(
+        removed.is_empty(),
+        "these were published and are gone. ADR 0008 says a published type is never \
+         removed; if the removal is deliberate it is a major version: {removed:?}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -82,7 +82,7 @@ jobs:
           # Every workflow, not only ci.yml: linux, perf and fuzz are held the same way
           # on a bot-authored pull request, and a release branch that never runs them is
           # a release nobody measured. The pull_request runs take a moment to appear.
-          for attempt in $(seq 1 12); do
+          for _ in $(seq 1 12); do
             ids=$(gh run list --branch "$RELEASE_BRANCH" --event pull_request \
               --json databaseId,headSha,conclusion \
               --jq ".[] | select(.headSha==\"$sha\" and .conclusion==\"action_required\") | .databaseId")

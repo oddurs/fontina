@@ -188,10 +188,7 @@ impl FontActivator for Fontconfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
-
-    // Environment variables are process-global; serialise the tests that set them.
-    static ENV: Mutex<()> = Mutex::new(());
+    use crate::env_lock;
 
     fn sandbox(name: &str) -> (PathBuf, PathBuf) {
         let root =
@@ -210,7 +207,7 @@ mod tests {
 
     #[test]
     fn install_links_into_xdg_and_writes_the_snippet() {
-        let _g = ENV.lock().unwrap();
+        let _g = env_lock();
         let (data, config) = sandbox("install");
         // SAFETY: tests in this module are serialised through ENV and restore nothing:
         // the sandbox paths are only meaningful inside this process.
@@ -261,7 +258,7 @@ mod tests {
 
     #[test]
     fn activate_and_deactivate_by_target() {
-        let _g = ENV.lock().unwrap();
+        let _g = env_lock();
         let (data, config) = sandbox("activate");
         unsafe {
             std::env::set_var("XDG_DATA_HOME", &data);
@@ -291,7 +288,7 @@ mod tests {
         // `canonicalize` then fails, and matching only the canonical path would leave a
         // dangling link in the active directory that fontconfig still reads and that
         // nothing could ever remove, while the caller was told deactivation succeeded.
-        let _g = ENV.lock().unwrap();
+        let _g = env_lock();
         let (data, config) = sandbox("vanished");
         unsafe {
             std::env::set_var("XDG_DATA_HOME", &data);

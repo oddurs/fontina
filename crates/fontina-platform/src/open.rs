@@ -116,6 +116,7 @@ mod tests {
     #[test]
     fn the_users_browser_is_tried_first_and_its_arguments_kept() {
         // SAFETY: single-threaded test, and the variable is read back immediately.
+        let _g = crate::env_lock();
         unsafe { std::env::set_var("BROWSER", "my-viewer --new-window %s: fallback-viewer") };
         let h = handlers();
         unsafe { std::env::remove_var("BROWSER") };
