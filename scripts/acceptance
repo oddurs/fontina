@@ -192,13 +192,18 @@ if [ "$probe" != none ]; then
     else
         no "$probe_name does not see Amiri after activation"
     fi
+else
+    say "  skip  visibility assertions ($probe_off)"
+fi
+# Resolution, not just presence, and only fontconfig answers this one: `fc-match` is
+# asking which face a request for "Amiri" actually gets, and neither CoreText nor GDI has
+# a shell equivalent worth trusting.
+if [ "$have_fc" = yes ]; then
     if fc-match Amiri 2>/dev/null | grep -qi amiri; then
         ok "fc-match resolves Amiri to the activated face"
     else
         no "fc-match does not resolve Amiri"
     fi
-else
-    say "  skip  visibility assertions ($probe_off)"
 fi
 if "$fontina" activations | grep -qi amiri; then ok "activations lists it"; else no "activations lists it"; fi
 if [ "$have_fc" = yes ] || [ "$os" = Linux ]; then
@@ -293,7 +298,24 @@ else
     no "install family:Amiri"
     cat "$root/install.out"
 fi
-if [ "$probe" != none ]; then
+# An installed copy is a file in the per-user font directory, and whether the system can
+# see it there depends on how the system finds fonts at all.
+#
+# fontconfig reads `$XDG_DATA_HOME/fonts`, and the sandbox redirects that, so it looks
+# where the copy went. Windows registers the file as well as copying it, so GDI answers
+# for it wherever it lives — CI confirms both.
+#
+# CoreText does neither. `install` on macOS is a plain copy into `~/Library/Fonts` that
+# fontd watches, and fontd watches the *real* home, not the one this script exports. So
+# the copy is genuinely invisible here, and would be genuinely visible on a desktop. The
+# alternative is not sandboxing HOME, which would mean an acceptance test writing into
+# somebody's actual font directory — so this assertion is skipped and the reason said out
+# loud. What is *not* skipped is activation, which registers the file where it lies and
+# is therefore the half that a sandbox cannot hide.
+if [ "$probe" = coretext ]; then
+    say "  skip  an installed copy goes to \$HOME/Library/Fonts, and fontd watches the"
+    say "        real home rather than this sandbox's"
+elif [ "$probe" != none ]; then
     if seen Amiri; then ok "$probe_name sees the installed copy"; else no "$probe_name does not see the installed copy"; fi
 fi
 # The copy has to land in this system's own per-user font directory, whichever that is;
