@@ -2,7 +2,7 @@
 id: 73
 title: Decide whether mutation testing earns a weekly job
 type: test
-status: backlog
+status: done
 milestone: unfiled
 created: 2026-09-08
 updated: 2026-09-08
@@ -56,11 +56,37 @@ Option 3 is the cheapest way to find out and the easiest to withdraw.
 
 ## Acceptance criteria
 
-- [ ] a decision, with the reason written down, even if the decision is "not worth it"
-- [ ] if it runs anywhere, it is clear who reads the output and what they do with it
+- [x] a decision, with the reason written down, even if the decision is "not worth it"
+- [x] if it runs anywhere, it is clear who reads the output and what they do with it
 
 ## Notes
 
 Not wired up while passing through: it is a commitment of CI minutes rather than a
 change to the code, and the numbers above are the point of this item rather than a
 preamble to it.
+
+## Closed
+
+Option 1, weekly, scoped to `fontina-core`, in `.github/workflows/mutants.yml`.
+
+Sharded four ways rather than time-boxed, which is the one thing this item got wrong.
+`cargo mutants` has no total-time budget, and inventing one with an outer timeout would
+have produced a different arbitrary prefix of the same list every week — the mutants it
+never reached would be the same ones for ever. `--shard 1/4` through `4/4` finishes, and
+each shard is about ninety minutes.
+
+**It reports and never gates.** `|| true` on the run and `if: always()` on the summary:
+a surviving mutant is a question about a test, not a broken build, and a red weekly job
+nobody can act on is a job people mute. The missed list goes in the step summary and the
+whole `mutants.out/` is kept as an artefact for thirty days.
+
+`--in-place` is deliberately not used. mutants copies the tree to a scratch directory,
+and a test that only passes in its original location is a finding worth having rather
+than an inconvenience to configure away — that is exactly how the first of #211's two was
+found.
+
+Who reads it: nobody is assigned, and pretending otherwise would be the wrong answer to
+the second criterion. What makes it survivable is that it is quiet by construction —
+green every week, with a list in the summary — so it costs nothing to ignore for a month
+and is there when somebody is writing tests for something delicate and wants to know
+whether they hold.
