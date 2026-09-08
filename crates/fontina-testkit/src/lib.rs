@@ -91,7 +91,14 @@ const REDIRECTED: &[(&str, &str)] = &[
 /// `colour.rs` had already worked this out for `NO_COLOR` and `CLICOLOR_FORCE` — a
 /// developer who sets either would have watched the colour tests disagree with CI. The
 /// same argument covers the rest: `FONTINA_DB` is the variable CLAUDE.md tells people to
-/// export while developing, and `COLUMNS`/`LINES` decide what the table code draws.
+/// export while developing, `FONTINA_CONFIG` points `config::path` at a file that can set
+/// a default scan source or preview text, and `COLUMNS`/`LINES` decide what the table
+/// code draws.
+///
+/// `FONTINA_CONFIG` is hygiene rather than a fix: pointing it at a config that sets
+/// `scan.system` or `preview.text` breaks no test today, because the tests that would
+/// care pass those explicitly. It is here because the next test to rely on a default
+/// should inherit a clean one, not because anything is currently wrong.
 ///
 /// A test that wants one of these sets it back with `with_env`, which runs afterwards.
 const REMOVED: &[&str] = &[
@@ -100,6 +107,7 @@ const REMOVED: &[&str] = &[
     "CLICOLOR_FORCE",
     "FORCE_COLOR",
     "FONTINA_DB",
+    "FONTINA_CONFIG",
     "COLUMNS",
     "LINES",
 ];
