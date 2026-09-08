@@ -28,19 +28,16 @@
 //! is ten bytes and so is any five-character Japanese name, so every string keeps its
 //! length and every offset in the table stays where it was.
 
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use fontina_testkit::Cli;
+use std::path::Path;
 
 /// A five-character Japanese name, ten columns wide and ten bytes in UTF-16BE.
 const CJK: &str = "源ノ角ゴシ";
 
-fn fixtures() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures")
-}
-
 /// A copy of the Amiri fixture whose every `Amiri` name reads [`CJK`] instead.
 fn cjk_font(to: &Path) {
-    let mut bytes = std::fs::read(fixtures().join("Amiri-Regular.ttf")).expect("the fixture");
+    let mut bytes =
+        std::fs::read(fontina_testkit::fixtures().join("Amiri-Regular.ttf")).expect("the fixture");
     let old: Vec<u8> = "Amiri".encode_utf16().flat_map(u16::to_be_bytes).collect();
     let new: Vec<u8> = CJK.encode_utf16().flat_map(u16::to_be_bytes).collect();
     assert_eq!(
@@ -64,68 +61,18 @@ fn cjk_font(to: &Path) {
     std::fs::write(to, bytes).expect("writing the renamed font");
 }
 
-struct Session {
-    root: PathBuf,
-    fonts: PathBuf,
-    db: PathBuf,
-}
-
-impl Drop for Session {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.root);
-    }
-}
-
 /// A sandbox with the Latin fixture and a Japanese-named copy of it, scanned.
-fn session(name: &str) -> Session {
-    let root = std::env::temp_dir().join(format!("fontina-table-{name}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
-    let fonts = root.join("fonts");
-    std::fs::create_dir_all(&fonts).unwrap();
+fn session(name: &str) -> Cli {
+    let cli = fontina_testkit::cli!(name);
+    let fonts = cli.dir("fonts");
     std::fs::copy(
-        fixtures().join("SourceSerif4-Regular.otf"),
+        cli.fixtures().join("SourceSerif4-Regular.otf"),
         fonts.join("SourceSerif4-Regular.otf"),
     )
     .unwrap();
     cjk_font(&fonts.join("cjk.ttf"));
-
-    let s = Session {
-        db: root.join("index.db"),
-        fonts,
-        root,
-    };
-    let out = s.run(&["scan", &s.fonts.to_string_lossy()]);
-    assert!(
-        out.status.success(),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    s
-}
-
-impl Session {
-    fn run(&self, args: &[&str]) -> std::process::Output {
-        Command::new(env!("CARGO_BIN_EXE_fontina"))
-            .args(["--db", &self.db.to_string_lossy()])
-            .args(args)
-            .env("HOME", &self.root)
-            .env("XDG_CONFIG_HOME", self.root.join(".config"))
-            .env("XDG_DATA_HOME", self.root.join(".local/share"))
-            .output()
-            .expect("fontina runs")
-    }
-
-    #[track_caller]
-    fn ok(&self, args: &[&str]) -> String {
-        let o = self.run(args);
-        assert!(
-            o.status.success(),
-            "`fontina {}` failed: {}",
-            args.join(" "),
-            String::from_utf8_lossy(&o.stderr)
-        );
-        String::from_utf8_lossy(&o.stdout).into_owned()
-    }
+    cli.ok(&["scan", &fonts.to_string_lossy()]);
+    cli
 }
 
 /// Where `needle` starts, counted in terminal columns rather than in bytes.
@@ -158,8 +105,9 @@ fn the_face_table_lines_up_with_a_japanese_family_name() {
     // Canonical, because that is what the index stores and what the row prints: on macOS
     // the temporary directory is reached through a symlink, and the uncanonical form is
     // a substring of the canonical one starting eight columns later.
-    let prefix = std::fs::canonicalize(&s.fonts)
-        .unwrap_or_else(|_| s.fonts.clone())
+    let fonts = s.root().join("fonts");
+    let prefix = std::fs::canonicalize(&fonts)
+        .unwrap_or_else(|_| fonts.clone())
         .to_string_lossy()
         .into_owned();
     for row in &rows {
@@ -237,7 +185,7 @@ fn a_path_or_a_name_is_never_cut_short_to_fit_its_column() {
     // One long name rather than a deep tree: Windows still has a path-length limit and
     // the sandbox is already inside a temporary directory.
     let deep = s
-        .root
+        .root()
         .join("a-directory-with-a-deliberately-long-name-to-fill-the-column");
     std::fs::create_dir_all(&deep).unwrap();
     // Canonical, because that is the form a source is stored and printed in: on macOS
