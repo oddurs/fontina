@@ -111,7 +111,7 @@ Every check today reads the metadata and asks whether it is sensible. None asks 
 
 ## unfiled — Found, not yet scheduled
 
-`#####·····` 43% · 6 of 14 done
+`####······` 40% · 6 of 15 done
 
 Real findings with no milestone. Triage moves them or drops them; nothing sits here by default.
 
@@ -124,6 +124,7 @@ Real findings with no milestone. Triage moves them or drops them; nothing sits h
 - [ ] [`0070`](https://github.com/oddurs/fontina/blob/main/cairn/items/0070-ui-mod-rs-is-6900-lines-in-one-file.md) ui/mod.rs is 6900 lines in one file <sup>chore · p3 · ui</sup>
 - [ ] [`0071`](https://github.com/oddurs/fontina/blob/main/cairn/items/0071-twenty-two-test-files-still-build-their-own-sandbox.md) Twenty-two test files still build their own sandbox <sup>chore · p3 · workspace</sup>
 - [ ] [`0072`](https://github.com/oddurs/fontina/blob/main/cairn/items/0072-the-five-functions-in-watch-rs-that-nothing-calls.md) The five functions in watch.rs that nothing calls <sup>test · p2 · core</sup>
+- [ ] [`0073`](https://github.com/oddurs/fontina/blob/main/cairn/items/0073-decide-whether-mutation-testing-earns-a-weekly-job.md) Decide whether mutation testing earns a weekly job <sup>test · p2 · workspace</sup>
 
 ### ready to start
 
