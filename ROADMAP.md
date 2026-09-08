@@ -111,7 +111,7 @@ Every check today reads the metadata and asks whether it is sensible. None asks 
 
 ## unfiled — Found, not yet scheduled
 
-`#####·····` 50% · 4 of 8 done
+`####······` 33% · 4 of 12 done
 
 Real findings with no milestone. Triage moves them or drops them; nothing sits here by default.
 
@@ -120,6 +120,10 @@ Real findings with no milestone. Triage moves them or drops them; nothing sits h
 - [ ] [`0030`](https://github.com/oddurs/fontina/blob/main/cairn/items/0030-duplicates-are-found-and-then-nothing-can-be-done-about-them.md) Duplicates are found and then nothing can be done about them <sup>feat · p1 · cli</sup>
 - [ ] [`0031`](https://github.com/oddurs/fontina/blob/main/cairn/items/0031-variants-opens-with-the-family-you-are-already-looking-at.md) Variants opens with the family you are already looking at <sup>feat · p2 · cli</sup>
 - [ ] [`0042`](https://github.com/oddurs/fontina/blob/main/cairn/items/0042-two-thirds-of-the-published-json-fields-have-no-description.md) Two thirds of the published JSON fields have no description <sup>docs · p2 · workspace</sup>
+- [ ] [`0067`](https://github.com/oddurs/fontina/blob/main/cairn/items/0067-fuzzing-stops-at-font-bytes-but-json-reaches-the-index-too.md) Fuzzing stops at font bytes, but JSON reaches the index too <sup>test · p2 · core</sup>
+- [ ] [`0068`](https://github.com/oddurs/fontina/blob/main/cairn/items/0068-two-fontina-processes-writing-one-index-is-reasoned-about-but-untested.md) Two fontina processes writing one index is reasoned about but untested <sup>test · p2 · core</sup>
+- [ ] [`0069`](https://github.com/oddurs/fontina/blob/main/cairn/items/0069-the-specimen-has-two-tests-for-ten-sections.md) The specimen has two tests for ten sections <sup>test · p2 · core</sup>
+- [ ] [`0070`](https://github.com/oddurs/fontina/blob/main/cairn/items/0070-ui-mod-rs-is-6900-lines-in-one-file.md) ui/mod.rs is 6900 lines in one file <sup>chore · p3 · ui</sup>
 
 ### ready to start
 
@@ -134,7 +138,7 @@ Real findings with no milestone. Triage moves them or drops them; nothing sits h
 
 ## m5-ship — M5 — Ship
 
-`··········` 0% · 0 of 5 done
+`··········` 0% · 0 of 6 done
 
 Who can run it, rather than what else it can do. Package managers on every desktop, the two unmeasured budgets measured. PLAN.md §5.
 
@@ -142,6 +146,7 @@ Who can run it, rather than what else it can do. Package managers on every deskt
 
 - [ ] [`0032`](https://github.com/oddurs/fontina/blob/main/cairn/items/0032-a-first-scan-cannot-see-the-fonts-the-machine-is-already-using.md) A first scan cannot see the fonts the machine is already using <sup>feat · p1 · cli</sup>
 - [ ] [`0040`](https://github.com/oddurs/fontina/blob/main/cairn/items/0040-measure-the-two-budgets-that-nothing-measures.md) Measure the two budgets that nothing measures <sup>test · p1 · cli</sup>
+- [ ] [`0066`](https://github.com/oddurs/fontina/blob/main/cairn/items/0066-nothing-checks-that-macos-or-windows-can-actually-see-an-activated-font.md) Nothing checks that macOS or Windows can actually see an activated font <sup>test · p1 · platform</sup>
 
 ### ready to start
 
