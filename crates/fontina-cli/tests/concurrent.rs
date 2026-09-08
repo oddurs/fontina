@@ -39,23 +39,8 @@
 //! The third is the one worth stating: "no crash" is a low bar. A writer that quietly
 //! lost its rows to the other's transaction would pass the first two.
 
+use fontina_testkit::Cli;
 use std::path::PathBuf;
-use std::process::Command;
-
-fn fixtures() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures")
-}
-
-struct Sandbox {
-    root: PathBuf,
-    db: PathBuf,
-}
-
-impl Drop for Sandbox {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.root);
-    }
-}
 
 /// A sandbox with `dirs` directories of fonts, each holding `copies` copies of every
 /// fixture under a distinct name.
@@ -63,13 +48,8 @@ impl Drop for Sandbox {
 /// Distinct names matter: two directories holding the same bytes would be deduplicated
 /// by identity, and then a lost write would look exactly like a duplicate correctly
 /// collapsed. Every file here is meant to be its own row.
-fn sandbox(name: &str, dirs: usize, copies: usize) -> (Sandbox, Vec<PathBuf>) {
-    let root =
-        std::env::temp_dir().join(format!("fontina-concurrent-{name}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
-    std::fs::create_dir_all(&root).unwrap();
-
-    let sources: Vec<PathBuf> = std::fs::read_dir(fixtures())
+fn fonts(cli: &Cli, dirs: usize, copies: usize) -> Vec<PathBuf> {
+    let sources: Vec<PathBuf> = std::fs::read_dir(cli.fixtures())
         .unwrap()
         .flatten()
         .map(|e| e.path())
@@ -85,68 +65,37 @@ fn sandbox(name: &str, dirs: usize, copies: usize) -> (Sandbox, Vec<PathBuf>) {
         "the fixtures directory has fonts in it"
     );
 
-    let mut made = Vec::new();
-    for d in 0..dirs {
-        let dir = root.join(format!("fonts{d}"));
-        std::fs::create_dir_all(&dir).unwrap();
-        for i in 0..copies {
-            for src in &sources {
-                let base = src.file_name().unwrap().to_string_lossy().into_owned();
-                std::fs::copy(src, dir.join(format!("d{d}-{i}-{base}"))).unwrap();
+    (0..dirs)
+        .map(|d| {
+            let dir = cli.dir(&format!("fonts{d}"));
+            for i in 0..copies {
+                for src in &sources {
+                    let base = src.file_name().unwrap().to_string_lossy().into_owned();
+                    std::fs::copy(src, dir.join(format!("d{d}-{i}-{base}"))).unwrap();
+                }
             }
-        }
-        made.push(dir);
-    }
-    (
-        Sandbox {
-            db: root.join("index.db"),
-            root,
-        },
-        made,
-    )
+            dir
+        })
+        .collect()
 }
 
-impl Sandbox {
-    fn command(&self, args: &[&str]) -> Command {
-        let mut c = Command::new(env!("CARGO_BIN_EXE_fontina"));
-        c.args(["--db", &self.db.to_string_lossy()])
-            .args(args)
-            .env("HOME", &self.root)
-            .env("XDG_CONFIG_HOME", self.root.join(".config"))
-            .env("XDG_DATA_HOME", self.root.join(".local/share"));
-        c
-    }
+/// How many faces the index holds.
+fn face_count(cli: &Cli) -> usize {
+    let listed: serde_json::Value = cli.json(&["list", "--json"]);
+    listed.as_array().expect("a list").len()
+}
 
-    #[track_caller]
-    fn ok(&self, args: &[&str]) -> String {
-        let o = self.command(args).output().expect("fontina runs");
-        assert!(
-            o.status.success(),
-            "`fontina {}` failed: {}",
-            args.join(" "),
-            String::from_utf8_lossy(&o.stderr)
-        );
-        String::from_utf8_lossy(&o.stdout).into_owned()
-    }
-
-    fn face_count(&self) -> usize {
-        let listed: serde_json::Value =
-            serde_json::from_str(&self.ok(&["list", "--json"])).unwrap();
-        listed.as_array().expect("a list").len()
-    }
-
-    /// SQLite's own verdict on the file, which is the only one worth taking.
-    #[track_caller]
-    fn assert_intact(&self) {
-        let conn = rusqlite::Connection::open(&self.db).expect("the index opens");
-        let verdict: String = conn
-            .query_row("PRAGMA integrity_check", [], |r| r.get(0))
-            .expect("integrity_check runs");
-        assert_eq!(
-            verdict, "ok",
-            "the index is corrupt after concurrent writes"
-        );
-    }
+/// SQLite's own verdict on the file, which is the only one worth taking.
+#[track_caller]
+fn assert_intact(cli: &Cli) {
+    let conn = rusqlite::Connection::open(cli.db()).expect("the index opens");
+    let verdict: String = conn
+        .query_row("PRAGMA integrity_check", [], |r| r.get(0))
+        .expect("integrity_check runs");
+    assert_eq!(
+        verdict, "ok",
+        "the index is corrupt after concurrent writes"
+    );
 }
 
 /// A lock is a thing to wait through, never a thing to report.
@@ -174,12 +123,13 @@ fn no_lock_complaint(what: &str, stderr: &str) {
 #[test]
 fn two_scans_of_different_directories_into_one_index_both_land() {
     // Enough copies that the two runs overlap for a while rather than finishing in turn.
-    let (sb, dirs) = sandbox("scan", 2, 40);
+    let sb = fontina_testkit::cli!("concurrent-scan");
+    let dirs = fonts(&sb, 2, 40);
 
     let mut children: Vec<_> = dirs
         .iter()
         .map(|d| {
-            sb.command(&["scan", &d.to_string_lossy()])
+            sb.cmd(&["scan", &d.to_string_lossy()])
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped())
                 .spawn()
@@ -202,7 +152,7 @@ fn two_scans_of_different_directories_into_one_index_both_land() {
         );
     }
 
-    sb.assert_intact();
+    assert_intact(&sb);
 
     // Both writers' work is present, not just one of them. A scan that lost its rows to
     // the other's transaction would have passed everything above.
@@ -215,11 +165,12 @@ fn two_scans_of_different_directories_into_one_index_both_land() {
     }
     // Every file is its own face: the fixtures include one collection, so the count is
     // read from a single-directory scan rather than assumed.
-    let (solo, one) = sandbox("solo", 1, 40);
+    let solo = fontina_testkit::cli!("concurrent-solo");
+    let one = fonts(&solo, 1, 40);
     solo.ok(&["scan", &one[0].to_string_lossy()]);
-    let expected = solo.face_count() * 2;
+    let expected = face_count(&solo) * 2;
     assert_eq!(
-        sb.face_count(),
+        face_count(&sb),
         expected,
         "both scans' faces should be in the index"
     );
@@ -229,20 +180,21 @@ fn two_scans_of_different_directories_into_one_index_both_land() {
 fn a_tag_while_a_scan_is_running_is_not_a_lock_error() {
     // A scan long enough to still be going when the tag arrives, which is the shape of
     // the browser tagging a family while an agent rescans.
-    let (sb, dirs) = sandbox("tag", 1, 60);
+    let sb = fontina_testkit::cli!("concurrent-tag");
+    let dirs = fonts(&sb, 1, 60);
 
     // One face to tag, indexed before the long scan starts so the id exists.
-    sb.ok(&["scan", &fixtures().to_string_lossy()]);
+    sb.scan_fixtures();
 
     let scan = sb
-        .command(&["scan", &dirs[0].to_string_lossy()])
+        .cmd(&["scan", &dirs[0].to_string_lossy()])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
         .expect("fontina starts");
 
     let tag = sb
-        .command(&["tag", "add", "concurrent", "1"])
+        .cmd(&["tag", "add", "concurrent", "1"])
         .output()
         .expect("fontina runs");
     let scan = scan.wait_with_output().expect("fontina finishes");
@@ -256,7 +208,7 @@ fn a_tag_while_a_scan_is_running_is_not_a_lock_error() {
     );
     assert!(scan.status.success(), "the scan failed while tagging");
 
-    sb.assert_intact();
+    assert_intact(&sb);
     assert!(
         sb.ok(&["list", "--json"]).contains("concurrent"),
         "the tag written during the scan is not in the index"

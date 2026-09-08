@@ -22,77 +22,16 @@
 //! the program rather than an answer about the font. The answer is available — it is the
 //! whole point of `covers` — so the preview says it.
 
-use std::path::PathBuf;
-use std::process::Command;
+use fontina_testkit::Cli;
 
-struct Session {
-    root: PathBuf,
-    db: PathBuf,
+/// A sandbox with the fixtures indexed and a terminal eighty columns wide, which is what
+/// every test here draws against.
+fn session(name: &str) -> Cli {
+    let cli = fontina_testkit::cli!(name).with_env("COLUMNS", "80");
+    cli.scan_fixtures();
+    cli
 }
 
-impl Drop for Session {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.root);
-    }
-}
-
-fn session(name: &str) -> Session {
-    let root = std::env::temp_dir().join(format!("fontina-preview-{name}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
-    std::fs::create_dir_all(&root).unwrap();
-    let s = Session {
-        db: root.join("index.db"),
-        root,
-    };
-    let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures");
-    let out = s.run(&["scan", &fixtures.to_string_lossy()]);
-    assert!(
-        out.status.success(),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    s
-}
-
-impl Session {
-    fn run(&self, args: &[&str]) -> std::process::Output {
-        Command::new(env!("CARGO_BIN_EXE_fontina"))
-            .args(["--db", &self.db.to_string_lossy()])
-            .args(args)
-            .env("HOME", &self.root)
-            .env("XDG_DATA_HOME", self.root.join(".local/share"))
-            .env("COLUMNS", "80")
-            .output()
-            .expect("fontina runs")
-    }
-
-    #[track_caller]
-    fn ok(&self, args: &[&str]) -> String {
-        let o = self.run(args);
-        assert!(
-            o.status.success(),
-            "`fontina {}` failed: {}",
-            args.join(" "),
-            String::from_utf8_lossy(&o.stderr)
-        );
-        String::from_utf8_lossy(&o.stdout).into_owned()
-    }
-
-    /// The id of the first face of a fixture, by file name.
-    fn id_of(&self, file: &str) -> String {
-        let listed: serde_json::Value =
-            serde_json::from_str(&self.ok(&["list", "--json"])).unwrap();
-        for f in listed.as_array().expect("a list") {
-            let p = f["path"].as_str().unwrap_or_default();
-            if std::path::Path::new(p).file_name().and_then(|n| n.to_str()) == Some(file) {
-                return f["id"].to_string();
-            }
-        }
-        panic!("no face from {file}");
-    }
-}
-
-/// A preview of text the font does not cover says so, and one of text it covers does not.
 #[test]
 fn a_preview_says_when_the_font_has_no_glyph_for_the_text() {
     let s = session("notdef");
