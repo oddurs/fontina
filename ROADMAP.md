@@ -146,7 +146,6 @@ Who can run it, rather than what else it can do. Package managers on every deskt
 
 - [ ] [`0032`](https://github.com/oddurs/fontina/blob/main/cairn/items/0032-a-first-scan-cannot-see-the-fonts-the-machine-is-already-using.md) A first scan cannot see the fonts the machine is already using <sup>feat · p1 · cli</sup>
 - [ ] [`0040`](https://github.com/oddurs/fontina/blob/main/cairn/items/0040-measure-the-two-budgets-that-nothing-measures.md) Measure the two budgets that nothing measures <sup>test · p1 · cli</sup>
-- [ ] [`0066`](https://github.com/oddurs/fontina/blob/main/cairn/items/0066-nothing-checks-that-macos-or-windows-can-actually-see-an-activated-font.md) Nothing checks that macOS or Windows can actually see an activated font <sup>test · p1 · platform</sup>
 
 ### ready to start
 
@@ -155,6 +154,7 @@ Who can run it, rather than what else it can do. Package managers on every deskt
 ### in progress
 
 - [ ] [`0022`](https://github.com/oddurs/fontina/blob/main/cairn/items/0022-ship-through-the-package-managers-people-actually-use.md) Ship through the package managers people actually use <sup>chore · p1 · workspace</sup>
+- [ ] [`0066`](https://github.com/oddurs/fontina/blob/main/cairn/items/0066-nothing-checks-that-macos-or-windows-can-actually-see-an-activated-font.md) Nothing checks that macOS or Windows can actually see an activated font <sup>test · p1 · platform</sup>
 
 ### in review
 

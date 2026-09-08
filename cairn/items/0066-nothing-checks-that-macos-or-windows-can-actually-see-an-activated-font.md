@@ -2,7 +2,7 @@
 id: 66
 title: Nothing checks that macOS or Windows can actually see an activated font
 type: test
-status: backlog
+status: doing
 milestone: m5-ship
 created: 2026-09-07
 updated: 2026-09-07
