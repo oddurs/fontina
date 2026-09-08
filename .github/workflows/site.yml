@@ -7,7 +7,6 @@ on:
     branches: [main]
     paths: ['site/**', 'docs/adr/**', 'crates/fontina-cli/src/ui/snapshots/**', '.github/workflows/site.yml']
   pull_request:
-    paths: ['site/**', 'docs/adr/**', 'crates/fontina-cli/src/ui/snapshots/**', '.github/workflows/site.yml']
   workflow_dispatch:
 
 permissions:
@@ -18,8 +17,50 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Whether this workflow's subject was touched at all.
+  #
+  # The filter used to live on the trigger, and that is why the gate below did not work:
+  # a pull request touching none of these paths made GitHub create no run, so the gate
+  # never ran and reported nothing, and an unreported required check waits for ever
+  # rather than passing. #207 changed one line of CLAUDE.md and got none of the five
+  # gates. The gate's own comment described that failure and the fix did not reach it.
+  #
+  # `push` keeps its filter: a push to main that touches nothing here has nothing to
+  # deploy, and no gate is required of it.
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.check.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: check
+        env:
+          # Empty on push and workflow_dispatch, where everything is relevant.
+          BASE: ${{ github.event.pull_request.base.sha }}
+          PATTERN: '^site/|^docs/adr/|^crates/fontina-cli/src/ui/snapshots/|^\.github/workflows/site\.yml$'
+        run: |
+          if [ -z "$BASE" ]; then
+            echo "relevant=true" >>"$GITHUB_OUTPUT"
+            echo "not a pull request: everything is relevant"
+            exit 0
+          fi
+          changed=$(git diff --name-only "$BASE" HEAD)
+          echo "changed:"
+          printf '%s\n' "$changed" | sed 's/^/  /'
+          if printf '%s\n' "$changed" | grep -qE "$PATTERN"; then
+            echo "relevant=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >>"$GITHUB_OUTPUT"
+            echo "none of $PATTERN was touched; the jobs below will skip"
+          fi
+
   build:
     name: build
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -81,7 +122,7 @@ jobs:
   # is enough — there is no second list to keep in step.
   gate:
     name: site
-    needs: [build]
+    needs: [changes, build]
     if: always()
     runs-on: ubuntu-latest
     steps:
