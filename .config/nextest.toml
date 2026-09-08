@@ -42,17 +42,31 @@ system-fonts = { max-threads = 1 }
 # when a run takes eighty seconds.
 fail-fast = false
 # A test that has not finished in thirty seconds is reported as slow; one that has not
-# finished in two minutes is killed and reported as a failure with its name. Four periods
-# rather than two because `the_glyph_map_draws_at_any_terminal_size` legitimately takes
-# seventy-eight seconds on a laptop, and a deadline that fires on honest work is a
-# deadline people learn to raise.
-slow-timeout = { period = "30s", terminate-after = 4 }
+# finished in three minutes is killed and reported as a failure with its name.
+#
+# This was two minutes and it fired on honest work within the hour, which is the thing
+# the comment here already warned about. `the_glyph_map_draws_at_any_terminal_size` was
+# measured at 70-78s on an idle laptop and crossed 120s on a loaded one, so the headroom
+# was never as generous as the numbers made it look.
+#
+# The guard is for a test that will *never* finish — #33's WOFF loop keeps its condition
+# true for ever — so the cost of being generous is a few minutes once, and the cost of
+# being tight is a red build nobody believes. Generous, and the one genuinely long test
+# has its own budget below.
+slow-timeout = { period = "30s", terminate-after = 6 }
 # Say which tests were slow at the end, so the list above stays honest as tests are added.
 final-status-level = "slow"
 
 [[profile.default.overrides]]
 filter = 'package(fontina-platform)'
 test-group = 'system-fonts'
+
+# The one test whose honest duration is minutes rather than seconds: it draws the glyph
+# map at every terminal size, and that is the point of it. Given its own budget so the
+# deadline above can stay sharp for the other four hundred and ninety-nine.
+[[profile.default.overrides]]
+filter = 'test(the_glyph_map_draws_at_any_terminal_size)'
+slow-timeout = { period = "60s", terminate-after = 8 }
 
 [profile.ci]
 fail-fast = false
@@ -68,6 +82,10 @@ final-status-level = "slow"
 [[profile.ci.overrides]]
 filter = 'package(fontina-platform)'
 test-group = 'system-fonts'
+
+[[profile.ci.overrides]]
+filter = 'test(the_glyph_map_draws_at_any_terminal_size)'
+slow-timeout = { period = "60s", terminate-after = 10 }
 
 [profile.quick]
 # The inner loop: everything except the handful that dominate the wall clock. Measured on
@@ -89,8 +107,9 @@ default-filter = """
 """
 # The same deadline as `default`. This profile is quick because it runs fewer tests, not
 # because it is less patient with the ones it does run — a deadline that fires on honest
-# work would make `quick` mean "flaky".
-slow-timeout = { period = "30s", terminate-after = 4 }
+# work would make `quick` mean "flaky", which is how the default's two minutes read on a
+# loaded machine before it became three.
+slow-timeout = { period = "30s", terminate-after = 6 }
 
 [[profile.quick.overrides]]
 filter = 'package(fontina-platform)'
