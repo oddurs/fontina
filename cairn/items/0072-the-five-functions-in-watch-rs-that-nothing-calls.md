@@ -2,7 +2,7 @@
 id: 72
 title: The five functions in watch.rs that nothing calls
 type: test
-status: backlog
+status: done
 milestone: unfiled
 created: 2026-09-08
 updated: 2026-09-08
@@ -45,11 +45,41 @@ more than a test that exercises it artificially.
 
 ## Acceptance criteria
 
-- [ ] each of the five is named, with a decision: tested, or deliberately not
-- [ ] `watch.rs` function coverage is above 85%, or the item says why the remainder stays
+- [x] each of the five is named, with a decision: tested, or deliberately not
+- [x] `watch.rs` function coverage is above 85%, or the item says why the remainder stays
 
 ## Notes
 
 `macos.rs` (70%) and `tags.rs` (76.67%) are lower still and are not this item: both are
 platform code whose uncovered half is the other platform's, which is what
 `#[cfg(target_os)]` does to a coverage report and not a thing to fix.
+
+## Closed
+
+The title is wrong and the premise was half wrong, which is the useful part of this item.
+
+**Four of the five were not functions.** `watch` is generic over its callback, and
+llvm-cov counts each monomorphisation separately: the closures inside it at lines 68, 71,
+74 and 78 appear once per instantiation, and the instantiation that is *not* covered is
+the one the CLI's `watch` command creates. `watch` itself is tested hard — `library.rs`
+runs a live filesystem watcher on a thread and joins it. So "five functions nothing
+calls" was an artifact of how a coverage summary counts generic code, and reading the
+report without checking the source would have produced four tests for something already
+tested.
+
+**One was real.** `is_under_any` is public, has no caller anywhere in the tree, and had
+no test. It is now tested rather than deleted, because what it does is not what a
+reimplementation would do: `Path::starts_with` compares whole components, so
+`/fonts-backup` does not lie under `/fonts`, and a watcher that believed a string prefix
+would index a directory nobody asked for.
+
+**And one more, found the same way in another file.** `Freedom::is_free` has no caller
+either, which is why `cargo mutants` could replace it with `true` and leave 498 tests
+green (#211). Also now tested — the interesting half being that `Unknown` and `Unstated`
+are both `false`: a licence nobody recognises is not free until somebody says what it is,
+and a font that states nothing is not free by saying nothing.
+
+Two dead public functions in a library crate is worth knowing as a pattern. Neither was
+deleted: `fontina-core` is publishable and the desktop app is the plausible consumer. If
+they are still uncalled at 1.0 they should go, and the tests make that a one-line
+decision rather than an investigation.

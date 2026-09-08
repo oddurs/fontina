@@ -359,6 +359,28 @@ mod tests {
         );
     }
 
+    /// `is_free` is public, has no caller in this repository, and had no test — which is
+    /// why `cargo mutants` could replace it with `true` and leave 498 tests green. That
+    /// is not the alarm it first looked like: nothing calls it, so nothing was wrong.
+    ///
+    /// It is worth pinning anyway, because the two states between Free and Nonfree are
+    /// where a reader's intuition and this program's position differ. A licence nobody
+    /// recognises is not free software until somebody says which licence it is, and a
+    /// font that states no licence at all is not free by default. Both are `false`.
+    #[test]
+    fn only_free_is_free() {
+        assert!(Freedom::Free.is_free());
+        assert!(!Freedom::Nonfree.is_free());
+        assert!(
+            !Freedom::Unknown.is_free(),
+            "a licence nobody recognised is not free until somebody says what it is"
+        );
+        assert!(
+            !Freedom::Unstated.is_free(),
+            "a font that says nothing about its licence is not free by saying nothing"
+        );
+    }
+
     #[test]
     fn every_state_round_trips_through_its_name() {
         for f in Freedom::ALL {
