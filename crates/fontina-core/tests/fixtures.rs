@@ -619,6 +619,10 @@ fn a_hostile_path_cannot_escape_the_specimen_style_element() {
 /// order results come back in is not the order they were produced in. The scan report
 /// lists failures in the order the user gave the paths, so the restored order is part of
 /// the contract rather than an accident of the pool.
+/// The scan report lists failures in the order the user gave the paths, so `parse_paths`
+/// returning results in input order is part of its contract. rayon's indexed `collect`
+/// gives that for free today; the test is here so that a future parallel scheme cannot
+/// take it away quietly.
 #[test]
 fn parse_paths_keeps_input_order_and_length() {
     // Enough paths to outnumber the cores on any machine that runs this, so the work is
