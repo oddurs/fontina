@@ -26,81 +26,31 @@
 
 mod common;
 
+use fontina_testkit::Cli;
 use serde_json::Value;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::path::Path;
 
-fn fixtures() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures")
-}
-
-struct Session {
-    root: PathBuf,
-    db: PathBuf,
-    ttc: PathBuf,
-}
-
-impl Drop for Session {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.root);
-    }
-}
-
-fn session(name: &str) -> Session {
-    let root = std::env::temp_dir().join(format!("fontina-ttc-{name}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
-    std::fs::create_dir_all(root.join("fonts")).unwrap();
-    let ttc = root.join("fonts/two.ttc");
+/// A sandbox holding one `.ttc` of two fixtures, indexed, with a terminal wide enough
+/// that the table does not elide the paths these tests read.
+fn session(name: &str) -> (Cli, std::path::PathBuf) {
+    let cli = fontina_testkit::cli!(name).with_env("COLUMNS", "200");
+    let fonts = cli.dir("fonts");
+    let ttc = fonts.join("two.ttc");
     common::write_collection(
         &[
-            &fixtures().join("Amiri-Regular.ttf"),
-            &fixtures().join("SourceSerif4-Regular.otf"),
+            &cli.fixtures().join("Amiri-Regular.ttf"),
+            &cli.fixtures().join("SourceSerif4-Regular.otf"),
         ],
         &ttc,
     );
-    let s = Session {
-        db: root.join("index.db"),
-        ttc: std::fs::canonicalize(&ttc).unwrap(),
-        root,
-    };
-    let out = s.run(&["scan", &s.root.join("fonts").to_string_lossy()]);
-    assert!(
-        out.status.success(),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    s
+    let ttc = std::fs::canonicalize(&ttc).expect("the collection was written");
+    cli.ok(&["scan", &fonts.to_string_lossy()]);
+    (cli, ttc)
 }
 
-impl Session {
-    fn run(&self, args: &[&str]) -> std::process::Output {
-        Command::new(env!("CARGO_BIN_EXE_fontina"))
-            .args(["--db", &self.db.to_string_lossy()])
-            .args(args)
-            .env("HOME", &self.root)
-            .env("XDG_DATA_HOME", self.root.join(".local/share"))
-            .env("COLUMNS", "200")
-            .output()
-            .expect("fontina runs")
-    }
-
-    #[track_caller]
-    fn ok(&self, args: &[&str]) -> String {
-        let o = self.run(args);
-        assert!(
-            o.status.success(),
-            "`fontina {}` failed: {}",
-            args.join(" "),
-            String::from_utf8_lossy(&o.stderr)
-        );
-        String::from_utf8_lossy(&o.stdout).into_owned()
-    }
-}
-
-/// One file, two faces, and each is addressable on its own.
 #[test]
 fn each_face_of_a_collection_is_indexed_named_and_addressable() {
-    let s = session("addressable");
+    let (s, ttc) = session("addressable");
     let faces: Value = serde_json::from_str(&s.ok(&["list", "--json"])).unwrap();
     let faces = faces.as_array().expect("a list");
     assert_eq!(faces.len(), 2, "{faces:?}");
@@ -113,7 +63,7 @@ fn each_face_of_a_collection_is_indexed_named_and_addressable() {
     // The human listing names the face within the file, so a reader can tell the two
     // rows apart by more than their ids.
     let listed = s.ok(&["list"]);
-    let path = self::path_of(&s);
+    let path = self::path_of(&ttc);
     assert!(listed.contains(&format!("{path}#0")), "{listed}");
     assert!(listed.contains(&format!("{path}#1")), "{listed}");
 
@@ -129,8 +79,8 @@ fn each_face_of_a_collection_is_indexed_named_and_addressable() {
     );
 }
 
-fn path_of(s: &Session) -> String {
-    s.ttc.to_string_lossy().into_owned()
+fn path_of(ttc: &Path) -> String {
+    ttc.to_string_lossy().into_owned()
 }
 
 /// The address a listing prints is an address a command accepts.
@@ -140,8 +90,8 @@ fn path_of(s: &Session) -> String {
 /// file, and not a face id" for a path the reader was looking at.
 #[test]
 fn the_address_a_listing_prints_can_be_pasted_back() {
-    let s = session("address");
-    let path = path_of(&s);
+    let (s, ttc) = session("address");
+    let path = path_of(&ttc);
 
     for (want, family) in [(0, "Amiri"), (1, "Source Serif 4")] {
         let target = format!("{path}#{want}");
@@ -173,7 +123,7 @@ fn the_address_a_listing_prints_can_be_pasted_back() {
 /// for a collection would set everything in one font and look like a rendering bug.
 #[test]
 fn what_is_exported_carries_the_fragment_that_selects_the_face() {
-    let s = session("fragment");
+    let (s, _ttc) = session("fragment");
     let faces: Value = serde_json::from_str(&s.ok(&["list", "--json"])).unwrap();
     let second = faces[1]["id"].to_string();
 
@@ -187,7 +137,7 @@ fn what_is_exported_carries_the_fragment_that_selects_the_face() {
         "and says what kind of file it is:\n{css}"
     );
 
-    let out = s.root.join("specimen.html");
+    let out = s.root().join("specimen.html");
     s.ok(&[
         "specimen",
         "--link",
@@ -205,9 +155,9 @@ fn what_is_exported_carries_the_fragment_that_selects_the_face() {
 /// A collection scanned twice is the same two faces, not four.
 #[test]
 fn rescanning_a_collection_does_not_double_it() {
-    let s = session("rescan");
+    let (s, ttc) = session("rescan");
     let before: Value = serde_json::from_str(&s.ok(&["list", "--json"])).unwrap();
-    s.ok(&["scan", &s.root.join("fonts").to_string_lossy()]);
+    s.ok(&["scan", &s.root().join("fonts").to_string_lossy()]);
     let after: Value = serde_json::from_str(&s.ok(&["list", "--json"])).unwrap();
     assert_eq!(
         after.as_array().unwrap().len(),
@@ -217,8 +167,8 @@ fn rescanning_a_collection_does_not_double_it() {
 
     // A file that has gone away stays in the index until someone says otherwise: a
     // scan of a directory that is temporarily unmounted must not empty the library.
-    std::fs::remove_file(Path::new(&path_of(&s))).unwrap();
-    s.ok(&["scan", &s.root.join("fonts").to_string_lossy()]);
+    std::fs::remove_file(Path::new(&path_of(&ttc))).unwrap();
+    s.ok(&["scan", &s.root().join("fonts").to_string_lossy()]);
     let kept: Value = serde_json::from_str(&s.ok(&["list", "--json"])).unwrap();
     assert_eq!(
         kept.as_array().unwrap().len(),
@@ -228,7 +178,7 @@ fn rescanning_a_collection_does_not_double_it() {
 
     // `--prune` is how someone says otherwise, and it takes every face of the file, not
     // the first one it finds.
-    s.ok(&["scan", "--prune", &s.root.join("fonts").to_string_lossy()]);
+    s.ok(&["scan", "--prune", &s.root().join("fonts").to_string_lossy()]);
     let gone: Value = serde_json::from_str(&s.ok(&["list", "--json"])).unwrap();
     assert!(
         gone.as_array().unwrap().is_empty(),
