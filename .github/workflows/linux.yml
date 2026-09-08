@@ -18,16 +18,6 @@ name: linux
 
 on:
   pull_request:
-    paths:
-      - 'crates/**'
-      - 'fixtures/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'scripts/acceptance'
-      - 'scripts/test-distros'
-      - 'scripts/test-packages'
-      - 'scripts/package-acceptance'
-      - '.github/workflows/linux.yml'
   push:
     branches: [main]
   schedule:
@@ -47,8 +37,50 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Whether this workflow's subject was touched at all.
+  #
+  # The filter used to live on the trigger, and that is why the gate below did not work:
+  # a pull request touching none of these paths made GitHub create no run, so the gate
+  # never ran and reported nothing, and an unreported required check waits for ever
+  # rather than passing. #207 changed one line of CLAUDE.md and got none of the five
+  # gates. The gate's own comment described that failure and the fix did not reach it.
+  #
+  # So the workflow now runs on every pull request and the *jobs* are what is filtered.
+  # The expensive ones skip, the gate still reports, and branch protection can require it.
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.check.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: check
+        env:
+          # Empty on push and workflow_dispatch, where everything is relevant.
+          BASE: ${{ github.event.pull_request.base.sha }}
+          PATTERN: '^crates/|^fixtures/|^Cargo\.toml$|^Cargo\.lock$|^scripts/acceptance$|^scripts/test\-distros$|^scripts/test\-packages$|^scripts/package\-acceptance$|^\.github/workflows/linux\.yml$'
+        run: |
+          if [ -z "$BASE" ]; then
+            echo "relevant=true" >>"$GITHUB_OUTPUT"
+            echo "not a pull request: everything is relevant"
+            exit 0
+          fi
+          changed=$(git diff --name-only "$BASE" HEAD)
+          echo "changed:"
+          printf '%s\n' "$changed" | sed 's/^/  /'
+          if printf '%s\n' "$changed" | grep -qE "$PATTERN"; then
+            echo "relevant=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >>"$GITHUB_OUTPUT"
+            echo "none of $PATTERN was touched; the jobs below will skip"
+          fi
+
   build:
     name: build (static, musl)
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -68,7 +100,8 @@ jobs:
 
   acceptance:
     name: ${{ matrix.name }}
-    needs: build
+    needs: [changes, build]
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -89,6 +122,8 @@ jobs:
 
   packages-build:
     name: build (.deb, .rpm)
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -106,7 +141,8 @@ jobs:
 
   packages:
     name: package (${{ matrix.name }})
-    needs: packages-build
+    needs: [changes, packages-build]
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -134,7 +170,7 @@ jobs:
   # is enough — there is no second list to keep in step.
   gate:
     name: linux
-    needs: [build, acceptance, packages-build, packages]
+    needs: [changes, build, acceptance, packages-build, packages]
     if: always()
     runs-on: ubuntu-latest
     steps:
