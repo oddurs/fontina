@@ -32,7 +32,7 @@ dependency is a pass, because the guarded paths were untouched.
 
 - [x] a gate job in each of the four workflows (#112)
 - [x] the gates have reported on at least one pull request (#183)
-- [ ] `perf`, `fuzz`, `linux`, `site` added to branch protection
+- [ ] `perf`, `fuzz`, `linux`, `site`, `desktop` added to branch protection
 
 ## Notes
 
@@ -55,6 +55,11 @@ four cannot.
 So the second criterion is met, and by the strongest evidence there is: all four gates
 reported `pass` on #183 itself, and `perf`, `linux` and `site` are green on `main` at
 `0dc19599` (`fuzz` has no `push` trigger, so it correctly does not run there).
+
+There are five now, not four. #199 added `desktop.yml` — the acceptance test on macOS and
+Windows, which nothing was running before — and it carries a gate job in the same shape as
+the other four. It reported `pass` on both runners on the pull request that added it, so
+it meets the same bar as the rest and belongs in the same settings change.
 
 What is left is the settings change, which needs repository admin and is the maintainer's
 to make. The order in the note above still holds and is now satisfied: gates first, green
