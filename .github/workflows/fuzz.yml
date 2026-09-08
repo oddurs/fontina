@@ -50,8 +50,10 @@ jobs:
         # parse: arbitrary bytes into the import wrapper, so mostly container detection
         #        and the WOFF/WOFF2 decoders.
         # sfnt:  bytes straight into parse_sfnt, so the budget reaches the table readers
+        # collection: a collection file into the index, which is the untrusted input
+        #        that is not a font and the only one that reaches SQL
         #        instead of dying on a magic number.
-        target: [parse, sfnt]
+        target: [parse, sfnt, collection]
     steps:
       - uses: actions/checkout@v7
 
