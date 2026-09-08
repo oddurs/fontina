@@ -2,7 +2,7 @@
 # Everything CI will check, run here, in the order most likely to fail first.
 #
 #   scripts/preflight            before you push
-#   scripts/preflight --quick    the inner loop: format, lint, test
+#   scripts/preflight --quick    the inner loop: format, lint, and the fast tests
 #   scripts/preflight --fix      format and regenerate, then check
 #
 # The point is that "I ran the tests" stops being a claim with a shape you have to
@@ -93,7 +93,32 @@ else
   run "cargo fmt" cargo fmt --all -- --check
 fi
 run "cargo clippy" cargo clippy --workspace --all-targets -- -D warnings
-run "cargo test" cargo test --workspace --features fontina-platform/platform-tests
+
+# nextest when it is installed, `cargo test` when it is not, and the same tests either
+# way. What nextest buys here is a deadline on every test — a hang becomes a named
+# failure instead of a run that never ends — and, with --quick, the inner loop without
+# the four suites that dominate the wall clock. .config/nextest.toml has the reasoning.
+#
+# `--quick` here means fewer tests; the full run is what CI does and what a push needs.
+if command -v cargo-nextest >/dev/null; then
+  if [ "$quick" = 1 ]; then
+    run "cargo nextest (quick)" cargo nextest run --profile quick \
+      --workspace --features fontina-platform/platform-tests
+  else
+    run "cargo nextest" cargo nextest run \
+      --workspace --features fontina-platform/platform-tests
+  fi
+else
+  run "cargo test" cargo test --workspace --features fontina-platform/platform-tests
+fi
+
+# nextest does not run doctests. There are none today, which is the reason to check
+# rather than the reason not to: without this the first one anybody writes would never
+# run, and nothing would say so. `cargo test` above already covers them when nextest is
+# not installed, so this is only for the path that used nextest.
+if command -v cargo-nextest >/dev/null && [ "$quick" != 1 ]; then
+  run "doctests" cargo test --workspace --doc
+fi
 
 [ "$quick" = 1 ] && { echo; echo "quick: $pass passed, $failed failed"; exit $((failed > 0)); }
 
