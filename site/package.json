@@ -1,6 +1,7 @@
 {
   "name": "fontina-site",
   "private": true,
+  "license": "GPL-3.0-or-later",
   "version": "0.0.0",
   "type": "module",
   "description": "Project web site and manual for fontina. Static HTML, no JavaScript shipped.",
