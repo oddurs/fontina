@@ -39,31 +39,53 @@ dir_of_branch() {
 
 behind_count() { git -C "$1" rev-list --count HEAD..origin/main 2>/dev/null || echo 0; }
 
-# Branches on origin that no pull request has ever been opened for.
+# Branches on origin holding work that nothing is going to land.
 #
-# This is the one thing in flight that nothing else here can see. A branch with no pull
-# request gets no CI, appears in no checks list, and blocks no merge: it is finished work
-# that is invisible to every guard the repository has. It has happened — the `distinct`
-# count for `dupes` sat pushed and unopened for a day while its cairn item said "in
-# review", and it surfaced only because somebody went looking for the field on main.
+# This is the one thing in flight that nothing else here can see. Such a branch gets no
+# CI, appears in no checks list, and blocks no merge: it is finished work that is
+# invisible to every guard the repository has. Two shapes of it are reported:
+#
+#   never opened          the `distinct` count for `dupes` sat pushed for a day while its
+#                         cairn item said "in review", and surfaced only because somebody
+#                         went looking for the field on main and did not find it (#188)
+#   closed unmerged       the pull request was abandoned and the branch was not; whatever
+#                         is on it is on nothing else
+#
+# It deliberately says nothing about a *merged* branch, and that is worth writing down
+# because three ways of asking looked right and were not. `main` takes squash merges, so
+# a merged branch's commits are nowhere in `main`'s history: `--is-ancestor` says no and
+# `git cherry` finds no matching patch-id, because one squashed commit is not the two it
+# replaced — either would report every branch ever merged. GitHub's `headRefOid` lags a
+# `gh pr update-branch`, so a branch that only had its base refreshed looks pushed-to.
+# Comparing the branch's files against main fails the other way: main moves on, so work
+# that landed months ago looks unlanded the moment somebody else edits the same file.
+#
+# One case is therefore not covered: a commit pushed while auto-merge was already firing,
+# which the squash does not include and whose date is still before the merge. That
+# happened once (the 0041 note in #204) and was caught by reading the diff of the pull
+# request rather than by any of this. If it happens twice, the signal to reach for is
+# GitHub's own compare between the merged head and the branch tip, not another guess here.
 #
 # Needs `gh`; without it this section is skipped rather than guessed at.
 orphan_branches() {
   command -v gh >/dev/null || return 0
-  local claimed
-  claimed=$(gh pr list --state all --limit 200 --json headRefName -q '.[].headRefName' 2>/dev/null) || return 0
+  local prs
+  # "<branch> <state> <number>", newest first, so the first row for a branch wins.
+  prs=$(gh pr list --state all --limit 200 --json headRefName,state,number \
+    -q '.[] | "\(.headRefName) \(.state) \(.number)"' 2>/dev/null) || return 0
   git -C "$root" for-each-ref --format='%(refname:short)' 'refs/remotes/origin/**' \
     | sed 's|^origin/||' \
     | while read -r b; do
         # `origin` alone is refs/remotes/origin/HEAD shortened; the bots open their own.
         case "$b" in
-          origin|main|HEAD|dependabot/*|release-please--*) continue ;;
+        origin | main | HEAD | dependabot/* | release-please--*) continue ;;
         esac
-        # Already contained in main: whatever it carried has landed, so there is nothing
-        # to open. This also covers the `gh pr list` window — an old merged branch that
-        # scrolled off it is not a finding.
-        git -C "$root" merge-base --is-ancestor "origin/$b" origin/main 2>/dev/null && continue
-        grep -qxF "$b" <<<"$claimed" || echo "$b"
+        row=$(awk -v want="$b" '$1 == want { print $2, $3; exit }' <<<"$prs")
+        case "${row%% *}" in
+        OPEN | MERGED) continue ;;
+        "") printf '%s\tnever opened\n' "$b" ;;
+        *) printf '%s\t#%s was closed without merging\n' "$b" "${row##* }" ;;
+        esac
       done
 }
 branch_of() { git -C "$1" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "(detached)"; }
@@ -91,9 +113,11 @@ case "${1:-}" in
     orphans=$(orphan_branches)
     if [ -n "$orphans" ]; then
       echo
-      echo "pushed to origin with no pull request — these get no CI and block no merge:"
-      while read -r b; do
-        [ -n "$b" ] && echo "  $b    gh pr create --fill --head $b"
+      echo "on origin, and nothing is going to land it:"
+      while IFS=$'\t' read -r b why; do
+        [ -n "$b" ] || continue
+        printf '  %-34s %s\n' "$b" "$why"
+        printf '  %-34s gh pr create --fill --head %s\n' "" "$b"
       done <<<"$orphans"
     fi
     ;;
