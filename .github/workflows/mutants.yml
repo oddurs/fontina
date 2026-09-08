@@ -1,0 +1,106 @@
+# Mutation testing: does anything notice when the code is wrong?
+#
+# Coverage says which lines ran. It does not say whether a test would have failed had
+# they run wrongly, and this repository has met that difference by hand more than once —
+# the CoreText scope mutation that closed cairn 0066, deleting a key from the manual to
+# prove the manual test could fail, seeding the collection corpus to prove the fuzz
+# target reached the index at all.
+#
+# `cargo mutants` does it automatically. Twenty minutes over one file found two real
+# things (#211): a test that only passed while the repository was not inside $TMPDIR, and
+# a test that pinned an ordering it did not pin — replacing `freedom::rank` with `0` left
+# all 498 tests green, because min_by_key keeps the first of equal keys and max_by_key the
+# last, and every case happened to be written in the order that made the tie-break right.
+# freedom.rs was at 100% function coverage while that was true.
+#
+# Weekly rather than per pull request, and why: fontina-core alone has 1,545 mutants, and
+# nineteen took three minutes. That is hours on one runner, so it is split four ways with
+# `--shard` and each piece finishes rather than being cut off part-done — a time budget
+# would have produced a different arbitrary prefix of the same list every week.
+#
+# It is also not the kind of finding that should block a merge: a surviving mutant is a
+# question about a test, not a broken build. So this reports and never gates, the same
+# posture as the fuzz cron beside it.
+name: mutants
+
+on:
+  schedule:
+    # Sundays at 06:23 UTC, an hour after the fuzzer and off the hour for the same reason.
+    - cron: '23 6 * * 0'
+  workflow_dispatch:
+    inputs:
+      package:
+        description: 'Which package to mutate'
+        required: false
+        default: 'fontina-core'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutants-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  mutants:
+    name: mutants ${{ matrix.shard }}/4
+    runs-on: ubuntu-latest
+    # An hour and a half a shard. If one hits this the finding is that the shard grew,
+    # not that a mutant hung — cargo-mutants gives each mutant its own timeout below.
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-mutants
+      - uses: taiki-e/install-action@nextest
+
+      # `--in-place` is deliberately not used: mutants copies the tree to a scratch
+      # directory, and a test that only passes in its original location is a finding
+      # worth having rather than an inconvenience to configure away. That is how the
+      # first of #211's two was found.
+      - name: mutate
+        env:
+          PACKAGE: ${{ inputs.package || 'fontina-core' }}
+          SHARD: ${{ matrix.shard }}
+        run: |
+          cargo mutants --package "$PACKAGE" --test-tool nextest \
+            --shard "$SHARD/4" --timeout-multiplier 3 --colors never || true
+
+      # `|| true` above and this step below: a surviving mutant is a question, not a
+      # failure. The run always goes green and always leaves the list somewhere a person
+      # can read it, because a red weekly job nobody can act on is a job people mute.
+      - name: what survived
+        if: always()
+        run: |
+          if [ -f mutants.out/missed.txt ]; then
+            {
+              echo "### Mutants nothing noticed (shard ${{ matrix.shard }} of 4)"
+              echo '```'
+              cat mutants.out/missed.txt
+              echo '```'
+            } >>"$GITHUB_STEP_SUMMARY"
+            echo "missed: $(wc -l <mutants.out/missed.txt)"
+          else
+            echo "no missed.txt: the run did not get far enough to write one"
+          fi
+          for f in caught.txt unviable.txt timeout.txt; do
+            if [ -f "mutants.out/$f" ]; then
+              echo "$f: $(wc -l <"mutants.out/$f")"
+            fi
+          done
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutants-${{ github.run_id }}-${{ matrix.shard }}
+          path: mutants.out/
+          if-no-files-found: ignore
+          retention-days: 30
