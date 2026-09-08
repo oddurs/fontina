@@ -256,9 +256,15 @@ fi
 # directory: on GNU/Linux an install and an activation both leave a link under
 # `$XDG_DATA_HOME/fonts`, so looking for the font by name there finds the activation and
 # says the copy survived when it did not.
+#
+# Matched whole rather than split on commas. `tr ',' '\n'` put one JSON field per line,
+# which works until a *value* contains a comma — and a variable font's filename does:
+# `BricolageGrotesque[opsz,wdth,wght].ttf` is cut after `[opsz`, the file at that path
+# does not exist, and the script reports a copy that was never taken back. It has never
+# bitten because the only family installed here is Amiri.
 copy=$("$fontina" activations --json 2>/dev/null |
-    tr ',' '\n' | grep '"installed_path"' | head -1 |
-    sed 's/.*"installed_path": *"//; s/".*//')
+    grep -o '"installed_path": *"[^"]*"' | head -1 |
+    sed 's/.*"installed_path": *"//; s/"$//')
 if [ -n "$copy" ] && [ -e "$copy" ]; then
     ok "the copy is where the record says it is ($copy)"
 else
