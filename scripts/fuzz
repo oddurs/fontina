@@ -25,7 +25,7 @@ set -euo pipefail
 repo=$(cd "$(dirname "$0")/.." && pwd)
 toolchain=${FUZZ_TOOLCHAIN:-nightly}
 seconds=${2:-60}
-targets=(parse sfnt)
+targets=(parse sfnt collection)
 
 # The corpus is seeded from fixtures/ rather than from checked-in binaries: a real font
 # is the best possible starting point for a mutator, and the repository already carries
@@ -38,6 +38,35 @@ seed() {
     for t in "${targets[@]}"; do
         dir=$repo/fuzz/corpus/$t
         mkdir -p "$dir"
+        # `collection` eats JSON, not fonts. A font seeded there is an input that can
+        # never parse, so the mutator would start from nothing and spend its budget
+        # discovering that `{` exists — which is a target that runs and proves nothing.
+        # One real export is the whole starting point it needs; every field a hostile
+        # file would abuse is present in it and reachable by mutation.
+        if [ "$t" = collection ]; then
+            cat >"$dir/export.json" <<'JSON'
+{
+  "schema_version": 1,
+  "name": "demo",
+  "exported_at": "2026-09-08T01:51:55.73813Z",
+  "relative_paths": false,
+  "faces": [
+    {
+      "family": "Amiri",
+      "subfamily": "Regular",
+      "postscript_name": "Amiri-Regular",
+      "identity_hash": "957e0c9fdbd5bf1ddb1bb9a375f17c7c45798706e01deab8c6c4cfb1d00adfda",
+      "blake3": "61c160c4c923f12d6455b25046af1d2dbf6724be3873ea02933e94bb7b6f753a",
+      "path": "fixtures/Amiri-Regular.ttf",
+      "index": 0,
+      "tags": ["arabic", "serif"]
+    }
+  ]
+}
+JSON
+            echo "==> seeded fuzz/corpus/$t with 1 collection export"
+            continue
+        fi
         for f in "$repo"/fixtures/*.ttf "$repo"/fixtures/*.otf "$repo"/fixtures/*.woff \
             "$repo"/fixtures/*.woff2 "$repo"/fuzz/regressions/*; do
             [ -f "$f" ] || continue
