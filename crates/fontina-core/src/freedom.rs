@@ -329,6 +329,34 @@ mod tests {
             Freedom::Nonfree
         );
         assert_eq!(classify(Some("MIT AND Apache-2.0")), Freedom::Free);
+
+        // The same two, the other way round, and this is the half that does the work.
+        //
+        // `min_by_key` keeps the first of equal keys and `max_by_key` keeps the last, so
+        // with the permissive operand written first and the restrictive one last the
+        // three cases above pass even if `rank` returns the same number for everything —
+        // the tie-break lands on the right answer by luck. `cargo mutants` replacing
+        // `rank` with `0` left all 498 tests green, which is how this was found.
+        //
+        // Reversed, luck goes the other way and only the ordering can be right.
+        assert_eq!(
+            classify(Some("LicenseRef-Proprietary OR MIT")),
+            Freedom::Free,
+            "OR takes the most permissive operand wherever it is written"
+        );
+        assert_eq!(
+            classify(Some("LicenseRef-Proprietary AND MIT")),
+            Freedom::Nonfree,
+            "AND takes the most restrictive operand wherever it is written"
+        );
+
+        // And the middle of the order, which no case above reaches: Unknown is more
+        // permissive than Unstated, and both sit between Free and Nonfree.
+        assert_eq!(classify(Some("MIT OR NoSuchLicense-9.9")), Freedom::Free);
+        assert_eq!(
+            classify(Some("NoSuchLicense-9.9 AND LicenseRef-Proprietary")),
+            Freedom::Nonfree
+        );
     }
 
     #[test]

@@ -161,7 +161,21 @@ fn an_export_that_cannot_be_made_relative_refuses_rather_than_lying() {
     let before: Vec<String> = export.faces.iter().map(|f| f.path.clone()).collect();
 
     // A real directory that holds none of the fonts.
-    let elsewhere = std::env::temp_dir().canonicalize().unwrap();
+    //
+    // A fresh one rather than `temp_dir()` itself: this test says an export refuses when
+    // the base does not contain the fonts, and `temp_dir()` only fails to contain them
+    // while the repository is not inside it. `cargo mutants` builds in a copy under
+    // `$TMPDIR`, where every fixture *is* beneath `temp_dir()`, the refusal never happens
+    // and this test fails for a reason that has nothing to do with what it is testing.
+    // An empty directory made a moment ago contains nothing, wherever the tree lives.
+    let elsewhere = std::env::temp_dir()
+        .join(format!("fontina-elsewhere-{}", std::process::id()))
+        .canonicalize()
+        .unwrap_or_else(|_| {
+            let d = std::env::temp_dir().join(format!("fontina-elsewhere-{}", std::process::id()));
+            std::fs::create_dir_all(&d).expect("a directory outside the fixtures");
+            d.canonicalize().expect("it canonicalises once it exists")
+        });
     let err = export.relative_to(&elsewhere).unwrap_err();
     assert!(format!("{err}").contains("outside"), "{err}");
     assert!(
