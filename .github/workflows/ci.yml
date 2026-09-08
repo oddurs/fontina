@@ -41,9 +41,21 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@nextest
       # platform-tests register a fixture font with the OS (session scope, per-user) and
       # undo it; the runner is disposable.
-      - run: cargo test --workspace --features fontina-platform/platform-tests
+      #
+      # nextest rather than `cargo test` for one reason that matters here: every test gets
+      # a deadline, so a hang is a named failure after five minutes instead of a job that
+      # sits until GitHub kills it at six hours with nothing to read. .config/nextest.toml
+      # carries the rest, including why fontina-platform runs single-threaded — its tests
+      # touch CoreText and the font registry, which no sandbox redirects, and one process
+      # per test makes the in-process mutex that used to serialise them serialise nothing.
+      - run: cargo nextest run --profile ci --workspace --features fontina-platform/platform-tests
+      # nextest does not run doctests and does not pretend to, so they are run beside it.
+      # There are none today. That is exactly why this step exists: without it the first
+      # doctest anybody writes would never run and nothing would say so.
+      - run: cargo test --workspace --doc
       - name: smoke the CLI
         shell: bash
         run: |

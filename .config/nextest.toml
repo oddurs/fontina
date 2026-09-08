@@ -1,0 +1,97 @@
+# cargo-nextest: one process per test, a deadline on every one of them, and a lane for
+# the tests that touch the machine rather than a sandbox.
+#
+# `cargo test` still works and CI still runs it; nothing here is required to build or
+# test this repository. What nextest adds is three things this codebase has needed:
+#
+#   a deadline        A test that hangs is a build that hangs. #33 found a WOFF header
+#                     loop that "keeps the loop condition true forever, wedging a scan
+#                     worker for the life of the process" — no catch_unwind recovers from
+#                     that, and `cargo test` waits for ever. tests/fuzz_regressions.rs
+#                     already hand-rolls a `must_return` helper with its own BUDGET for
+#                     exactly this; `slow-timeout` gives every test the same guarantee
+#                     without each one writing it again.
+#
+#   isolation         Each test gets its own process, so the environment is its own.
+#                     #185 fixed a race where one test's `set_var("XDG_CONFIG_HOME")` was
+#                     read by another that never mentions the variable; under nextest that
+#                     race cannot be expressed. The `env_lock` those tests take is still
+#                     needed for `cargo test` and stays.
+#
+#   a serial lane     The other half of the same coin, and it is not free. `macos.rs`'s
+#                     SYSTEM mutex serialises *threads*, and one process per test makes it
+#                     serialise nothing: four tests registering the same file with
+#                     CoreText then race through the real font manager. Measured, not
+#                     guessed — `deactivate_clears_both_scopes_and_reports_what_it_did`
+#                     fails under a plain nextest run and passes under this file.
+#
+# Profiles: `default` for a person, `ci` for the robot, `quick` for the inner loop.
+
+[test-groups]
+# State that belongs to the machine rather than to a test: CoreText registrations, the
+# real ~/Library/Fonts, the HKCU font registry. A sandbox cannot redirect any of it —
+# `activation.rs` says so itself, in `activation_is_hermetic`, which is false on macOS.
+#
+# The whole package rather than a list of test names: fontina-platform's suite is under a
+# second in total, so serialising it costs nothing worth measuring, and a filter that
+# names tests is a filter that goes stale the first time somebody adds one.
+system-fonts = { max-threads = 1 }
+
+[profile.default]
+# See every failure, the way `cargo test` does. Stopping at the first is a false economy
+# when a run takes eighty seconds.
+fail-fast = false
+# A test that has not finished in thirty seconds is reported as slow; one that has not
+# finished in two minutes is killed and reported as a failure with its name. Four periods
+# rather than two because `the_glyph_map_draws_at_any_terminal_size` legitimately takes
+# seventy-eight seconds on a laptop, and a deadline that fires on honest work is a
+# deadline people learn to raise.
+slow-timeout = { period = "30s", terminate-after = 4 }
+# Say which tests were slow at the end, so the list above stays honest as tests are added.
+final-status-level = "slow"
+
+[[profile.default.overrides]]
+filter = 'package(fontina-platform)'
+test-group = 'system-fonts'
+
+[profile.ci]
+fail-fast = false
+# A retry is a way of not fixing a flake. If something here is flaky, that is the finding.
+retries = 0
+# Runners are slower and noisier than a laptop, so the same shape with more room.
+slow-timeout = { period = "60s", terminate-after = 5 }
+# The failure output twice: once where it happened, once at the end. On a run of five
+# hundred tests the first is unfindable in the log and the second is what gets read.
+failure-output = "immediate-final"
+final-status-level = "slow"
+
+[[profile.ci.overrides]]
+filter = 'package(fontina-platform)'
+test-group = 'system-fonts'
+
+[profile.quick]
+# The inner loop: everything except the handful that dominate the wall clock. Measured on
+# a laptop rather than guessed — the glyph-map property test is 70-78s, the conflict test
+# 36-47s, the rasteriser clamp 38s, the arbitrary-key invariant 31s, and the two
+# process-spawning suites 30s each under full parallelism.
+#
+# Excluded by binary where possible, because a file name is stable and a test name is not.
+# The two biggest are inline tests in the `fontina` binary, where every other test lives
+# too, so those two have to be named. If a rename makes this filter stop matching, `quick`
+# gets slower and nothing goes unrun — the failure mode points the safe way.
+fail-fast = true
+default-filter = """
+  not (
+    binary(blind_spot) or binary(render) or binary(interruption) or binary(concurrent)
+    or test(the_glyph_map_draws_at_any_terminal_size)
+    or test(holding_any_single_key_down_keeps_every_invariant)
+  )
+"""
+# The same deadline as `default`. This profile is quick because it runs fewer tests, not
+# because it is less patient with the ones it does run — a deadline that fires on honest
+# work would make `quick` mean "flaky".
+slow-timeout = { period = "30s", terminate-after = 4 }
+
+[[profile.quick.overrides]]
+filter = 'package(fontina-platform)'
+test-group = 'system-fonts'
