@@ -111,7 +111,7 @@ Every check today reads the metadata and asks whether it is sensible. None asks 
 
 ## unfiled — Found, not yet scheduled
 
-`#####·····` 50% · 6 of 12 done
+`#####·····` 43% · 6 of 14 done
 
 Real findings with no milestone. Triage moves them or drops them; nothing sits here by default.
 
@@ -122,6 +122,8 @@ Real findings with no milestone. Triage moves them or drops them; nothing sits h
 - [ ] [`0042`](https://github.com/oddurs/fontina/blob/main/cairn/items/0042-two-thirds-of-the-published-json-fields-have-no-description.md) Two thirds of the published JSON fields have no description <sup>docs · p2 · workspace</sup>
 - [ ] [`0069`](https://github.com/oddurs/fontina/blob/main/cairn/items/0069-the-specimen-has-two-tests-for-ten-sections.md) The specimen has two tests for ten sections <sup>test · p2 · core</sup>
 - [ ] [`0070`](https://github.com/oddurs/fontina/blob/main/cairn/items/0070-ui-mod-rs-is-6900-lines-in-one-file.md) ui/mod.rs is 6900 lines in one file <sup>chore · p3 · ui</sup>
+- [ ] [`0071`](https://github.com/oddurs/fontina/blob/main/cairn/items/0071-twenty-two-test-files-still-build-their-own-sandbox.md) Twenty-two test files still build their own sandbox <sup>chore · p3 · workspace</sup>
+- [ ] [`0072`](https://github.com/oddurs/fontina/blob/main/cairn/items/0072-the-five-functions-in-watch-rs-that-nothing-calls.md) The five functions in watch.rs that nothing calls <sup>test · p2 · core</sup>
 
 ### ready to start
 

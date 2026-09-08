@@ -142,6 +142,33 @@ jobs:
         with:
           args: -color
 
+  coverage:
+    name: coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      # The floor is 85%, and the number on the day this was added was 92.42% lines,
+      # 91.19% regions, 91.49% functions across 28,670 regions. The gap between the two
+      # is deliberate.
+      #
+      # A floor set at today's number fails on the next pull request that adds an error
+      # branch nothing exercises, which is most of them, and a check that fails for
+      # something nobody did wrong is a check people learn to re-run until it passes. A
+      # floor seven points down does not notice a wobble and does notice a collapse — a
+      # test file deleted, a feature landing with nothing behind it, a suite quietly
+      # stopping at the first failure.
+      #
+      # If this ever fails, the question is not "which line is uncovered" but "what
+      # stopped running".
+      - run: >
+          cargo llvm-cov --workspace --features fontina-platform/platform-tests
+          --fail-under-lines 85 --summary-only
+
   schema:
     name: schema is current
     runs-on: ubuntu-latest
