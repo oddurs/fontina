@@ -1,0 +1,14 @@
+[package]
+name = "fontina-testkit"
+description = "The sandbox every fontina test was writing for itself"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+# Never released: this exists to be a dev-dependency of the other crates and nothing else.
+publish = false
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }

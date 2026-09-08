@@ -50,6 +50,7 @@ clap_mangen = "0.3"
 # the schemas are local files with no external references. Dev-only, so nothing here
 # reaches the shipped binary — `cargo tree -e normal -p fontina-cli` has no jsonschema.
 [dev-dependencies]
+fontina-testkit = { path = "../fontina-testkit" }
 rusqlite.workspace = true
 insta.workspace = true
 jsonschema = { version = "0.53", default-features = false }
