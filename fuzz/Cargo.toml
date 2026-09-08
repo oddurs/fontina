@@ -21,6 +21,7 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 fontina-core = { path = "../crates/fontina-core" }
+serde_json = "1"
 
 [[bin]]
 name = "parse"
@@ -32,6 +33,13 @@ bench = false
 [[bin]]
 name = "sfnt"
 path = "fuzz_targets/sfnt.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "collection"
+path = "fuzz_targets/collection.rs"
 test = false
 doc = false
 bench = false
