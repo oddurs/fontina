@@ -2,7 +2,7 @@
 id: 68
 title: Two fontina processes writing one index is reasoned about but untested
 type: test
-status: backlog
+status: done
 milestone: unfiled
 created: 2026-09-07
 updated: 2026-09-07
@@ -40,10 +40,32 @@ exists.
 
 ## Acceptance criteria
 
-- [ ] two processes writing one index concurrently both succeed
-- [ ] the index passes `PRAGMA integrity_check` afterwards
-- [ ] no `SQLITE_BUSY` reaches the user as an error
+- [x] two processes writing one index concurrently both succeed (#202)
+- [x] the index passes `PRAGMA integrity_check` afterwards (#202)
+- [x] no `SQLITE_BUSY` reaches the user as an error (#202)
 
 ## Notes
 
 Found while mapping durability on 2026-09-07.
+
+## Closed
+
+Shipped in #202 as `crates/fontina-cli/tests/concurrent.rs`, two tests: two scans of
+different directories into one index, and a `tag` arriving while a long scan runs — the
+shape of the browser tagging a family while an agent rescans.
+
+A fourth property turned out to be worth asserting beyond the three above: that
+everything **both** writers wrote is there. "No crash" is a low bar, and a writer that
+quietly lost its rows to the other's transaction would have passed all three criteria as
+written.
+
+Checked that the test is not vacuous, because a concurrency test that never achieves
+concurrency passes for the wrong reason:
+
+    one scan alone:        507ms
+    two scans together:    936ms
+    two scans, if serial:  ~1014ms
+
+Both processes are alive at once, and a wall time close to serial is SQLite serialising
+their writes — the contention under test, not evidence against it. Five consecutive runs
+on macOS and one in a Linux container, all green.
