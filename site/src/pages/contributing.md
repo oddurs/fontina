@@ -48,9 +48,10 @@ site/                     this web site
 ## Workflow
 
 Trunk-based. `main` is protected and every change is a pull request that GitHub merges
-once the seven CI checks pass: format and clippy, tests on three operating systems,
-minimum supported Rust version, license and advisory audit, and a check that the JSON
-Schemas are current.
+once the required checks pass: format and clippy, tests on three operating systems, the
+minimum supported Rust version, license and advisory auditing, a check that the JSON
+Schemas are current, the Linux distribution matrix, the packaging tests, the fuzz
+corpus, and the performance budgets.
 
 ```
 git checkout -b feat/<topic> main
@@ -80,9 +81,10 @@ the changelog and the version bump; nothing is released by hand.
 
 ## Licensing of contributions
 
-By contributing you agree your work is licensed MIT OR Apache-2.0, matching the
-project, without any additional terms. There is no contributor license agreement to
-sign.
+By contributing you agree your work is licensed GPL-3.0-or-later, matching the project,
+without any additional terms. There is no contributor license agreement to sign and no
+copyright assignment: you keep your copyright, which is what makes the license hard for
+any single party to revoke later. The [license page](../license/) has the reasoning.
 
 ## Conduct
 

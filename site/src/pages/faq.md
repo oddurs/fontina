@@ -10,15 +10,16 @@ source: site/src/pages/faq.md
 3. [Does it need root, or write to `/usr/share/fonts`?](#does-it-need-root-or-write-to-usrsharefonts)
 4. [Does it phone home?](#does-it-phone-home)
 5. [Where is the database?](#where-is-the-database)
-6. [Can it edit or convert fonts?](#can-it-edit-or-convert-fonts)
-7. [Why a webview for the desktop app instead of a native toolkit?](#why-a-webview-for-the-desktop-app-instead-of-a-native-toolkit)
-8. [Why Rust?](#why-rust)
-9. [Why is the license MIT OR Apache-2.0 and not the GPL?](#why-is-the-license-mit-or-apache-20-and-not-the-gpl)
-10. [How can a terminal show a font?](#how-can-a-terminal-show-a-font)
-11. [Which fonts ship with it?](#which-fonts-ship-with-it)
-12. [The variable font's style shows as "96pt ExtraBold". Is that right?](#the-variable-fonts-style-shows-as-96pt-extrabold-is-that-right)
-13. [A WOFF2 file fails with an `hmtx` transform error.](#a-woff2-file-fails-with-an-hmtx-transform-error)
-14. [How do I report a bug?](#how-do-i-report-a-bug)
+6. [Why can it not see my Type 1 fonts?](#why-can-it-not-see-my-type-1-fonts)
+7. [Can it edit or convert fonts?](#can-it-edit-or-convert-fonts)
+8. [Why a webview for the desktop app instead of a native toolkit?](#why-a-webview-for-the-desktop-app-instead-of-a-native-toolkit)
+9. [Why Rust?](#why-rust)
+10. [Why is it GPL rather than MIT or Apache?](#why-is-it-gpl-rather-than-mit-or-apache)
+11. [How can a terminal show a font?](#how-can-a-terminal-show-a-font)
+12. [Which fonts ship with it?](#which-fonts-ship-with-it)
+13. [The variable font's style shows as "96pt ExtraBold". Is that right?](#the-variable-fonts-style-shows-as-96pt-extrabold-is-that-right)
+14. [A WOFF2 file fails with an `hmtx` transform error.](#a-woff2-file-fails-with-an-hmtx-transform-error)
+15. [How do I report a bug?](#how-do-i-report-a-bug)
 
 ---
 
@@ -110,12 +111,24 @@ lag. The trade-off is recorded in [ADR 0003](../adr/0003-tauri-for-the-desktop-s
 Font files are untrusted input. The parser, fontations, is memory-safe and fuzzed
 continuously. The whole tool is one static binary with no runtime.
 
-### Why is the license MIT OR Apache-2.0 and not the GPL?
+### Why is it GPL rather than MIT or Apache?
 
-It is the Rust ecosystem convention, it lets the core crate be used by anyone, and
-Apache-2.0 carries an explicit patent grant. See
-[ADR 0004](../adr/0004-license-mit-or-apache/). The project is free software either way,
-and contributions are accepted under the same terms.
+It was `MIT OR Apache-2.0` for one day, for one reason: it is the Rust ecosystem
+convention. That reason is about fitting in, not about what the license does.
+
+What a permissive license does here is specific. The competition is a closed-source
+Electron application with paid tiers. Under MIT it could vendor `fontina-core`, ship the
+parsing and the index and the health checks inside a proprietary tier, and owe its users
+nothing — no source, no right to modify, no right to pass it on. Every hour spent on
+this project would become unpaid labour for a program that denies its users the freedoms
+this one exists to protect.
+
+[ADR 0007](../adr/0007-license-gpl-3/) is the full argument. It supersedes
+[ADR 0004](../adr/0004-license-mit-or-apache/), which is still published, unedited,
+because a decision record is never rewritten after acceptance.
+
+Contributions are accepted under the same terms, with no contributor agreement and no
+copyright assignment.
 
 ### How can a terminal show a font?
 
