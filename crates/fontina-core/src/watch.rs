@@ -210,3 +210,35 @@ fn merge(into: &mut ScanReport, r: ScanReport) {
 pub fn is_under_any(path: &Path, roots: &[PathBuf]) -> bool {
     roots.iter().any(|r| path.starts_with(r))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `is_under_any` is public, has no caller in this repository, and had no test.
+    /// Coverage found the second of those; the first came from going to look.
+    ///
+    /// Tested rather than deleted, because what it does is not what a reimplementation
+    /// would do. `Path::starts_with` compares whole components: a string prefix would
+    /// say `/fonts-backup` lies under `/fonts`, and a watcher believing that would index
+    /// a directory nobody asked it to watch.
+    #[test]
+    fn a_path_is_under_a_root_only_by_whole_components() {
+        let roots = vec![PathBuf::from("/fonts"), PathBuf::from("/usr/share/fonts")];
+
+        assert!(is_under_any(Path::new("/fonts/Amiri.ttf"), &roots));
+        assert!(is_under_any(Path::new("/usr/share/fonts/a/b.otf"), &roots));
+        // A root is under itself: a watcher told this directory changed has to act on it.
+        assert!(is_under_any(Path::new("/fonts"), &roots));
+
+        assert!(
+            !is_under_any(Path::new("/fonts-backup/Amiri.ttf"), &roots),
+            "a shared prefix is not a shared directory"
+        );
+        assert!(!is_under_any(Path::new("/usr/share/fontconfig"), &roots));
+        assert!(!is_under_any(Path::new("/elsewhere/Amiri.ttf"), &roots));
+
+        // Nothing is under nothing, rather than everything being under it.
+        assert!(!is_under_any(Path::new("/fonts/Amiri.ttf"), &[]));
+    }
+}
