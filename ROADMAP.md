@@ -111,7 +111,7 @@ Every check today reads the metadata and asks whether it is sensible. None asks 
 
 ## unfiled — Found, not yet scheduled
 
-`#####·····` 42% · 5 of 12 done
+`#####·····` 50% · 6 of 12 done
 
 Real findings with no milestone. Triage moves them or drops them; nothing sits here by default.
 
@@ -120,7 +120,6 @@ Real findings with no milestone. Triage moves them or drops them; nothing sits h
 - [ ] [`0030`](https://github.com/oddurs/fontina/blob/main/cairn/items/0030-duplicates-are-found-and-then-nothing-can-be-done-about-them.md) Duplicates are found and then nothing can be done about them <sup>feat · p1 · cli</sup>
 - [ ] [`0031`](https://github.com/oddurs/fontina/blob/main/cairn/items/0031-variants-opens-with-the-family-you-are-already-looking-at.md) Variants opens with the family you are already looking at <sup>feat · p2 · cli</sup>
 - [ ] [`0042`](https://github.com/oddurs/fontina/blob/main/cairn/items/0042-two-thirds-of-the-published-json-fields-have-no-description.md) Two thirds of the published JSON fields have no description <sup>docs · p2 · workspace</sup>
-- [ ] [`0067`](https://github.com/oddurs/fontina/blob/main/cairn/items/0067-fuzzing-stops-at-font-bytes-but-json-reaches-the-index-too.md) Fuzzing stops at font bytes, but JSON reaches the index too <sup>test · p2 · core</sup>
 - [ ] [`0069`](https://github.com/oddurs/fontina/blob/main/cairn/items/0069-the-specimen-has-two-tests-for-ten-sections.md) The specimen has two tests for ten sections <sup>test · p2 · core</sup>
 - [ ] [`0070`](https://github.com/oddurs/fontina/blob/main/cairn/items/0070-ui-mod-rs-is-6900-lines-in-one-file.md) ui/mod.rs is 6900 lines in one file <sup>chore · p3 · ui</sup>
 
@@ -134,11 +133,12 @@ Real findings with no milestone. Triage moves them or drops them; nothing sits h
 - [x] [`0019`](https://github.com/oddurs/fontina/blob/main/cairn/items/0019-write-down-which-font-formats-are-in-scope.md) Write down which font formats are in scope <sup>docs · p2 · workspace</sup>
 - [x] [`0023`](https://github.com/oddurs/fontina/blob/main/cairn/items/0023-filtering-to-nothing-removes-the-way-back.md) Filtering to nothing removes the way back <sup>fix · p0 · ui</sup>
 - [x] [`0027`](https://github.com/oddurs/fontina/blob/main/cairn/items/0027-parse-the-os-2-family-class-and-panose-into-the-face-model.md) Parse the OS/2 family class and PANOSE into the face model <sup>feat · p2</sup>
+- [x] [`0067`](https://github.com/oddurs/fontina/blob/main/cairn/items/0067-fuzzing-stops-at-font-bytes-but-json-reaches-the-index-too.md) Fuzzing stops at font bytes, but JSON reaches the index too <sup>test · p2 · core</sup>
 - [x] [`0068`](https://github.com/oddurs/fontina/blob/main/cairn/items/0068-two-fontina-processes-writing-one-index-is-reasoned-about-but-untested.md) Two fontina processes writing one index is reasoned about but untested <sup>test · p2 · core</sup>
 
 ## m5-ship — M5 — Ship
 
-`··········` 0% · 0 of 6 done
+`##········` 17% · 1 of 6 done
 
 Who can run it, rather than what else it can do. Package managers on every desktop, the two unmeasured budgets measured. PLAN.md §5.
 
@@ -154,9 +154,12 @@ Who can run it, rather than what else it can do. Package managers on every deskt
 ### in progress
 
 - [ ] [`0022`](https://github.com/oddurs/fontina/blob/main/cairn/items/0022-ship-through-the-package-managers-people-actually-use.md) Ship through the package managers people actually use <sup>chore · p1 · workspace</sup>
-- [ ] [`0066`](https://github.com/oddurs/fontina/blob/main/cairn/items/0066-nothing-checks-that-macos-or-windows-can-actually-see-an-activated-font.md) Nothing checks that macOS or Windows can actually see an activated font <sup>test · p1 · platform</sup>
 
 ### in review
 
 - [ ] [`0041`](https://github.com/oddurs/fontina/blob/main/cairn/items/0041-make-the-path-filtered-checks-able-to-block.md) Make the path-filtered checks able to block <sup>chore · p1 · workspace</sup>
+
+### done
+
+- [x] [`0066`](https://github.com/oddurs/fontina/blob/main/cairn/items/0066-nothing-checks-that-macos-or-windows-can-actually-see-an-activated-font.md) Nothing checks that macOS or Windows can actually see an activated font <sup>test · p1 · platform</sup>
 
