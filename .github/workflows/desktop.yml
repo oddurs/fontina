@@ -1,0 +1,96 @@
+# The acceptance test, on the two systems where nothing has been running it.
+#
+# scripts/acceptance asks the only question a font manager has to answer: after
+# `activate`, can some *other* program see the font? linux.yml has been asking it in six
+# distributions and against the installed .deb and .rpm since M2. macOS and Windows have
+# had six `platform-tests` unit tests between them, and the script says what those are
+# worth — they can only prove fontina wrote the symlink it meant to write. A change to
+# macos.rs that registers a font CoreText will not load passed every check this
+# repository had.
+#
+# So the same script runs here, using each system's own font list as the other program:
+# `system_profiler` on macOS, which is where Font Book gets its data and which does
+# reflect a CoreText registration of a file in no font directory; GDI+ through PowerShell
+# on Windows, which is what a Windows program enumerates.
+#
+# There is no sandbox for this. CoreText and GDI answer for the whole user session
+# whatever HOME says, so if the runner already had Amiri the assertions would pass
+# without fontina doing anything. The script detects that and switches them off with a
+# reason rather than reporting a green line that verifies nothing.
+name: desktop
+
+on:
+  pull_request:
+    paths:
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'scripts/acceptance'
+      - '.github/workflows/desktop.yml'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  acceptance:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos
+            os: macos-latest
+            binary: ./target/release/fontina
+          - name: windows
+            os: windows-latest
+            binary: ./target/release/fontina.exe
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --locked -p fontina-cli
+      # bash on the Windows runner too: the script is POSIX sh, and `uname -s` there
+      # reports MINGW64_NT, which is the case it matches.
+      - name: acceptance
+        shell: bash
+        run: FONTINA=${{ matrix.binary }} scripts/acceptance
+
+  # The check branch protection can require. Everything above is path-filtered, so on a
+  # pull request that touches none of those paths GitHub creates no run at all and
+  # reports nothing — and an unreported required check is not a passing one, it is one
+  # that waits for ever.
+  #
+  # `if: always()` makes this report whatever the jobs above did, including nothing. A
+  # skipped dependency is a pass, because the paths this workflow guards were untouched;
+  # a failure or a cancellation is a failure.
+  gate:
+    name: desktop
+    needs: [acceptance]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job above either passed or did not need to run
+        # Through the environment, not interpolated into the script. An expression
+        # substituted into a `run:` body is spliced in as text before bash sees it, so
+        # the shell's quoting cannot contain it; here bash reads an ordinary variable.
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "dependencies: $RESULTS"
+          for r in $RESULTS; do
+            case "$r" in
+              success|skipped) ;;
+              *) echo "::error::a job this gate stands for reported $r"; exit 1 ;;
+            esac
+          done
