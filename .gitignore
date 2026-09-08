@@ -23,3 +23,6 @@
 node_modules/
 /site/dist/
 /site/.astro/
+# cargo-mutants writes its findings here; they are a run, not a record (cairn 0073).
+/mutants.out/
+/mutants.out.old/
