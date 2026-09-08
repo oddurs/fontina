@@ -38,10 +38,10 @@ use fontina_core::model::FaceMetadata;
 use fontina_core::unicode;
 
 /// A codepoint from the text, and which script Unicode says it belongs to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Want {
     pub cp: u32,
-    pub script: &'static str,
+    pub script: String,
 }
 
 /// What the reader typed, reduced to the distinct characters that need drawing.
@@ -74,28 +74,16 @@ pub fn wanted(text: &str) -> Vec<Want> {
 /// lives there and this is its public door; a table of ranges copied into the browser
 /// would be a second answer to a question that already has one, and the two would
 /// disagree the first time Unicode added a block.
-fn script_of(cp: u32) -> &'static str {
-    static NAMES: std::sync::OnceLock<std::sync::Mutex<Vec<&'static str>>> =
-        std::sync::OnceLock::new();
-    let coverage = unicode::coverage_from_codepoints(vec![cp]);
-    let name = coverage
+///
+/// An owned name rather than a `&'static str`. The obvious way to get the latter is to
+/// leak the handful of distinct names behind a cache, which buys nothing here — a text
+/// has a few dozen distinct codepoints — and costs a mutex and a lock that can fail.
+fn script_of(cp: u32) -> String {
+    unicode::coverage_from_codepoints(vec![cp])
         .scripts
         .first()
         .map(|s| s.script.clone())
-        .unwrap_or_else(|| "Zzzz".into());
-    // `ScriptCoverage` owns its name and this wants a `'static` one, so the handful of
-    // distinct script names a text can hold are leaked once each and reused. A text has
-    // at most a few dozen scripts in it and a session asks a few dozen times.
-    let cache = NAMES.get_or_init(|| std::sync::Mutex::new(Vec::new()));
-    let mut cache = cache.lock().expect("the script name cache");
-    match cache.iter().find(|n| **n == name) {
-        Some(found) => found,
-        None => {
-            let leaked: &'static str = Box::leak(name.into_boxed_str());
-            cache.push(leaked);
-            leaked
-        }
-    }
+        .unwrap_or_else(|| "Zzzz".into())
 }
 
 /// What one face can do with the text.
@@ -105,7 +93,7 @@ pub struct Verdict {
     pub missing: Vec<Want>,
     /// Per script: how many of the text's codepoints in that script the face covers,
     /// out of how many the text wants. In the order the text first wanted them.
-    pub per_script: Vec<(&'static str, u32, u32)>,
+    pub per_script: Vec<(String, u32, u32)>,
     pub wanted: usize,
 }
 
@@ -159,15 +147,15 @@ impl Verdict {
 ///
 /// The same shape as a near miss's, so a row that sets the whole text and one that does
 /// not are the same kind of answer rather than two.
-pub fn judge_scripts(want: &[Want]) -> Vec<(&'static str, u32, u32)> {
-    let mut out: Vec<(&'static str, u32, u32)> = Vec::new();
+pub fn judge_scripts(want: &[Want]) -> Vec<(String, u32, u32)> {
+    let mut out: Vec<(String, u32, u32)> = Vec::new();
     for w in want {
         match out.iter_mut().find(|(s, _, _)| *s == w.script) {
             Some(entry) => {
                 entry.1 += 1;
                 entry.2 += 1;
             }
-            None => out.push((w.script, 1, 1)),
+            None => out.push((w.script.clone(), 1, 1)),
         }
     }
     out
@@ -182,18 +170,18 @@ pub fn judge(face: &FaceMetadata, want: &[Want]) -> Verdict {
             .any(|[lo, hi]| *lo <= cp && cp <= *hi)
     };
     let mut missing = Vec::new();
-    let mut per_script: Vec<(&'static str, u32, u32)> = Vec::new();
+    let mut per_script: Vec<(String, u32, u32)> = Vec::new();
     for w in want {
         let has = covers(w.cp);
         if !has {
-            missing.push(*w);
+            missing.push(w.clone());
         }
         match per_script.iter_mut().find(|(s, _, _)| *s == w.script) {
             Some(entry) => {
                 entry.1 += u32::from(has);
                 entry.2 += 1;
             }
-            None => per_script.push((w.script, u32::from(has), 1)),
+            None => per_script.push((w.script.clone(), u32::from(has), 1)),
         }
     }
     Verdict {
@@ -358,7 +346,10 @@ mod tests {
     fn a_mixed_script_string_reports_per_script() {
         let want = wanted("abس");
         let v = judge(&face_covering(&[['a' as u32, 'b' as u32]]), &want);
-        assert_eq!(v.per_script, vec![("Latn", 2, 2), ("Arab", 0, 1)]);
+        assert_eq!(
+            v.per_script,
+            vec![("Latn".to_string(), 2, 2), ("Arab".to_string(), 0, 1)]
+        );
         let line = v.summary(120);
         assert!(line.contains("[Arab 0/1]"), "{line}");
         assert!(
