@@ -60,12 +60,38 @@ mkdir -p "$HOME" "$XDG_DATA_HOME" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME"
 
 os=$(uname -s)
 have_fc=no
-# fontconfig is the font system on GNU/Linux and the BSDs. macOS has CoreText and
-# Windows has GDI/DirectWrite, where a `fc-list` from Homebrew says nothing about
-# whether the desktop can see the font, so it is only consulted where it is the truth.
+# Every system has a program that is not fontina and knows what fonts exist; the whole
+# test turns on asking it. fontconfig is that program on GNU/Linux and the BSDs, and a
+# `fc-list` from Homebrew on macOS is not — it would answer about a font system the
+# desktop does not use — so each system gets the one that is the truth there.
+#
+#   fontconfig    fc-list, on GNU/Linux and the BSDs
+#   coretext      system_profiler, which is where Font Book gets its list
+#   directwrite   GDI+ through PowerShell, which is where every Windows program gets its
+#
+# `probe` is which one; `probe_name` is what to call it when a line has to be read.
+probe=none
+probe_name=none
+probe_off="no font-system probe on this system"
 case "$os" in
 Linux | *BSD | DragonFly)
-    if command -v fc-list >/dev/null 2>&1; then have_fc=yes; fi
+    if command -v fc-list >/dev/null 2>&1; then
+        have_fc=yes
+        probe=fontconfig
+        probe_name=fc-list
+    fi
+    ;;
+Darwin)
+    if command -v system_profiler >/dev/null 2>&1; then
+        probe=coretext
+        probe_name=system_profiler
+    fi
+    ;;
+MINGW* | MSYS* | CYGWIN* | Windows_NT)
+    if command -v powershell >/dev/null 2>&1 || command -v powershell.exe >/dev/null 2>&1; then
+        probe=directwrite
+        probe_name=GDI+
+    fi
     ;;
 esac
 
@@ -74,7 +100,7 @@ say "  binary:     $fontina"
 say "  version:    $("$fontina" -V 2>&1 || echo '(failed to run)')"
 say "  fixtures:   $fixtures"
 say "  system:     $os"
-say "  fontconfig: $have_fc"
+say "  font system: $probe ($probe_name)"
 say "  sandbox:    $root"
 say ""
 
@@ -104,17 +130,53 @@ check "covers" "$fontina" covers "Amiri"
 
 # --- the point of the whole program: another program can see the font ---------------
 say "activates"
-# Is the family visible to the rest of the system right now? Only fontconfig can answer
-# that from a shell; on the other systems the equivalent needs a CoreText or DirectWrite
-# call, so there the harness falls back to what fontina itself reports and the platform
-# integration tests carry the weight.
+# Is the family visible to the rest of the system right now?
+#
+# This is the question the whole script exists to ask, and it has to be answered by
+# something that is not fontina. Each branch below is that system's own font list:
+#
+#   fc-list           fontconfig's, which every GNU/Linux program consults
+#   system_profiler   the same data Font Book shows; it reflects a CoreText registration
+#                     of a file that is not in any font directory, which is exactly what
+#                     `fontina activate` makes
+#   GDI+              InstalledFontCollection, which is what a Windows program enumerates
+#
+# Verified on macOS before being relied on: with the family absent, `activate` makes
+# system_profiler report it and `deactivate` makes it stop.
 seen() {
-    [ "$have_fc" = yes ] || return 1
-    fc-list 2>/dev/null | grep -qi "$1"
+    case "$probe" in
+    fontconfig) fc-list 2>/dev/null | grep -qi "$1" ;;
+    coretext) system_profiler SPFontsDataType 2>/dev/null | grep -qi "$1" ;;
+    directwrite)
+        ps=powershell
+        command -v powershell >/dev/null 2>&1 || ps=powershell.exe
+        "$ps" -NoProfile -NonInteractive -Command \
+            "Add-Type -AssemblyName System.Drawing; [System.Drawing.Text.InstalledFontCollection]::new().Families.Name" \
+            2>/dev/null | grep -qi "$1"
+        ;;
+    *) return 1 ;;
+    esac
 }
-if [ "$have_fc" = yes ] && seen Amiri; then
-    no "Amiri must not be visible before activation (a dirty sandbox?)"
-elif [ "$have_fc" = yes ]; then
+# If the family is already there, nothing below this can mean anything: every "sees
+# Amiri" would pass without fontina having done a thing. That is worse than a failure,
+# because it is a green line that verifies nothing, so the assertions are switched off
+# and the reason is printed rather than left to be worked out later.
+#
+# On GNU/Linux that state is a bug in the harness and is reported as one: HOME and
+# XDG_DATA_HOME are redirected, so fontconfig should see nothing this script did not
+# activate. macOS and Windows cannot be sandboxed that way — CoreText and GDI answer for
+# the whole user session, whatever HOME says — so there it means the person running this
+# has Amiri installed, which is their business and not a failure.
+if [ "$probe" != none ] && seen Amiri; then
+    if [ "$probe" = fontconfig ]; then
+        no "Amiri must not be visible before activation (a dirty sandbox?)"
+    else
+        say "  skip  visibility: Amiri is already installed for this user, so asking"
+        say "        $probe_name about it after activation would prove nothing"
+        probe_off="Amiri was already installed for this user"
+    fi
+    probe=none
+elif [ "$probe" != none ]; then
     ok "Amiri is not visible before activation"
 fi
 
@@ -124,19 +186,24 @@ else
     no "activate family:Amiri"
     cat "$root/activate.out"
 fi
-if [ "$have_fc" = yes ]; then
+if [ "$probe" != none ]; then
     if seen Amiri; then
-        ok "fc-list sees Amiri: another program can use it"
+        ok "$probe_name sees Amiri: another program can use it"
     else
-        no "fc-list does not see Amiri after activation"
+        no "$probe_name does not see Amiri after activation"
     fi
+else
+    say "  skip  visibility assertions ($probe_off)"
+fi
+# Resolution, not just presence, and only fontconfig answers this one: `fc-match` is
+# asking which face a request for "Amiri" actually gets, and neither CoreText nor GDI has
+# a shell equivalent worth trusting.
+if [ "$have_fc" = yes ]; then
     if fc-match Amiri 2>/dev/null | grep -qi amiri; then
         ok "fc-match resolves Amiri to the activated face"
     else
         no "fc-match does not resolve Amiri"
     fi
-else
-    say "  skip  fontconfig assertions (fc-list is not installed)"
 fi
 if "$fontina" activations | grep -qi amiri; then ok "activations lists it"; else no "activations lists it"; fi
 if [ "$have_fc" = yes ] || [ "$os" = Linux ]; then
@@ -149,8 +216,8 @@ fi
 
 say "deactivates"
 check "deactivate family:Amiri" "$fontina" deactivate family:Amiri
-if [ "$have_fc" = yes ]; then
-    if seen Amiri; then no "fc-list still sees Amiri after deactivation"; else ok "fc-list no longer sees Amiri"; fi
+if [ "$probe" != none ]; then
+    if seen Amiri; then no "$probe_name still sees Amiri after deactivation"; else ok "$probe_name no longer sees Amiri"; fi
 fi
 if "$fontina" activations | grep -qi amiri; then no "activations still lists it"; else ok "activations no longer lists it"; fi
 
@@ -178,8 +245,8 @@ if [ "$os" = Linux ]; then
     fi
 fi
 check "uninstall after that leaves nothing" "$fontina" uninstall family:Amiri
-if [ "$have_fc" = yes ]; then
-    if seen Amiri; then no "fc-list still sees Amiri after the round trip"; else ok "fc-list no longer sees Amiri"; fi
+if [ "$probe" != none ]; then
+    if seen Amiri; then no "$probe_name still sees Amiri after the round trip"; else ok "$probe_name no longer sees Amiri"; fi
 fi
 
 # And the other direction: an activation on top of an install has to remove the copy,
@@ -194,9 +261,15 @@ fi
 # directory: on GNU/Linux an install and an activation both leave a link under
 # `$XDG_DATA_HOME/fonts`, so looking for the font by name there finds the activation and
 # says the copy survived when it did not.
+#
+# Matched whole rather than split on commas. `tr ',' '\n'` put one JSON field per line,
+# which works until a *value* contains a comma — and a variable font's filename does:
+# `BricolageGrotesque[opsz,wdth,wght].ttf` is cut after `[opsz`, the file at that path
+# does not exist, and the script reports a copy that was never taken back. It has never
+# bitten because the only family installed here is Amiri.
 copy=$("$fontina" activations --json 2>/dev/null |
-    tr ',' '\n' | grep '"installed_path"' | head -1 |
-    sed 's/.*"installed_path": *"//; s/".*//')
+    grep -o '"installed_path": *"[^"]*"' | head -1 |
+    sed 's/.*"installed_path": *"//; s/"$//')
 if [ -n "$copy" ] && [ -e "$copy" ]; then
     ok "the copy is where the record says it is ($copy)"
 else
@@ -214,8 +287,8 @@ else
     ok "activating took the installed copy back"
 fi
 check "deactivate after that" "$fontina" deactivate family:Amiri
-if [ "$have_fc" = yes ]; then
-    if seen Amiri; then no "fc-list still sees Amiri at the end of the round trip"; else ok "fc-list no longer sees Amiri"; fi
+if [ "$probe" != none ]; then
+    if seen Amiri; then no "$probe_name still sees Amiri at the end of the round trip"; else ok "$probe_name no longer sees Amiri"; fi
 fi
 
 say "installs"
@@ -225,8 +298,25 @@ else
     no "install family:Amiri"
     cat "$root/install.out"
 fi
-if [ "$have_fc" = yes ]; then
-    if seen Amiri; then ok "fc-list sees the installed copy"; else no "fc-list does not see the installed copy"; fi
+# An installed copy is a file in the per-user font directory, and whether the system can
+# see it there depends on how the system finds fonts at all.
+#
+# fontconfig reads `$XDG_DATA_HOME/fonts`, and the sandbox redirects that, so it looks
+# where the copy went. Windows registers the file as well as copying it, so GDI answers
+# for it wherever it lives — CI confirms both.
+#
+# CoreText does neither. `install` on macOS is a plain copy into `~/Library/Fonts` that
+# fontd watches, and fontd watches the *real* home, not the one this script exports. So
+# the copy is genuinely invisible here, and would be genuinely visible on a desktop. The
+# alternative is not sandboxing HOME, which would mean an acceptance test writing into
+# somebody's actual font directory — so this assertion is skipped and the reason said out
+# loud. What is *not* skipped is activation, which registers the file where it lies and
+# is therefore the half that a sandbox cannot hide.
+if [ "$probe" = coretext ]; then
+    say "  skip  an installed copy goes to \$HOME/Library/Fonts, and fontd watches the"
+    say "        real home rather than this sandbox's"
+elif [ "$probe" != none ]; then
+    if seen Amiri; then ok "$probe_name sees the installed copy"; else no "$probe_name does not see the installed copy"; fi
 fi
 # The copy has to land in this system's own per-user font directory, whichever that is;
 # `fontina dirs` is the program's own answer and the acceptance test holds it to it.
@@ -240,8 +330,8 @@ else
     no "nothing landed in the per-user font directory ($user_dir)"
 fi
 check "uninstall family:Amiri" "$fontina" uninstall family:Amiri
-if [ "$have_fc" = yes ]; then
-    if seen Amiri; then no "fc-list still sees Amiri after uninstall"; else ok "fc-list no longer sees Amiri"; fi
+if [ "$probe" != none ]; then
+    if seen Amiri; then no "$probe_name still sees Amiri after uninstall"; else ok "$probe_name no longer sees Amiri"; fi
 fi
 if find "$user_dir" -name '*Amiri*' 2>/dev/null | grep -q .; then
     no "the copy survived uninstall in $user_dir"
