@@ -19,16 +19,34 @@ import Base from '../../layouts/Base.astro';
 import { getCollection, render } from 'astro:content';
 
 export async function getStaticPaths() {
-  const news = await getCollection('news');
-  return news.map((entry) => ({ params: { id: entry.id }, props: { entry } }));
+  // Newest first, which is the order the index prints and the order the rail reads.
+  const news = (await getCollection('news')).sort(
+    (a, b) => b.data.date.getTime() - a.data.date.getTime(),
+  );
+  return news.map((entry, i) => ({
+    params: { id: entry.id },
+    props: { entry, all: news, newer: news[i - 1], older: news[i + 1] },
+  }));
 }
 
-const { entry } = Astro.props;
+const { entry, all, newer, older } = Astro.props;
 const { Content } = await render(entry);
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const u = (p: string) => `${base}${p}`;
 ---
-<Base title={entry.data.title} description={entry.data.description} source={`site/src/content/news/${entry.id}.md`}>
-  <p class="node-nav">Up: <a href={`${base}/news/`}>News</a></p>
+<Base title={entry.data.title} description={entry.data.description} source={`site/src/content/news/${entry.id}.md`}
+  extraNav={{
+    head: 'News',
+    links: [
+      ['All news', u('/news/')],
+      ...all.map((e): [string, string] => [e.data.title, u(`/news/${e.id}/`)]),
+    ],
+  }}>
+  <p class="node-nav">
+    {newer && <>Newer: <a href={u(`/news/${newer.id}/`)}>{newer.data.title}</a>, &nbsp;</>}
+    {older && <>Older: <a href={u(`/news/${older.id}/`)}>{older.data.title}</a>, &nbsp;</>}
+    Up: <a href={u('/news/')}>News</a>
+  </p>
   <h1>{entry.data.title}</h1>
   <p class="smaller">{entry.data.date.toISOString().slice(0, 10)}</p>
   <Content />
