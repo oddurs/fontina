@@ -20,11 +20,12 @@
 import '../styles/site.css';
 import { execSync } from 'node:child_process';
 import { current } from '../releases';
+import { masthead, sitemap, currentHref } from '../nav';
 
 interface Props {
   title: string;
   description?: string;
-  /** An extra nav item at the top of the nav column: a heading and links. */
+  /** The section rail beside the content: a heading and the section's pages. */
   extraNav?: { head: string; links: [string, string][] };
   /** Path of the page's source in the repository, for the "last modified" line. */
   source?: string;
@@ -48,40 +49,25 @@ if (source) {
   } catch {}
 }
 
-const groups: [string, [string, string, boolean?][]][] = [
-  ['About fontina', [
-    ['Mission', u('/mission/')],
-    ['Releases', u('/releases/')],
-    ['News', u('/news/')],
-    ['Decisions', u('/adr/')],
-    ['Contributors', `${repo}/graphs/contributors`],
-  ]],
-  ['Documentation', [
-    ['Manual', u('/docs/')],
-    ['Command reference', u('/docs/cli/'), true],
-    ['FAQ', u('/faq/')],
-  ]],
-  ['Download', [
-    ['Binaries', u('/download/')],
-    ['Verifying', u('/download/#verifying-a-download'), true],
-    ['From source', u('/download/#building-from-source'), true],
-  ]],
-  ['Sources', [
-    ['Git', repo],
-    ['Changelog', `${repo}/blob/main/CHANGELOG.md`],
-    ['License', u('/license/')],
-  ]],
-  ['Development', [
-    ['Roadmap', u('/roadmap/')],
-    ['Contributing', u('/contributing/')],
-    ['Web style', u('/style/')],
-  ]],
-  ['Bugs', [
-    ['How to report', u('/bugs/')],
-    ['Bug tracker', `${repo}/issues`],
-    ['Security', u('/security/')],
-  ]],
-];
+const links = masthead(u);
+const groups = sitemap(u);
+
+// Where you are, worked out once per list.
+//
+// Section-aware, which the old test was not: it compared the href to the path for
+// equality, so nothing was marked on any page below a section index — the whole manual,
+// every decision record, every news post.
+//
+// Per list rather than per link, because `aria-current` is singular and several links in
+// one list can cover one page: the footer holds both `/docs/` and `/docs/cli/`, and on
+// the command reference both match. `currentHref` picks the deepest.
+const deepest = (hrefs: string[]) => currentHref(hrefs, Astro.url.pathname, u('/'));
+const mastheadHere = deepest(links.map((l) => l.href));
+const sitemapHere = deepest(groups.flatMap((g) => g.links.map((l) => l.href)));
+const railHere = extraNav ? deepest(extraNav.links.map(([, href]) => href)) : undefined;
+
+const page = (href: string, current: string | undefined) =>
+  href === current ? 'page' : undefined;
 ---
 <html lang="en">
 <head>
@@ -109,17 +95,11 @@ const groups: [string, [string, string, boolean?][]][] = [
       {current && <span class="version">{current.version}</span>}
     </p>
     <nav aria-label="Main">
-      {([
-        ['Manual', u('/docs/')],
-        ['Download', u('/download/')],
-        ['News', u('/news/')],
-        ['Free software', u('/license/')],
-        ['Source', repo],
-      ] as [string, string][]).map(([label, href]) => (
+      {links.map(({ label, href }) => (
         <a
           href={href}
           rel={href.startsWith('http') ? 'external' : undefined}
-          aria-current={href === Astro.url.pathname ? 'page' : undefined}
+          aria-current={page(href, mastheadHere)}
         >{label}</a>
       ))}
     </nav>
@@ -131,32 +111,30 @@ const groups: [string, [string, string, boolean?][]][] = [
     <slot />
   </main>
   {extraNav && (
-  <nav class="navcol" aria-label="On this manual">
-    {extraNav && (
+    <nav class="navcol" aria-label={extraNav.head}>
       <div class="navitem">
         <div class="navhead">{extraNav.head}</div>
         <div class="navbody">
           {extraNav.links.map(([label, href]) => (
-            <a href={href} aria-current={href === Astro.url.pathname ? 'page' : undefined}>{label}</a>
+            <a href={href} aria-current={page(href, railHere)}>{label}</a>
           ))}
         </div>
       </div>
-    )}
-  </nav>
+    </nav>
   )}
 </div>
 <footer class="footer">
   <div class="inner">
     <nav class="sitemap" aria-label="Site">
-      {groups.map(([head, links]) => (
+      {groups.map(({ head, links }) => (
         <div class="navitem">
           <div class="navhead">{head}</div>
           <div class="navbody">
-            {links.map(([label, href, sub]) => (
+            {links.map(({ label, href, sub }) => (
               <a
                 href={href}
                 class={sub ? 'sub' : undefined}
-                aria-current={href === Astro.url.pathname ? 'page' : undefined}
+                aria-current={page(href, sitemapHere)}
               >{label}</a>
             ))}
           </div>
