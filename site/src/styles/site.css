@@ -454,7 +454,21 @@ a:focus-visible {
   max-width: var(--frame);
   margin: var(--space-6) auto 0;
 }
-.main { flex: 1 1 auto; min-width: 0; }
+/* The content column is the same width whether or not the page has a rail.
+   It was not: `flex: 1 1 auto` alone let it take the whole frame on a page with
+   no rail, so /releases/ set its headings and its table 1260px wide while the
+   paragraphs between them stopped at 815 — a column with two right edges, and
+   the table overhanging the prose by 445px. Paragraphs have a measure of their
+   own; everything else was taking whatever was left.
+
+   The cap is the width a rail page's column already has, written as the sum it
+   is rather than as a number, so moving the frame or the rail moves this with
+   them. */
+.main {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: calc(var(--frame) - var(--nav-w) - var(--gutter));
+}
 
 .navcol {
   flex: 0 0 var(--nav-w);
@@ -841,6 +855,17 @@ th {
 }
 tr:last-child td { border-bottom: 0; }
 td code { white-space: nowrap; }
+
+/* The release table: two narrow columns of fact and one wide one of prose.
+   Without this the version and the date each wrapped onto two lines inside a
+   column four characters wider than they are, while the notes column — the only
+   one that wants to wrap — was squeezed. */
+.releases td:first-child,
+.releases td:nth-child(2) { white-space: nowrap; }
+.releases td:first-child { font-weight: var(--weight-medium); }
+.releases td:nth-child(2) { color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.releases td:last-child { min-width: 32ch; }
+.quiet { color: var(--ink-faint); }
 
 /* ------------------------------------------------------------------ Code */
 pre, code, kbd, samp { font-family: var(--font-mono); overflow-wrap: normal; }
