@@ -3218,10 +3218,14 @@ fn print_families(families: &[fontina_core::Family]) {
     let scripts: Vec<String> = families
         .iter()
         .map(|f| {
-            f.scripts
-                .iter()
+            // Four of them fit the column, so which four matters: unsorted, two of the
+            // slots went to `Zyyy` and `Zinh` on every row of the table.
+            let mut codes: Vec<&String> = f.scripts.iter().collect();
+            fontina_core::unicode::real_scripts_first(&mut codes, |c| c.as_str());
+            codes
+                .into_iter()
                 .take(4)
-                .cloned()
+                .map(String::as_str)
                 .collect::<Vec<_>>()
                 .join(" ")
         })
@@ -3378,7 +3382,19 @@ fn print_facets(f: &fontina_core::Facets) {
     );
     row("container", &f.container, &|v| v.to_string());
     row("spacing", &f.spacing, &|v| v.to_string());
-    row("script", &f.script, &|v| v.to_string());
+    // Real scripts first. The facet is sorted by face count, and `Zyyy` and `Zinh` are
+    // in nearly every font, so by count they lead — and the row is capped, so on a real
+    // library they pushed real scripts off the end of it entirely.
+    let mut script = f.script.clone();
+    fontina_core::unicode::real_scripts_first(&mut script, |c| c.value.as_str());
+    row(
+        "script",
+        &script,
+        &|v| match fontina_core::unicode::pseudo_script_name(v) {
+            Some(word) => format!("{v} {word}"),
+            None => v.to_string(),
+        },
+    );
     row("language", &f.language, &|v| v.to_string());
     row("license", &f.license, &|v| v.to_string());
     row("freedom", &f.freedom, &|v| v.to_string());

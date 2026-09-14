@@ -3583,13 +3583,6 @@ impl App {
 /// forty-row terminal, where nobody ever saw them.
 const COLLAPSED: usize = 3;
 
-/// Zyyy, Zinh and Zzzz are not scripts. Common punctuation, inherited marks and
-/// unassigned codepoints are in nearly every font, they are never what a font is
-/// *for*, and counted with the rest they took the top three rows of the script
-/// section on a real library — 1996, 1045 and 769 faces — from Arab, Hebr and Geor.
-/// They sort last, where somebody who wants them can still find them.
-const PSEUDO_SCRIPTS: [&str; 3] = ["Zyyy", "Zinh", "Zzzz"];
-
 /// Every value a section offers, in the order it offers them.
 fn section_values(section: Section, facets: &Facets) -> Vec<(Facet, &FacetCount)> {
     match section {
@@ -3598,7 +3591,7 @@ fn section_values(section: Section, facets: &Facets) -> Vec<(Facet, &FacetCount)
                 .script
                 .iter()
                 .map(|c| (Facet::Script, c))
-                .partition(|(_, c)| !PSEUDO_SCRIPTS.contains(&c.value.as_str()));
+                .partition(|(_, c)| !fontina_core::unicode::is_pseudo_script(&c.value));
             real.into_iter().chain(pseudo).collect()
         }
         Section::Language => facets
@@ -3744,16 +3737,10 @@ fn facet_value_label(facet: Facet, value: &str) -> String {
             "{value}% {}",
             fontina_core::index::width_name(value.parse().unwrap_or(100.0))
         ),
-        // The three ISO 15924 codes that are not scripts, said in words. A reader
-        // scanning for Arabic should not have to know that Zinh is where combining
-        // marks go.
-        Facet::Script if PSEUDO_SCRIPTS.contains(&value) => format!(
+        // The three ISO 15924 codes that are not scripts, said in words.
+        Facet::Script if fontina_core::unicode::is_pseudo_script(value) => format!(
             "{value} {}",
-            match value {
-                "Zyyy" => "common",
-                "Zinh" => "inherited",
-                _ => "unassigned",
-            }
+            fontina_core::unicode::pseudo_script_name(value).unwrap_or_default()
         ),
         Facet::Source => Path::new(value)
             .file_name()
@@ -5308,7 +5295,7 @@ mod tests {
             .map(|r| r.value.as_str())
             .collect();
         assert!(!scripts.is_empty());
-        for pseudo in PSEUDO_SCRIPTS {
+        for pseudo in fontina_core::unicode::PSEUDO_SCRIPTS {
             assert!(
                 !scripts.contains(&pseudo),
                 "{pseudo} took one of the three rows a reader sees: {scripts:?}"
