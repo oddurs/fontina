@@ -25,8 +25,8 @@ const lead = (body = '') => body.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace
 ---
 <Base title="News" description="Announcements and release notes for fontina, newest first." source="site/src/content/news">
   <h1>fontina news</h1>
-  <p class="smaller">Also an <a href={u('/feed.xml')}>RSS feed</a>. Release notes for every version are on the
-    <a href="https://github.com/oddurs/fontina/releases">releases page</a> and in the
+  <p class="smaller">Also an <a href={u('/feed.xml')}>RSS feed</a>. Release notes for every version are on the{' '}
+    <a href="https://github.com/oddurs/fontina/releases">releases page</a> and in the{' '}
     <a href="https://github.com/oddurs/fontina/blob/main/CHANGELOG.md">changelog</a>.</p>
   <dl class="news">
     {news.map((n) => (

@@ -31,7 +31,7 @@ const notes: Record<string, string> = {
     'Static GNU/Linux binaries that run on every distribution. Two denial-of-service defects in the importer, found by fuzzing. The index no longer loses tags and collections when a parse fails, activation can no longer delete a font it did not install, and concurrent fontina processes can share one index.',
 };
 ---
-<Base title="fontina releases" description="Release policy, what a release contains, and the timeline." source="site/src/pages/releases.astro">
+<Base title="fontina releases" description="Every tagged release of fontina, what a release contains, and how versions are cut." source="site/src/pages/releases.astro">
   <h1>fontina releases</h1>
 
   <h2>Current</h2>
@@ -44,10 +44,26 @@ const notes: Record<string, string> = {
     </p>
   ) : (
     <p>
-      There is no tagged release yet.
+      There is no tagged release yet.{' '}
       <a href={u('/download/')}>Build from source</a> in the meantime.
     </p>
   )}
+
+  <h2>Every release</h2>
+  <table class="releases">
+    <thead>
+      <tr><th>Version</th><th>Tagged</th><th>What changed</th></tr>
+    </thead>
+    <tbody>
+      {releases.map((r) => (
+        <tr>
+          <td><a href={r.url}>{r.version}</a></td>
+          <td><time datetime={r.date}>{r.date}</time></td>
+          <td>{notes[r.version] ?? <span class="quiet">See the release notes.</span>}</td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
 
   <h2>What a release contains</h2>
   <p>
@@ -55,7 +71,7 @@ const notes: Record<string, string> = {
     platform, one archive with the binary, shell completions for bash, zsh, fish and
     PowerShell, and the man pages; a SHA-256 checksum for each archive; a SLSA build
     provenance attestation; <code>.deb</code> and <code>.rpm</code> packages for
-    GNU/Linux with their own checksums; and an SPDX software bill of materials. See
+    GNU/Linux with their own checksums; and an SPDX software bill of materials. See{' '}
     <a href={u('/download/')}>Download</a> for how to verify them.
   </p>
   <p>
@@ -66,26 +82,15 @@ const notes: Record<string, string> = {
   <h2>Policy</h2>
   <p>
     Only the latest release and the <code>main</code> branch receive fixes. Versions
-    follow <a href="https://semver.org/">semantic versioning</a>. Releases are cut by
+    follow <a href="https://semver.org/">semantic versioning</a>. Releases are cut by{' '}
     <a href="https://github.com/googleapis/release-please">release-please</a> from the
     commit history: it keeps a release pull request open with the changelog and the
     version bump, and merging it tags the release and starts the build. Nothing is
     released by hand.
   </p>
   <p>
-    Security fixes are announced in the release notes and, for anything serious, on the
+    Security fixes are announced in the release notes and, for anything serious, on the{' '}
     <a href={u('/news/')}>news</a> page.
   </p>
 
-  <h2>Timeline</h2>
-  <table>
-    <tr><th>Release</th><th>Date</th><th>Notes</th></tr>
-    {releases.map((r) => (
-      <tr>
-        <td><a href={r.url}>fontina {r.version}</a></td>
-        <td>{r.date}</td>
-        <td>{notes[r.version] ?? ''}</td>
-      </tr>
-    ))}
-  </table>
 </Base>
