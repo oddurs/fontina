@@ -75,6 +75,12 @@
   --ink-soft: #59616e;    /* secondary: dates, meta, the notice */
   --ink-faint: #6b7480;   /* tertiary: nav labels, dates, disabled */
 
+  /* How much room the masthead takes out of the top of the window — zero unless
+     it is sticky, which it only is above 40rem. The rail parks under it and a
+     fragment link has to scroll clear of it, so both read this rather than
+     guessing separately. Measured, not picked; see the masthead rules. */
+  --masthead-h: 0rem;
+
   /* Lines. This design draws with hairlines, not with boxes or shadows. */
   --line: #e5e8ec;        /* the default hairline */
   --line-strong: #ccd2da; /* a border that has to hold its own */
@@ -113,6 +119,11 @@ html {
      still gets 22.5 and the whole scale moves with them. Everything on the site
      is in `rem`, so this is the only line that has to change. */
   font-size: 112.5%;
+  /* A fragment link lands under a sticky masthead unless the document is told
+     to stop short of it. The command reference is eleven sections deep and its
+     contents list is all fragment links, so without this every one of them
+     scrolls the heading it names out of sight behind the header. */
+  scroll-padding-top: calc(var(--masthead-h) + var(--space-4));
 }
 
 body {
@@ -216,18 +227,47 @@ a:focus-visible {
 /* The one piece of navigation that is above the content on every page.
    Without it the whole site index lives in a column that, once the page
    stacks, sits *below* everything — so on a phone the way to the manual was
-   at the bottom of the manual. Four destinations and the wordmark, a rule
-   under them, no shadow and nothing sticky: a masthead in the sense a
-   newspaper has one, not a chrome bar.
+   at the bottom of the manual. Five destinations and the wordmark, a rule
+   under them, and no shadow: a masthead in the sense a newspaper has one,
+   not a chrome bar.
 
    It wraps rather than collapsing into a menu. Five items do not need a
    disclosure, and a disclosure needs either script or a hack that fights the
-   user agent stylesheet. Wrapping is the honest answer at this size. */
+   user agent stylesheet. Wrapping is the honest answer at this size.
+
+   It sticks now. The command reference is nine thousand pixels long and the
+   manual is ten chapters of that, so for most of the time anybody spends on
+   this site the way out was somewhere above the top of the window. A rule and
+   a ground is all it takes — still no shadow, and it does not shrink, hide on
+   scroll, or do anything else that would make it a chrome bar after all.
+
+   It sticks only where it is one row, which is 40rem up. Measured across
+   widths rather than assumed: at 640px and above the wordmark and all five
+   destinations sit on one line and the bar is 75px, but at 630 the wordmark
+   drops to its own line and it becomes 121px, and on a phone the destinations
+   wrap again and it is 155px. A 155px bar pinned to the top of an 860px screen
+   is a fifth of the page spent on a header, permanently, which is a worse deal
+   than scrolling back up. So: sticky where it is cheap, an ordinary masthead
+   where it is not.
+
+   That is also what keeps `--masthead-h` honest. It has one value that matters
+   and it is only consulted where it applies; the alternative was a token that
+   was right at one width and wrong at two. */
 .masthead {
   border-bottom: 1px solid var(--line);
   /* No bottom margin: the frame below already sets its own top margin, and the
      two together left 80px of empty page under the rule. The frame owns that
      gap, here and at both narrow breakpoints. */
+}
+@media (min-width: 40rem) {
+  :root { --masthead-h: 4.2rem; }   /* 75.6px, measured: 38.2 link box + 16 + 16 + 1 rule */
+  .masthead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    /* Opaque, or the page scrolls through it. */
+    background: var(--bg);
+  }
 }
 .masthead .inner {
   max-width: var(--frame);
@@ -282,17 +322,35 @@ a:focus-visible {
   display: block;
 }
 
+/* `margin: 0` is the whole of a bug that was visible from across the room once
+   it was measured. The wordmark is a `<p>`, so it kept the user agent's
+   paragraph margin — and a flex item's margins do not collapse, so that 18px
+   sat below it inside the row. It made the masthead 18px taller than its
+   contents, and because the margin counts toward centring, it pushed the
+   wordmark 9px *above* the line the destinations sit on. The two halves of the
+   masthead had not been aligned with each other since the day it was written. */
 .masthead .wordmark {
+  margin: 0 auto 0 0;
   font-size: var(--text-md);
   font-weight: var(--weight-semi);
   letter-spacing: -0.015em;
-  margin-right: auto;
   display: flex;
+  /* Centred, not baseline-aligned, and for the reason the lockup comment below
+     gives: the lockup is an inline-flex box whose first child is a block SVG,
+     so it has no text baseline of its own and the browser falls back to its
+     bottom edge. Aligning the version to that dropped it 5px below the name.
+     Their box centres agree to within a pixel; their baselines do not agree at
+     all. */
   align-items: center;
   gap: var(--space-2);
 }
 .masthead .wordmark a:link, .masthead .wordmark a:visited { color: var(--ink); }
-.masthead nav { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); }
+.masthead nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-5);
+}
 .masthead nav a {
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
@@ -305,9 +363,16 @@ a:focus-visible {
    masthead's own hairline — that needed a negative margin to work, and a
    negative margin does not survive centring the row. Close is also better:
    an underline four pixels under a word belongs to the word. The transparent
-   border is on every item, so nothing moves when one becomes current. */
+   border is on every item, so nothing moves when one becomes current.
+
+   Padding and border on *both* edges, and only the bottom one is ever drawn.
+   With the underline below and nothing above, the link's box was 6.5px taller
+   below the word than above it — so centring the box in the masthead left the
+   word 3px higher than the wordmark beside it. A symmetric box centres the
+   word rather than the space around it. */
 .masthead nav a {
-  padding-bottom: var(--space-1);
+  padding-block: var(--space-1);
+  border-top: 2px solid transparent;
   border-bottom: 2px solid transparent;
 }
 .masthead nav a[aria-current="page"] {
@@ -321,17 +386,21 @@ a:focus-visible {
   margin-left: 0.15em;
   color: var(--ink-faint);
 }
+/* On the wordmark's baseline, not centred on its box: it is a number set after
+   a word, and the two read as one line only if they sit on one line. `--space-2`
+   of its own plus the lockup's gap was 18px of air between the name and its
+   version, which read as two separate things. */
 .masthead .version {
   font-size: var(--text-xs);
   color: var(--ink-faint);
   font-weight: var(--weight-normal);
   letter-spacing: 0;
-  margin-left: var(--space-2);
 }
 @media (max-width: 30rem) {
   /* The wordmark takes its own line and the destinations sit under it, rather
-     than four links squeezing onto one. */
-  .masthead .wordmark { flex: 0 0 100%; margin-right: 0; }
+     than five links squeezing onto one. Not sticky at this width, so nothing
+     here has a height to declare. */
+  .masthead .wordmark { flex: 0 0 100%; margin: 0; }
   .masthead .inner { padding: var(--space-3) 0; gap: var(--space-2) var(--space-4); }
 }
 
@@ -390,8 +459,10 @@ a:focus-visible {
 .navcol {
   flex: 0 0 var(--nav-w);
   position: sticky;
-  top: var(--space-5);
-  max-height: calc(100vh - var(--space-8));
+  /* Under the masthead, which is sticky too and would otherwise cover the top
+     of this. */
+  top: calc(var(--masthead-h) + var(--space-4));
+  max-height: calc(100vh - var(--masthead-h) - var(--space-6));
   overflow-y: auto;
   padding-bottom: var(--space-4);
 }
