@@ -19,6 +19,60 @@
 use crate::model::{Coverage, ScriptCoverage};
 use std::collections::HashMap;
 
+/// The ISO 15924 codes that are not scripts.
+///
+/// `Zyyy` is Common — digits, punctuation, spaces. `Zinh` is Inherited — combining
+/// marks that take the script of whatever they sit on. `Zzzz` is Unknown. All three are
+/// in very nearly every font, so counting them beside real scripts ranks them at or
+/// near the top of every list and answers a question nobody asked: a face is never
+/// *for* common punctuation.
+///
+/// On a real library of 5,000 faces they took the top three rows of the browser's
+/// script section — 1996, 1045 and 769 faces — from Arab, Hebr and Geor. The browser
+/// has sorted them last since M3; this lives here so the command line can do the same
+/// thing rather than a second, slightly different thing.
+pub const PSEUDO_SCRIPTS: [&str; 3] = ["Zyyy", "Zinh", "Zzzz"];
+
+/// Whether an ISO 15924 code is one of [`PSEUDO_SCRIPTS`].
+#[must_use]
+pub fn is_pseudo_script(code: &str) -> bool {
+    PSEUDO_SCRIPTS.contains(&code)
+}
+
+/// What a pseudo-script is, in a word.
+///
+/// A reader scanning a list for Arabic should not have to know that `Zinh` is where
+/// combining marks go. `None` for a real script, which needs no gloss.
+#[must_use]
+pub fn pseudo_script_name(code: &str) -> Option<&'static str> {
+    match code {
+        "Zyyy" => Some("common"),
+        "Zinh" => Some("inherited"),
+        "Zzzz" => Some("unassigned"),
+        _ => None,
+    }
+}
+
+/// Reorders scripts so the real ones come first, each group keeping its own order.
+///
+/// Stable on purpose: the caller has already sorted by whatever it cares about —
+/// codepoint count, face count — and this only moves the three pseudo-scripts to the
+/// end. They stay listed, because somebody who wants to know a font carries digits
+/// should still be able to find out.
+pub fn real_scripts_first<T>(items: &mut Vec<T>, code: impl Fn(&T) -> &str) {
+    let mut real = Vec::with_capacity(items.len());
+    let mut pseudo = Vec::new();
+    for item in items.drain(..) {
+        if is_pseudo_script(code(&item)) {
+            pseudo.push(item);
+        } else {
+            real.push(item);
+        }
+    }
+    real.append(&mut pseudo);
+    *items = real;
+}
+
 /// Build coverage from a sorted, deduplicated iterator of codepoints.
 pub fn coverage_from_codepoints(mut cps: Vec<u32>) -> Coverage {
     cps.sort_unstable();
@@ -318,6 +372,51 @@ pub fn bcp47_for_name_language(platform_id: u16, language_id: u16) -> Option<&'s
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The three that are not scripts go last, and everything else keeps its order.
+    ///
+    /// The order coming in is the caller's -- by face count, by codepoint count -- and
+    /// this only moves the pseudo-scripts. A sort that also reordered the real ones
+    /// would silently undo whatever ranking the caller had just done.
+    #[test]
+    fn real_scripts_come_first_and_keep_their_order() {
+        let mut codes = vec!["Latn", "Zyyy", "Arab", "Zinh", "Cyrl", "Zzzz", "Grek"];
+        real_scripts_first(&mut codes, |c| c);
+        assert_eq!(
+            codes,
+            ["Latn", "Arab", "Cyrl", "Grek", "Zyyy", "Zinh", "Zzzz"],
+            "the real ones keep the order they arrived in, and the three go to the end"
+        );
+
+        // Moved, never dropped: somebody who wants to know a font carries digits
+        // should still be able to find out.
+        assert_eq!(codes.len(), 7);
+    }
+
+    #[test]
+    fn a_list_of_only_pseudo_scripts_is_left_alone() {
+        let mut codes = vec!["Zzzz", "Zyyy"];
+        real_scripts_first(&mut codes, |c| c);
+        assert_eq!(codes, ["Zzzz", "Zyyy"]);
+
+        let mut none: Vec<&str> = vec![];
+        real_scripts_first(&mut none, |c| c);
+        assert!(none.is_empty());
+    }
+
+    #[test]
+    fn only_the_three_are_pseudo_scripts() {
+        for code in PSEUDO_SCRIPTS {
+            assert!(is_pseudo_script(code), "{code}");
+            assert!(pseudo_script_name(code).is_some(), "{code} has no word");
+        }
+        // `Zmth` is mathematical notation and `Zsym` is symbols. Both are real
+        // ISO 15924 codes for things a font can genuinely be for, despite the Z.
+        for code in ["Latn", "Arab", "Hani", "Zmth", "Zsym"] {
+            assert!(!is_pseudo_script(code), "{code}");
+            assert_eq!(pseudo_script_name(code), None, "{code}");
+        }
+    }
 
     #[test]
     fn a_cell_never_lets_a_codepoint_break_the_row() {
