@@ -239,6 +239,45 @@ pub fn toggleable_features(features: &Features) -> Vec<&str> {
         .collect()
 }
 
+/// A face's x-height as a fraction of its em, or `None` where it reports none.
+///
+/// `None` rather than zero, and that distinction is the whole of the care this needs: a
+/// font that does not fill in `OS/2.sxHeight` has told you nothing, and treating that as
+/// "an x-height of zero" makes every ratio taken against it either infinite or absurd.
+/// `metrics/x-height` is already a health check, so a font without one is a case this
+/// codebase has met before.
+///
+/// A non-positive value is read the same way as a missing one. Some fonts write 0 where
+/// they mean "not stated", and no font means a letter with no height.
+#[must_use]
+pub fn x_height_ratio(face: &FaceMetadata) -> Option<f32> {
+    face.metrics
+        .x_height
+        .filter(|x| *x > 0)
+        .map(|x| f32::from(x) / f32::from(face.metrics.units_per_em.max(1)))
+}
+
+/// What to multiply `face`'s size by so its x-height matches `reference`'s.
+///
+/// Two faces set at the same pixel size are not set at the same *apparent* size: the one
+/// with the larger x-height reads bigger, sometimes by what looks like two steps of the
+/// scale. Anything that puts faces beside each other to be compared — the specimen's
+/// side-by-side block, the browser's pairing scores — is otherwise asking the reader to
+/// judge a difference nobody chose.
+///
+/// `None` if either face reports no x-height, which the caller must show at its nominal
+/// size and say so. Scaling by a guess would be inventing a measurement, and this
+/// program's rule is that a fact it does not have is a fact it does not print.
+///
+#[must_use]
+pub fn x_height_scale(reference: &FaceMetadata, face: &FaceMetadata) -> Option<f32> {
+    let want = x_height_ratio(reference)?;
+    let have = x_height_ratio(face)?;
+    // `x_height_ratio` has already excluded a non-positive x-height, so `have` cannot be
+    // zero and this cannot divide by one.
+    Some(want / have)
+}
+
 /// How finely a slider over this axis should step: whole units once the range is wider
 /// than 50, tenths below that.
 ///
