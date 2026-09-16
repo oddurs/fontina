@@ -3,9 +3,9 @@ id: 71
 title: Twenty-two test files still build their own sandbox
 type: chore
 status: backlog
-milestone: unfiled
+milestone: groundwork
 created: 2026-09-08
-updated: 2026-09-08
+updated: 2026-09-15
 priority: p3
 effort: m
 crate: workspace

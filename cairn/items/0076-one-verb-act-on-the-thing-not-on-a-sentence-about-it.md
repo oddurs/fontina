@@ -3,10 +3,9 @@ id: 76
 key: one-verb
 title: One verb — act on the thing, not on a sentence about it
 type: milestone
-status: backlog
+status: doing
 created: 2026-09-15
 updated: 2026-09-15
-priority: p2
 ---
 
 Thirty-four commands; twenty-five flags on `list` alone. That is a toolkit, and a

@@ -3,13 +3,14 @@ id: 13
 title: Pin faces and set them side by side
 type: feat
 status: backlog
-milestone: tui-discovery
+milestone: judgement
+depends_on:
+- 1
 created: 2026-09-05
-updated: 2026-09-05
+updated: 2026-09-15
 priority: p0
 effort: m
 crate: ui
-depends_on: [1]
 ---
 
 ## Problem
@@ -55,3 +56,7 @@ which means this waits on 0001.
 The closed branch `feat/tui-pin-compare` holds the state handling, if it is worth
 lifting out later: a pin set that survives filtering where the marks do not, rows
 numbered in the order they were pinned, and a four-pin limit.
+
+## 2026-09-15
+
+Moved from `tui-discovery` to `judgement`: pinning is how somebody holds a shortlist while they keep looking, and a shortlist is what choosing is. 0088 was filed for the same work before this one was noticed and is dropped in its favour; its acceptance criteria are worth reading.

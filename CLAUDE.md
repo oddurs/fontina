@@ -220,7 +220,9 @@ cairn render                      # regenerate ROADMAP.md
     `the-shelf`, `plain-sight`. What the thing is like to use.
   - *Engineering*: `tui-craft`, `tui-speed`, `tui-depth`, `tui-discovery`, `integrity`,
     `specimen`, `m5-ship`. What it does and how well.
-  - `unfiled` is triage, not a milestone anybody is working towards.
+  - `groundwork` is the work with no user-visible result that the rest stands on.
+  - `unfiled` is triage, not a milestone anybody is working towards. An item should not
+    stay there: give it a home or drop it.
 
   A milestone is an item of type `milestone`, so `cairn list --type milestone` is the
   current list and `cairn check` rejects a name that is not one of them. Do not copy this

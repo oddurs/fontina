@@ -6,7 +6,6 @@ type: milestone
 status: backlog
 created: 2026-09-15
 updated: 2026-09-15
-priority: p2
 ---
 
 A thousand fonts on disk is not a library; it is a pile with a search box. The thing

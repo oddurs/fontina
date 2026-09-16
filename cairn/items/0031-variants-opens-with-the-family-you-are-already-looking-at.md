@@ -3,9 +3,9 @@ id: 31
 title: Variants opens with the family you are already looking at
 type: feat
 status: backlog
-milestone: unfiled
+milestone: one-verb
 created: 2026-09-05
-updated: 2026-09-05
+updated: 2026-09-15
 priority: p2
 effort: s
 crate: cli
@@ -50,3 +50,7 @@ family string or the wider grouping `families` uses, because `Gotham` and
 the grouping needs no new query. The browser's counterpart is 0014, which will
 want the same answer to the same question; whichever lands first should settle
 the rule and the other should follow it.
+
+## 2026-09-15
+
+Filed under `one-verb`: a command that makes you retype the thing you are already looking at is the opposite of acting on the thing.

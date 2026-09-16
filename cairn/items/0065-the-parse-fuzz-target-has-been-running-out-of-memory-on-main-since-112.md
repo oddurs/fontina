@@ -3,9 +3,9 @@ id: 65
 title: 'The parse fuzz target has been running out of memory on main since #112'
 type: fix
 status: ready
-milestone: unfiled
+milestone: integrity
 created: 2026-09-07
-updated: 2026-09-07
+updated: 2026-09-15
 priority: p1
 effort: m
 crate: core
@@ -53,3 +53,7 @@ than trying to honour it.
 
 Run showing the failure: actions/runs/34153980519. Every run since `5927aa5b` failed;
 `45796674` on 2026-09-06 was the last green one.
+
+## 2026-09-15
+
+Filed under `integrity`: the fuzz target is the safety net under "the core never panics on font input", and a net that has stopped running is one nobody is checking.

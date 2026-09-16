@@ -2,7 +2,7 @@
 id: 88
 title: Pin faces and set them side by side
 type: feat
-status: backlog
+status: dropped
 milestone: judgement
 created: 2026-09-15
 updated: 2026-09-15
@@ -34,3 +34,7 @@ you into `compare`, and becomes a collection in one key when you have decided.
 ## Notes
 
 Supersedes the intent of 0013, which should be closed or pointed here when this starts.
+
+## 2026-09-15
+
+Dropped as a duplicate of 0013, which is older and says the same thing. The work is still wanted — it is 0013, now filed under `judgement`.

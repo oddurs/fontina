@@ -2,10 +2,10 @@
 id: 52
 title: Compare at a matched x-height, not a matched pixel size
 type: feat
-status: ready
+status: done
 milestone: specimen
 created: 2026-09-07
-updated: 2026-09-07
+updated: 2026-09-15
 priority: p0
 effort: m
 crate: core
@@ -39,13 +39,17 @@ that is the right move.
 
 ## Acceptance criteria
 
-- [ ] The comparison offers match size and match x-height; match x-height is the default.
-- [ ] The scale applied to each face is visible, not implicit.
-- [ ] A face that reports no x-height is shown at nominal size and says so, rather than
+- [x] The comparison offers match size and match x-height; match x-height is the default.
+- [x] The scale applied to each face is visible, not implicit.
+- [x] A face that reports no x-height is shown at nominal size and says so, rather than
       being scaled by a guess or treated as zero — `pairing.rs` already holds that line.
-- [ ] The ratio comes from one shared function, not a second implementation.
+- [x] The ratio comes from one shared function, not a second implementation.
 
 ## Notes
 
 `Metrics::x_height` is `Option<i16>`; `metrics/x-height` is already a health check, so a
 font with no x-height is a case the codebase has met before.
+
+## 2026-09-15
+
+Shipped in #234. The ratio moved into `typography::x_height_scale` so the browser's pairing scores and the specimen's comparison read one function.
