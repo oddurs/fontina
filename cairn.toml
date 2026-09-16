@@ -174,8 +174,14 @@ sort = "priority,id"
 
 [[view]]
 name = "tui"
-description = "The whole terminal browser programme, in sprint order"
+description = "The terminal browser programme, in sprint order"
 filter = "milestone=tui-craft|tui-speed|tui-depth|tui-discovery,category!=done"
+sort = "milestone,priority"
+
+[[view]]
+name = "product"
+description = "The product arc, in the order somebody meets it"
+filter = "milestone=arrival|one-verb|judgement|the-shelf|plain-sight,category!=done"
 sort = "milestone,priority"
 
 [[view]]

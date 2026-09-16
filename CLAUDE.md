@@ -215,11 +215,17 @@ cairn render                      # regenerate ROADMAP.md
 - **`priority`**: one of p0, p1, p2, p3 — p0 blocks a release
 - **`effort`**: one of s, m, l, xl — Rough size. s is an afternoon, xl needs breaking up
 - **`crate`**: one of core, platform, cli, ui, site, workspace — Where the change lands. `ui` is crates/fontina-cli/src/ui
-- **Milestones**: `tui-craft`, `tui-speed`, `tui-depth`, `tui-discovery`, `integrity`,
-  `m5-ship`, `specimen`, `unfiled`. Since format 2 a milestone is an item of type `milestone`, so
-  `cairn list --type milestone` is the current list and `cairn check` rejects a name
-  that is not one of them.
-- **Saved views** (`cairn list --view NAME`): `now`, `tui`, `triage`
+- **Milestones**: two programmes and a few standing ones.
+  - *Product*, in the order somebody meets it: `arrival`, `one-verb`, `judgement`,
+    `the-shelf`, `plain-sight`. What the thing is like to use.
+  - *Engineering*: `tui-craft`, `tui-speed`, `tui-depth`, `tui-discovery`, `integrity`,
+    `specimen`, `m5-ship`. What it does and how well.
+  - `unfiled` is triage, not a milestone anybody is working towards.
+
+  A milestone is an item of type `milestone`, so `cairn list --type milestone` is the
+  current list and `cairn check` rejects a name that is not one of them. Do not copy this
+  list into a third place; it is already in two.
+- **Saved views** (`cairn list --view NAME`): `now`, `product`, `tui`, `triage`
 
 ### Rules
 
