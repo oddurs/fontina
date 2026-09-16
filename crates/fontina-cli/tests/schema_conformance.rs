@@ -425,14 +425,14 @@ fn cases(work: &Path) -> Vec<Case> {
             "an empty result",
         ),
         case(
-            "facets",
-            &["facets", "--json"],
+            "counts",
+            &["counts", "--json"],
             Shape::Def("Facets"),
             "every facet populated",
         ),
         case(
-            "facets",
-            &["facets", "--json", "--family", "No Such Family"],
+            "counts",
+            &["counts", "--json", "--family", "No Such Family"],
             Shape::Def("Facets"),
             "every facet empty",
         ),
@@ -532,8 +532,8 @@ fn cases(work: &Path) -> Vec<Case> {
             "a face by index id",
         ),
         case(
-            "dupes",
-            &["dupes", "--json"],
+            "duplicates",
+            &["duplicates", "--json"],
             Shape::ArrayOf("DuplicateGroup"),
             "the same Inter face in two containers",
         ),
@@ -1004,22 +1004,14 @@ fn commands_taking_json() -> BTreeSet<String> {
 
 fn walk(path: &mut Vec<String>, found: &mut BTreeSet<String>) {
     let help = help_for(path);
-    if section(&help, "Options:")
+    if fontina_testkit::section(&help, "Options:")
         .iter()
         .any(|l| l.split_whitespace().next() == Some("--json"))
         && !path.is_empty()
     {
         found.insert(path.join(" "));
     }
-    for name in section(&help, "Commands:")
-        .iter()
-        .filter_map(|l| l.strip_prefix("  "))
-        .filter(|l| !l.starts_with(' '))
-        .filter_map(|l| l.split_whitespace().next())
-        .filter(|n| *n != "help")
-        .map(str::to_owned)
-        .collect::<Vec<_>>()
-    {
+    for name in fontina_testkit::commands_in_help(&help) {
         path.push(name);
         walk(path, found);
         path.pop();
@@ -1033,17 +1025,4 @@ fn help_for(path: &[String]) -> String {
         .output()
         .expect("fontina runs");
     String::from_utf8_lossy(&out.stdout).into_owned()
-}
-
-/// The body of one `clap` help section: every line up to the next unindented heading.
-///
-/// Blank lines are kept rather than used as the terminator, because `clap` puts one
-/// between options whenever a command has long help (`fontina tag sync --help` does),
-/// and stopping at the first would hide every option after it.
-fn section<'a>(help: &'a str, heading: &str) -> Vec<&'a str> {
-    help.lines()
-        .skip_while(|l| l.trim_end() != heading)
-        .skip(1)
-        .take_while(|l| l.trim().is_empty() || l.starts_with(' '))
-        .collect()
 }

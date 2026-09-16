@@ -2,7 +2,7 @@
 id: 83
 title: A spine of verbs, with the rest reachable rather than in the way
 type: feat
-status: backlog
+status: review
 milestone: one-verb
 created: 2026-09-15
 updated: 2026-09-15
@@ -40,10 +40,10 @@ lists a group.
 
 ## Acceptance criteria
 
-- [ ] `fontina --help` groups commands under headings a person would recognise.
-- [ ] Every existing command still runs, spelled exactly as it is today.
-- [ ] `the_manual_matches_the_help` still passes, or is updated deliberately.
-- [ ] The grouping lives in one place, not spread across thirty-four doc comments.
+- [x] `fontina --help` groups commands under headings a person would recognise.
+- [x] Every existing command still runs, spelled exactly as it is today.
+- [x] `the_manual_matches_the_help` still passes, or is updated deliberately.
+- [x] The grouping lives in one place, not spread across thirty-four doc comments.
 
 ## Notes
 

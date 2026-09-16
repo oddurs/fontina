@@ -2,7 +2,7 @@
 id: 85
 title: Say it in the words a person would use
 type: chore
-status: backlog
+status: review
 milestone: one-verb
 created: 2026-09-15
 updated: 2026-09-15
@@ -31,7 +31,7 @@ against 3.0 is worth more than tidiness. The manual leads with the new name.
 
 ## Acceptance criteria
 
-- [ ] Every renamed command and flag keeps its old spelling working.
-- [ ] A test asserts the aliases resolve, so removing one is a deliberate act.
-- [ ] `the_manual_matches_the_help` covers both spellings.
-- [ ] The changelog names each pair.
+- [x] Every renamed command and flag keeps its old spelling working.
+- [x] A test asserts the aliases resolve, so removing one is a deliberate act.
+- [x] `the_manual_matches_the_help` covers both spellings.
+- [x] The changelog names each pair.

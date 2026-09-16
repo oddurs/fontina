@@ -23,6 +23,10 @@ mimalloc = { version = "0.1", default-features = false }
 [dependencies]
 fontina-core.workspace = true
 fontina-platform.workspace = true
+# For OSC 52, which is how the browser puts a command on the clipboard. Already in
+# the tree — `fontina-core` encodes specimen data URIs with it — so this adds a user
+# rather than a dependency.
+base64.workspace = true
 clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true

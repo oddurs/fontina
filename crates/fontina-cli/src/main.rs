@@ -35,13 +35,14 @@
 //! `fontina-core`, not a layer over this one.
 
 mod config;
+mod help;
 mod overview;
 mod scheme;
 mod term;
 mod ui;
 
 use anyhow::{Context, Result, bail};
-use clap::{Args, CommandFactory, Parser, Subcommand};
+use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use fontina_core::{
     ActivationState, FaceFilter, FaceSummary, Freedom, Index, LanguageSource, ScanOptions,
     SourceKind, TagSyncChange, TagSyncReport, TagSyncSkip,
@@ -76,7 +77,17 @@ const LONG_VERSION: &str = concat!(
     version,
     long_version = LONG_VERSION,
     about,
-    propagate_version = true
+    propagate_version = true,
+    // `{subcommands}` is deliberately absent: `help::groups` renders the same commands
+    // grouped by what somebody is trying to do, and putting both in would list every
+    // command twice.
+    help_template = "\
+{about}
+
+{usage-heading} {usage}{after-help}
+
+Options:
+{options}"
 )]
 struct Cli {
     /// Path to the index database (default: the platform data directory).
@@ -126,7 +137,11 @@ enum Command {
     Families(ListArgs),
     /// Count faces per weight, width, style, script, license, vendor, tag, collection,
     /// activation state and source, for the faces matching the filters.
-    Facets(ListArgs),
+    ///
+    /// `facets` is what a search index calls this and keeps working for ever. `counts` is
+    /// what the command does, said in a word somebody would guess.
+    #[command(alias = "facets")]
+    Counts(ListArgs),
     /// Tag faces. A tag is a free-form label; a face can carry many.
     #[command(subcommand)]
     Tag(TagCmd),
@@ -217,7 +232,11 @@ enum Command {
         json: bool,
     },
     /// Report faces that are duplicates across containers or share a PostScript name.
-    Dupes {
+    ///
+    /// `dupes` was the name for a year and keeps working, here and for ever: a script
+    /// written against 1.0 has to run against 3.0, and that is worth more than tidiness.
+    #[command(alias = "dupes")]
+    Duplicates {
         #[arg(long)]
         json: bool,
     },
@@ -449,14 +468,10 @@ enum TagCmd {
         #[arg(required = true)]
         targets: Vec<String>,
     },
-    Rename {
-        old: String,
-        new: String,
-    },
+    /// Rename a tag everywhere it is used.
+    Rename { old: String, new: String },
     /// Delete a tag from every face.
-    Delete {
-        tag: String,
-    },
+    Delete { tag: String },
     /// Copy tags between fontina's index and the files themselves, in one direction.
     ///
     /// A tag in the index is fast and searchable and invisible to everything else. A tag
@@ -492,16 +507,12 @@ enum CollectionCmd {
         #[arg(long)]
         json: bool,
     },
-    Create {
-        name: String,
-    },
-    Delete {
-        name: String,
-    },
-    Rename {
-        old: String,
-        new: String,
-    },
+    /// Make a new, empty collection.
+    Create { name: String },
+    /// Delete a collection. The faces in it are untouched.
+    Delete { name: String },
+    /// Rename a collection.
+    Rename { old: String, new: String },
     /// Append faces to a collection (created if missing).
     Add {
         name: String,
@@ -510,6 +521,7 @@ enum CollectionCmd {
         #[arg(required = true)]
         targets: Vec<String>,
     },
+    /// Take faces out of a collection.
     Remove {
         name: String,
         #[arg(required = true)]
@@ -555,6 +567,7 @@ enum CollectionCmd {
 
 #[derive(Subcommand)]
 enum SourceCmd {
+    /// The directories the index was built from, with face counts and whether watched.
     List {
         #[arg(long)]
         json: bool,
@@ -946,7 +959,18 @@ fn say_what_was_found(index: &Index) -> Result<()> {
 }
 
 fn run() -> Result<()> {
-    let cli = Cli::parse();
+    // The grouped command list is rendered from the `Command` clap built, then given
+    // back to it — `Cli::parse()` has no way to do that, because the text depends on the
+    // thing being parsed.
+    let command = Cli::command();
+    let grouped = help::groups(&command);
+    let matches = command.after_help(grouped).get_matches();
+    let cli = match Cli::from_arg_matches(&matches) {
+        Ok(cli) => cli,
+        // clap has already validated the arguments; a failure here is a mismatch between
+        // the derive and the matches, which `exit` reports the way clap reports its own.
+        Err(e) => e.exit(),
+    };
     // Before anything prints. Both facts — the colour depth and the width — are about
     // the process, so they are resolved once here and read from `term::term()` by every
     // printer rather than passed down through fifteen of them.
@@ -1115,7 +1139,7 @@ fn run() -> Result<()> {
                 print_families(&families, empty);
             }
         }
-        Command::Facets(args) => {
+        Command::Counts(args) => {
             let index = open_index(&cli)?;
             let facets = index.facets(&args.to_filter())?;
             if args.json {
@@ -1276,7 +1300,7 @@ fn run() -> Result<()> {
                 print_variants(&index, id, &related)?;
             }
         }
-        Command::Dupes { json } => {
+        Command::Duplicates { json } => {
             let index = open_index(&cli)?;
             let groups = index.duplicates()?;
             if *json {

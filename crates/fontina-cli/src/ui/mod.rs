@@ -300,6 +300,15 @@ pub struct App {
     facet_offset: usize,
     input: Option<Input>,
     status: String,
+    /// The command line that would have done the last thing this browser did.
+    ///
+    /// The site already claims the browser and the command line are one program — "the
+    /// row at the bottom is the command line that would show the same thing" — and it was
+    /// true of filters and searches and of nothing else. Somebody who learnt the browser
+    /// learnt nothing about `fontina activate`.
+    ///
+    /// Set by every action that changes the index; `C` copies it.
+    did: Option<String>,
     help: bool,
     /// First line of the help the overlay is showing. Only ever non-zero on a terminal
     /// too short to hold all of it at once.
@@ -417,6 +426,7 @@ impl App {
             facet_offset: 0,
             input: None,
             status: String::new(),
+            did: None,
             help: false,
             help_scroll: 0,
             detail: None,
@@ -798,7 +808,10 @@ impl App {
         if dropped > 0 {
             self.status = match self.marked.len() {
                 0 => format!("the filter left none of the {before} marked faces"),
-                left => format!("{dropped} marked face(s) no longer match; {left} left"),
+                left => format!(
+                    "{} no longer match; {left} left",
+                    crate::n_of(dropped, "marked face", "marked faces")
+                ),
             };
         }
     }
@@ -1067,6 +1080,11 @@ impl App {
             KeyCode::Char('i') => self.activate(ActivationState::Installed)?,
             KeyCode::Char('d') => self.deactivate(false)?,
             KeyCode::Char('u') => self.deactivate(true)?,
+            // OSC 52 rather than a clipboard crate: it is nine lines, it needs no
+            // dependency, and it is the one mechanism that works when the terminal is at
+            // the other end of an ssh connection. A terminal that does not implement it
+            // ignores the sequence, which is why the row says the command either way.
+            KeyCode::Char('C') => self.copy_command(),
             KeyCode::Char('R') => self.rescan()?,
             // `U` rather than `u`, which has meant uninstall since before there was
             // anything to undo, and Ctrl-R for redo the way an editor does it.
@@ -1410,9 +1428,9 @@ impl App {
             return;
         }
         self.status = format!(
-            "{} codepoints in {} block(s)   (fontina glyphs {})",
+            "{} codepoints in {}   (fontina glyphs {})",
             map.covered(),
-            map.blocks().len(),
+            crate::n_of(map.blocks().len(), "block", "blocks"),
             self.detail_id.map(|id| id.to_string()).unwrap_or_default()
         );
         self.glyphs = Some(map);
@@ -1620,9 +1638,19 @@ impl App {
                                 name: value.clone(),
                                 added: true,
                             });
-                            self.status = format!(
-                                "tagged {n} face(s) with {value:?}   (fontina tag add {} <targets>)",
-                                shell_quote(&value)
+                            // The real ids, not `<targets>`. A command with a
+                            // placeholder in it is a command you cannot run, which is
+                            // most of the way to not showing one.
+                            self.did(
+                                format!(
+                                    "tagged {} with {value:?}",
+                                    crate::n_of(n, "face", "faces")
+                                ),
+                                format!(
+                                    "fontina tag add {} {}",
+                                    shell_quote(&value),
+                                    Self::ids_for_command(&ids)
+                                ),
                             );
                             self.reload()?;
                         }
@@ -1639,9 +1667,13 @@ impl App {
                                 name: value.clone(),
                                 added: true,
                             });
-                            self.status = format!(
-                                "added {n} face(s) to {value:?}   (fontina collection add {} <targets>)",
-                                shell_quote(&value)
+                            self.did(
+                                format!("added {} to {value:?}", crate::n_of(n, "face", "faces")),
+                                format!(
+                                    "fontina collection add {} {}",
+                                    shell_quote(&value),
+                                    Self::ids_for_command(&ids)
+                                ),
                             );
                             self.reload()?;
                         }
@@ -1824,6 +1856,41 @@ impl App {
 
     // ----- actions -----
 
+    /// Record what just happened, in words and as the command that would have done it.
+    ///
+    /// Both together, always: a status with no command teaches nothing, and a command
+    /// with no status is a row that changed for no stated reason.
+    fn did(&mut self, status: impl Into<String>, command: impl Into<String>) {
+        self.status = status.into();
+        self.did = Some(command.into());
+    }
+
+    /// Face ids as a command line names them.
+    fn ids_for_command(ids: &[i64]) -> String {
+        ids.iter().map(i64::to_string).collect::<Vec<_>>().join(" ")
+    }
+
+    /// Put the last command on the system clipboard, using OSC 52.
+    ///
+    /// The command is on the screen whether this works or not, so a terminal that drops
+    /// the sequence costs the reader a selection rather than the answer. Nothing is
+    /// reported as having been copied, because nothing here can find out whether it was.
+    fn copy_command(&mut self) {
+        let Some(command) = self.did.clone() else {
+            self.status = "nothing to copy yet".into();
+            return;
+        };
+        use base64::Engine as _;
+        let encoded = base64::engine::general_purpose::STANDARD.encode(command.as_bytes());
+        // Written straight to the terminal rather than through ratatui, which owns the
+        // screen but not the escape channel.
+        use std::io::Write as _;
+        let mut out = std::io::stdout();
+        let _ = write!(out, "\x1b]52;c;{encoded}\x07");
+        let _ = out.flush();
+        self.status = format!("copied: {command}");
+    }
+
     fn activate(&mut self, state: ActivationState) -> Result<()> {
         let ids = self.current_face_ids();
         if ids.is_empty() {
@@ -1843,8 +1910,8 @@ impl App {
         if !conflicts.is_empty() {
             let c = &conflicts[0];
             self.status = format!(
-                "{} conflict(s): {} {} ({}). Use `fontina activate --replace` to override.",
-                conflicts.len(),
+                "{}: {} {} ({}). Use `fontina activate --replace` to override.",
+                crate::n_of(conflicts.len(), "conflict", "conflicts"),
                 c.face.family,
                 c.face.subfamily,
                 c.reason
@@ -1888,7 +1955,10 @@ impl App {
                 Err(e) => failed.push(format!("{}: {e}", path.display())),
             }
         }
-        self.status = report(verb, n, &failed);
+        self.did(
+            report(verb, n, &failed),
+            format!("fontina {verb} {}", Self::ids_for_command(&ids)),
+        );
         self.reload()
     }
 
@@ -1929,7 +1999,10 @@ impl App {
             }
         }
         let verb = if uninstall { "uninstall" } else { "deactivate" };
-        self.status = report(verb, n, &failed);
+        self.did(
+            report(verb, n, &failed),
+            format!("fontina {verb} {}", Self::ids_for_command(&ids)),
+        );
         self.reload()
     }
 
@@ -1954,8 +2027,8 @@ impl App {
             },
         )?;
         self.status = format!(
-            "rescanned {} source(s): {} parsed, {} unchanged, {} removed, {} failed   (fontina scan --prune)",
-            roots.len(),
+            "rescanned {}: {} parsed, {} unchanged, {} removed, {} failed   (fontina scan --prune)",
+            crate::n_of(roots.len(), "source", "sources"),
             report.parsed,
             report.unchanged,
             report.removed,
@@ -2604,7 +2677,10 @@ impl App {
     fn say_marked(&mut self) {
         self.status = match self.marked.len() {
             0 => "selection cleared".into(),
-            n => format!("{n} face(s) selected — Esc clears, any action applies to all"),
+            n => format!(
+                "{} selected — Esc clears, any action applies to all",
+                crate::n_of(n, "face", "faces")
+            ),
         };
     }
 
@@ -3490,7 +3566,16 @@ impl App {
                 Span::styled("▏", self.theme.accent()),
             ])
         } else if !self.status.is_empty() {
-            Line::from(Span::raw(format!(" {}", self.status)))
+            // What happened, then the command that would have done it. Both, because
+            // the status alone teaches nothing and the command alone says nothing about
+            // whether it worked. `C` copies the command.
+            let mut spans = vec![Span::raw(format!(" {}", self.status))];
+            if let Some(command) = &self.did {
+                spans.push(Span::styled("   $ ", self.theme.dim()));
+                spans.push(Span::styled(command.clone(), self.theme.accent()));
+                spans.push(Span::styled("   C to copy", self.theme.dim()));
+            }
+            Line::from(spans)
         } else {
             Line::from(Span::styled(
                 format!(" $ {}", self.command_line()),
@@ -3965,10 +4050,16 @@ fn windowed(selected: Option<usize>, win: &std::ops::Range<usize>) -> ListState 
 /// count says how many more there are to find.
 fn report(verb: &str, done: usize, failed: &[String]) -> String {
     match failed {
-        [] => format!("{verb}: {done} face(s)   (fontina {verb} <targets>)"),
-        [only] => format!("{verb}: {done} face(s), 1 failed — {only}"),
+        // No command here any more: the caller has the ids and puts the real one in
+        // `did`, where `C` can copy it. A placeholder is a command you cannot run.
+        [] => format!("{verb}: {}", crate::n_of(done, "face", "faces")),
+        [only] => format!(
+            "{verb}: {}, 1 failed — {only}",
+            crate::n_of(done, "face", "faces")
+        ),
         [first, rest @ ..] => format!(
-            "{verb}: {done} face(s), {} failed — {first} (and {} more)",
+            "{verb}: {}, {} failed — {first} (and {} more)",
+            crate::n_of(done, "face", "faces"),
             failed.len(),
             rest.len()
         ),
@@ -4650,7 +4741,7 @@ mod tests {
                 removed += 1;
             }
             app.reload().unwrap();
-            check_invariants(&app, &format!("after {removed} face(s) vanished"));
+            check_invariants(&app, &format!("after {removed} faces vanished"));
             for c in keys.chars() {
                 let key = event::KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE);
                 app.on_key(key).unwrap();
@@ -5057,7 +5148,7 @@ mod tests {
         let counted: u16 = [&long, &short].iter().map(|l| rows(l, 30)).sum();
         assert!(
             counted > 2,
-            "sizing by line count would have lost {} row(s)",
+            "sizing by line count would have lost {} rows",
             counted - 2
         );
         assert_eq!(
@@ -5459,6 +5550,79 @@ mod tests {
             .to_string()
     }
 
+    /// Every action shows the command that would have done the same thing.
+    ///
+    /// The site has claimed for a while that the browser and the command line are one
+    /// program. It was true of filters and searches and of nothing else: somebody who
+    /// learnt the browser learnt nothing about `fontina activate`.
+    #[test]
+    fn an_action_shows_the_command_that_would_have_done_it() {
+        let mut app = app();
+        select_family(&mut app, "Amiri");
+        frame(&mut app, 120, 40);
+
+        app.on_key(event::KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE))
+            .unwrap();
+
+        let command = app.did.clone().expect("activating shows a command");
+        assert!(command.starts_with("fontina activate "), "{command:?}");
+        // The real ids, not a `<targets>` placeholder. A command with a hole in it is a
+        // command nobody can run, which is most of the way to not showing one.
+        assert!(
+            !command.contains("<targets>"),
+            "the command still has a placeholder in it: {command:?}"
+        );
+        assert!(
+            command
+                .split_whitespace()
+                .skip(2)
+                .all(|w| w.parse::<i64>().is_ok()),
+            "every target should be an id: {command:?}"
+        );
+    }
+
+    /// Deactivating names its own verb rather than the one before it.
+    #[test]
+    fn each_action_names_its_own_command() {
+        let mut app = app();
+        select_family(&mut app, "Amiri");
+        frame(&mut app, 120, 40);
+
+        for (key, verb) in [('a', "activate"), ('d', "deactivate")] {
+            app.on_key(event::KeyEvent::new(KeyCode::Char(key), KeyModifiers::NONE))
+                .unwrap();
+            let command = app.did.clone().unwrap_or_default();
+            assert!(
+                command.starts_with(&format!("fontina {verb} ")),
+                "`{key}` should show `fontina {verb}`, showed {command:?}"
+            );
+        }
+    }
+
+    /// The command is on the status row where the reader already looks.
+    #[test]
+    fn the_command_is_on_the_screen_beside_what_happened() {
+        let mut app = app();
+        select_family(&mut app, "Amiri");
+        frame(&mut app, 120, 40);
+        app.on_key(event::KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE))
+            .unwrap();
+
+        let row = status_line(&app, 120);
+        assert!(row.contains("fontina activate"), "{row}");
+        assert!(row.contains("C to copy"), "{row}");
+    }
+
+    /// `C` with nothing done yet says so rather than copying an empty string.
+    #[test]
+    fn copying_before_doing_anything_says_so() {
+        let mut app = app();
+        frame(&mut app, 120, 40);
+        app.on_key(event::KeyEvent::new(KeyCode::Char('C'), KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.status, "nothing to copy yet");
+    }
+
     /// The glyph map, which is what the browser is for.
     ///
     /// A mode rather than a pane: it covers the screen, because reading a font's coverage
@@ -5836,18 +6000,15 @@ mod tests {
     /// must not hide the ones that went through, or take them down with it.
     #[test]
     fn a_partial_failure_says_what_worked_and_what_did_not() {
-        assert_eq!(
-            report("activate", 12, &[]),
-            "activate: 12 face(s)   (fontina activate <targets>)"
-        );
+        assert_eq!(report("activate", 12, &[]), "activate: 12 faces");
         assert_eq!(
             report("activate", 11, &["/x/a.ttf: denied".into()]),
-            "activate: 11 face(s), 1 failed — /x/a.ttf: denied"
+            "activate: 11 faces, 1 failed — /x/a.ttf: denied"
         );
         let many = ["/x/a.ttf: denied".to_string(), "/x/b.ttf: denied".into()];
         assert_eq!(
             report("activate", 10, &many),
-            "activate: 10 face(s), 2 failed — /x/a.ttf: denied (and 1 more)"
+            "activate: 10 faces, 2 failed — /x/a.ttf: denied (and 1 more)"
         );
     }
 

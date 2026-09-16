@@ -87,7 +87,7 @@ PostScript name and designer.</dd>
 <dt><code>families [QUERY] [filters] [-n LIMIT] [--json]</code></dt>
 <dd>The same faces grouped by typographic family name.</dd>
 
-<dt><code>facets [QUERY] [filters] [--json]</code></dt>
+<dt><code>counts [QUERY] [filters] [--json]</code></dt>
 <dd>Count the matching faces per weight, width, style, script, license, vendor, tag,
 collection, activation state and source.</dd>
 
@@ -102,7 +102,7 @@ spot.</dd>
 <dd>A face's character coverage by Unicode block. <code>--block</code> prints the
 characters of one block, matched by case-insensitive substring of its name.</dd>
 
-<dt><code>dupes [--json]</code></dt>
+<dt><code>duplicates [--json]</code></dt>
 <dd>Faces that are the same font in several containers, and faces that share a
 PostScript name.</dd>
 </dl>
@@ -241,7 +241,7 @@ there and edit. See <a href="../index-and-paths/#configuration">The index and pa
 
 ## FILTERS
 
-Accepted by `list`, `families` and `facets`; all of them combine.
+Accepted by `list`, `families` and `counts`; all of them combine.
 
 | Option | Meaning |
 |---|---|
@@ -362,3 +362,14 @@ fontina completions zsh > ~/.zfunc/_fontina
 `fontina man` for the same reference from the binary. `fc-list(1)`, `fc-query(1)`,
 `fc-cache(1)`, fonttools' `ttx(1)`.
 The [architecture decision records](../../adr/).
+
+## OLD NAMES
+
+Two commands were renamed to what somebody would guess rather than what the code called
+them. Both old spellings still run, and always will: a script written against 1.0 has to
+run against 3.0.
+
+| Now | Was |
+|---|---|
+| `counts` | `facets` |
+| `duplicates` | `dupes` |

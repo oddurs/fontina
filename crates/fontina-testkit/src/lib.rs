@@ -367,3 +367,57 @@ impl Cli {
         self.ok(&["scan", &path])
     }
 }
+
+/// The subcommand names listed in one screen of `--help`.
+///
+/// Two test files walk `fontina --help` to discover every command — one to throw hostile
+/// arguments at each, one to check every `--json` output against the schema — and both
+/// held their own copy of this parser. When the top-level help was grouped by what
+/// somebody is trying to do, both broke, and each reported it as "the help format has
+/// probably changed". They were right, and the fix belonged in one place.
+///
+/// Two shapes are read, because the two levels are listed differently:
+///
+/// ```text
+///   Find                              a group heading: indented two, no description
+///     list   List indexed faces…      a command: indented four
+///   scan     Index fonts…             a subcommand's own help: indented two
+/// ```
+///
+/// The two are told apart by indentation rather than by whether there is a description:
+/// `fontina source list` has no description of its own, and an earlier version of this
+/// dropped it for that reason and reported a command as having lost its `--json`.
+#[must_use]
+pub fn commands_in_help(help: &str) -> Vec<String> {
+    let lines = section(help, "Commands:");
+    let indent_of = |line: &str| line.len() - line.trim_start().len();
+
+    // A grouped listing has headings at two and commands at four; a plain one has
+    // commands at two. Either way the commands are at the deepest indent that is still
+    // shallow — anything deeper is a description clap has wrapped, which aligns under the
+    // description column and is far to the right of both.
+    let want = lines
+        .iter()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| indent_of(l))
+        .filter(|i| *i <= 4)
+        .max()
+        .unwrap_or(2);
+
+    lines
+        .into_iter()
+        .filter(|line| !line.trim().is_empty() && indent_of(line) == want)
+        .filter_map(|line| line.split_whitespace().next().map(str::to_owned))
+        .filter(|name| name != "help")
+        .collect()
+}
+
+/// The lines under a heading in `--help`, to the first line that is not indented.
+#[must_use]
+pub fn section<'a>(help: &'a str, heading: &str) -> Vec<&'a str> {
+    help.lines()
+        .skip_while(|l| l.trim_end() != heading)
+        .skip(1)
+        .take_while(|l| l.trim().is_empty() || l.starts_with(' '))
+        .collect()
+}

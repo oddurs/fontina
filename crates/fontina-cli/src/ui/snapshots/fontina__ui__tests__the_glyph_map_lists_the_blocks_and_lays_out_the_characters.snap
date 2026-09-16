@@ -36,5 +36,5 @@ expression: drawn
 │                                                                                                                      │
 │                                                                                                                      │
 ╰ / finds a codepoint or a block · m or Esc closes ────────────────────────────────────────────────────────────────────╯
-  1699 codepoints in 20 block(s)   (fontina glyphs 1)
+  1699 codepoints in 20 blocks   (fontina glyphs 1)
   / search  f narrow  F flags  x clear  ⇥ pane  ⏎ open  ⌫ back  ␣ select  t tag  c collection  a/A activate  … ? help

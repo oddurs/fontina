@@ -126,14 +126,7 @@ fn all_commands() -> BTreeSet<String> {
 
 fn walk(path: &mut Vec<String>, found: &mut BTreeSet<String>) {
     let help = help_for(path);
-    let children: Vec<String> = section(&help, "Commands:")
-        .iter()
-        .filter_map(|l| l.strip_prefix("  "))
-        .filter(|l| !l.starts_with(' '))
-        .filter_map(|l| l.split_whitespace().next())
-        .filter(|n| *n != "help")
-        .map(str::to_owned)
-        .collect();
+    let children = fontina_testkit::commands_in_help(&help);
     // A command with subcommands is a group; the leaves are what run.
     if children.is_empty() && !path.is_empty() {
         found.insert(path.join(" "));
@@ -152,14 +145,6 @@ fn help_for(path: &[String]) -> String {
         .output()
         .expect("fontina runs");
     String::from_utf8_lossy(&out.stdout).into_owned()
-}
-
-fn section<'a>(help: &'a str, heading: &str) -> Vec<&'a str> {
-    help.lines()
-        .skip_while(|l| l.trim_end() != heading)
-        .skip(1)
-        .take_while(|l| l.trim().is_empty() || l.starts_with(' '))
-        .collect()
 }
 
 /// The one thing no command may do, whatever it was given.
