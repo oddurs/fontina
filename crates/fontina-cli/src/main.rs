@@ -35,6 +35,7 @@
 //! `fontina-core`, not a layer over this one.
 
 mod config;
+mod scheme;
 mod term;
 mod ui;
 
@@ -793,7 +794,16 @@ fn run() -> Result<()> {
     // Before anything prints. Both facts — the colour depth and the width — are about
     // the process, so they are resolved once here and read from `term::term()` by every
     // printer rather than passed down through fifteen of them.
-    term::set(term::Term::detect());
+    //
+    // The scheme is the third such fact and arrives the same way, but from the other
+    // direction: the depth is what the terminal can do and the scheme is what the
+    // reader wants it to look like. It is applied after detection and can never undo
+    // it — `NO_COLOR` still wins over every colour named in a file, because a person
+    // who said "none" said it about all of them.
+    //
+    // A file whose colours do not parse is an error here rather than a silent fallback:
+    // a theme that quietly does nothing is worse than one that says why.
+    term::set(term::Term::detect().with_scheme(config::load()?.config.colours.scheme()?));
     match &cli.command {
         Command::Scan {
             paths,
