@@ -2,7 +2,7 @@
 id: 82
 title: Say what a scan found, not what it did
 type: feat
-status: backlog
+status: review
 milestone: arrival
 created: 2026-09-15
 updated: 2026-09-15
@@ -32,7 +32,7 @@ The distinction is first-scan versus rescan, which the index already knows: a re
 
 ## Acceptance criteria
 
-- [ ] A first scan says what was found, in a form a person reads.
-- [ ] A rescan keeps the current one-line ledger.
-- [ ] Failures stay visible in both, named with the reason.
-- [ ] `--json` is unchanged.
+- [x] A first scan says what was found, in a form a person reads.
+- [x] A rescan keeps the current one-line ledger.
+- [x] Failures stay visible in both, named with the reason.
+- [x] `--json` is unchanged.

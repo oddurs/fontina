@@ -2,7 +2,7 @@
 id: 80
 title: '`fontina` on its own does the obvious thing'
 type: feat
-status: backlog
+status: review
 milestone: arrival
 created: 2026-09-15
 updated: 2026-09-15
@@ -38,11 +38,11 @@ Exit 0 in both cases. Nothing here is an error until something has gone wrong.
 
 ## Acceptance criteria
 
-- [ ] `fontina` with no arguments exits 0 and prints no clap error.
-- [ ] With an empty index it names the command that fills one.
-- [ ] With a full index it says what is in it without being asked for a table.
-- [ ] `--help` is unchanged and still lists everything.
-- [ ] A pipe gets the same words without colour, as everything else here does.
+- [x] `fontina` with no arguments exits 0 and prints no clap error.
+- [x] With an empty index it names the command that fills one.
+- [x] With a full index it says what is in it without being asked for a table.
+- [x] `--help` is unchanged and still lists everything.
+- [x] A pipe gets the same words without colour, as everything else here does.
 
 ## Notes
 

@@ -35,6 +35,7 @@
 //! `fontina-core`, not a layer over this one.
 
 mod config;
+mod overview;
 mod scheme;
 mod term;
 mod ui;
@@ -81,8 +82,10 @@ struct Cli {
     /// Path to the index database (default: the platform data directory).
     #[arg(long, global = true, env = "FONTINA_DB")]
     db: Option<PathBuf>,
+    /// `None` when the program was run by name and nothing else, which is not an error
+    /// and is handled by [`crate::overview`]. Everything else is unchanged.
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Subcommand)]
@@ -844,6 +847,104 @@ impl Count for i64 {
     }
 }
 
+/// What to say when a listing has nothing in it.
+///
+/// "No faces match" and "you have not scanned anything yet" are different problems with
+/// different answers, and the program said the first for both. On a library of nine
+/// hundred it means the filter is too narrow; on a fresh install it means the index is
+/// empty and no filter would have helped.
+///
+/// `empty_index` is whether the index holds no faces at all, which the caller knows
+/// because it has just queried it. `subject` is what this particular command lists.
+fn nothing_to_list(subject: &str, empty_index: bool) -> String {
+    let t = term::term();
+    if empty_index {
+        format!(
+            "{} {}",
+            t.dim("nothing indexed yet —"),
+            t.accent("fontina scan --system")
+        )
+    } else {
+        t.dim(&format!("no {subject} match")).to_string()
+    }
+}
+
+/// Whether the index holds no faces at all.
+///
+/// Cheap: it asks for one face rather than counting them, because the only question is
+/// whether there is a first one.
+fn index_is_empty(index: &Index) -> bool {
+    index
+        .list(&FaceFilter {
+            limit: Some(1),
+            ..Default::default()
+        })
+        .map(|faces| faces.is_empty())
+        .unwrap_or(false)
+}
+
+/// After a first scan, what is now in the library.
+///
+/// The ledger a scan prints — candidates, parsed, unchanged, removed, failed — is six
+/// numbers about the *program's* work. It is the right answer on a rescan and a script
+/// reads it. It is the wrong first thing to say to somebody who has just indexed their
+/// fonts for the first time in their life, whose question is what they have.
+///
+/// Errors from the index are swallowed here on purpose: this is a courtesy printed after
+/// a scan that already succeeded, and failing the command because the summary could not
+/// be built would be the tail wagging the dog. The ledger below still prints.
+fn say_what_was_found(index: &Index) -> Result<()> {
+    let t = term::term();
+    let Ok(stats) = index.stats() else {
+        return Ok(());
+    };
+    if stats.faces == 0 {
+        return Ok(());
+    }
+
+    let free = index
+        .list(&FaceFilter {
+            freedom: Some(fontina_core::Freedom::Free),
+            ..Default::default()
+        })
+        .map(|f| f.len())
+        .unwrap_or(0);
+
+    let mut line = format!(
+        "{} in {}",
+        t.head(&n_of(stats.faces, "face", "faces")),
+        n_of(stats.families, "family", "families")
+    );
+    if free > 0 {
+        line.push_str(&format!(
+            " {} {} free",
+            t.dim("·"),
+            t.good(&free.to_string())
+        ));
+    }
+    println!("{line}");
+
+    // The three largest families, which is what a person looks for first in a list they
+    // have never seen: the things they have most of.
+    if let Ok(families) = index.families(&FaceFilter::default()) {
+        let mut biggest: Vec<_> = families.iter().filter(|f| f.faces > 1).collect();
+        biggest.sort_by(|a, b| b.faces.cmp(&a.faces).then_with(|| a.name.cmp(&b.name)));
+        let named: Vec<String> = biggest
+            .iter()
+            .take(3)
+            .map(|f| format!("{} {}", f.name, t.dim(&f.faces.to_string())))
+            .collect();
+        if !named.is_empty() {
+            println!(
+                "{} {}",
+                t.dim("largest:"),
+                named.join(&t.dim(" · ").to_string())
+            );
+        }
+    }
+    Ok(())
+}
+
 fn run() -> Result<()> {
     let cli = Cli::parse();
     // Before anything prints. Both facts — the colour depth and the width — are about
@@ -859,7 +960,14 @@ fn run() -> Result<()> {
     // A file whose colours do not parse is an error here rather than a silent fallback:
     // a theme that quietly does nothing is worse than one that says why.
     term::set(term::Term::detect().with_scheme(config::load()?.config.colours.scheme()?));
-    match &cli.command {
+
+    // Typing the program's name is not a mistake, so it does not produce an error. What
+    // it produces depends on whether there is anything indexed; `overview` decides.
+    let Some(command) = &cli.command else {
+        return overview::show(|| open_index(&cli));
+    };
+
+    match command {
         Command::Scan {
             paths,
             system,
@@ -900,6 +1008,9 @@ fn run() -> Result<()> {
                 );
             }
             let mut index = open_index(&cli)?;
+            // Asked before the scan, because afterwards there is no way to tell a first
+            // scan from a rescan that happened to change everything.
+            let first_scan = index_is_empty(&index);
             let opts = ScanOptions {
                 force: *force,
                 follow_symlinks: *follow_symlinks,
@@ -931,6 +1042,12 @@ fn run() -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {
                 let t = term::term();
+                // What was found, before what was done — but only the first time, when
+                // there is something to find out. A rescan of a library somebody already
+                // knows wants the ledger and nothing else.
+                if first_scan {
+                    say_what_was_found(&index)?;
+                }
                 println!(
                     "{} {} {} {} {} {} {}",
                     t.dim(&format!(
@@ -982,7 +1099,10 @@ fn run() -> Result<()> {
             if args.json {
                 println!("{}", serde_json::to_string_pretty(&faces)?);
             } else {
-                print_table(&faces);
+                // Only asked when there is nothing to show, so the ordinary path costs
+                // nothing.
+                let empty = faces.is_empty() && index_is_empty(&index);
+                print_table_of(&faces, empty);
             }
         }
         Command::Families(args) => {
@@ -991,7 +1111,8 @@ fn run() -> Result<()> {
             if args.json {
                 println!("{}", serde_json::to_string_pretty(&families)?);
             } else {
-                print_families(&families);
+                let empty = families.is_empty() && index_is_empty(&index);
+                print_families(&families, empty);
             }
         }
         Command::Facets(args) => {
@@ -1380,7 +1501,8 @@ fn run() -> Result<()> {
                     "{}",
                     term::term().dim(&n_of(n, "distinct character", "distinct characters"))
                 );
-                print_table(&faces);
+                let empty = faces.is_empty() && index_is_empty(&index);
+                print_table_of(&faces, empty);
             }
         }
         Command::Glyphs {
@@ -1476,6 +1598,12 @@ fn run() -> Result<()> {
                 }
                 out
             };
+            if faces.is_empty() && targets.is_empty() {
+                // The one command here that printed nothing whatsoever: no header, no
+                // row, no line. A blank response to a question is not an answer to it.
+                println!("{}", nothing_to_list("licences", true));
+                return Ok(());
+            }
             let rows: Vec<LicenseRow> = faces
                 .iter()
                 .map(|f| {
@@ -1862,9 +1990,18 @@ fn resolve_faces(cli: &Cli, target: &str) -> Result<Vec<fontina_core::FaceMetada
 }
 
 fn print_table(faces: &[FaceSummary]) {
+    print_table_of(faces, false);
+}
+
+/// The face table, told whether an empty result means an empty index.
+///
+/// Two callers know the difference and one does not: `list` has the index in its hand,
+/// and the paths that build a table from files given on the command line never have an
+/// index at all. The default is the old wording, which is right for those.
+fn print_table_of(faces: &[FaceSummary], empty_index: bool) {
     let t = term::term();
     if faces.is_empty() {
-        println!("{}", t.dim("no faces match"));
+        println!("{}", nothing_to_list("faces", empty_index));
         return;
     }
     let natural = |f: &dyn Fn(&FaceSummary) -> usize, floor: usize, cap: usize| {
@@ -3285,10 +3422,10 @@ fn run_source(cli: &Cli, cmd: &SourceCmd) -> Result<()> {
     Ok(())
 }
 
-fn print_families(families: &[fontina_core::Family]) {
+fn print_families(families: &[fontina_core::Family], empty_index: bool) {
     let t = term::term();
     if families.is_empty() {
-        println!("{}", t.dim("no families match"));
+        println!("{}", nothing_to_list("families", empty_index));
         return;
     }
     let range = |lo: f32, hi: f32| {
@@ -3395,6 +3532,12 @@ fn family_flags(t: &term::Term, f: &fontina_core::Family) -> String {
 
 fn print_facets(f: &fontina_core::Facets) {
     let t = term::term();
+    if f.faces == 0 {
+        // Every row below counts faces, so with no faces this was eighteen labels with
+        // nothing after them — a form with no answers on it.
+        println!("{}", nothing_to_list("faces", true));
+        return;
+    }
     println!(
         "{} {} {} {} {}",
         f.faces,
