@@ -213,6 +213,19 @@ fn the_config_report_names_the_source_of_each_role() {
     // report distinguishes "I chose this" from "this is what it is".
     let good = row("colours.good");
     assert!(good.contains("green") && good.contains("default"), "{good}");
+
+    // And the report has to agree with the terminal.
+    //
+    // It reads the file directly rather than the resolved scheme, so that a file whose
+    // colours do not parse still lists what was written — `fontina config` is the
+    // command somebody runs *because* something is wrong. The cost of that choice is
+    // that the report could agree with itself while the program painted something else,
+    // and a mutation that made the scheme ignore the file proved it: every other test
+    // here failed and this one passed. So it checks both ends.
+    assert!(
+        escapes(&cli.ok(&["list"])).contains("35"),
+        "the report said magenta and the terminal did not paint it"
+    );
 }
 
 /// What `fontina config` prints can be pasted back into the file.

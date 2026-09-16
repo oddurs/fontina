@@ -789,6 +789,22 @@ fn open_index(cli: &Cli) -> Result<Index> {
     Index::open(&path).with_context(|| format!("opening index at {}", path.display()))
 }
 
+/// What to say when a command that needs faces was given none.
+///
+/// `pass face ids or font file paths` said what kind of thing was missing and not how to
+/// get one, which is the half a person stuck at this prompt actually needs: somebody who
+/// has just run `fontina scan` has an index full of faces and no idea what an id looks
+/// like. Every one of these commands reads targets from standard input, so there is a
+/// one-line answer and it should be in the error rather than four pages into the manual.
+fn no_targets(command: &str) -> anyhow::Error {
+    anyhow::anyhow!(
+        "pass face ids or font file paths\n\
+         \x20 every face     fontina list --json | fontina {command} -\n\
+         \x20 a selection    fontina list --free --json | fontina {command} -\n\
+         \x20 one file       fontina {command} path/to/font.otf"
+    )
+}
+
 fn run() -> Result<()> {
     let cli = Cli::parse();
     // Before anything prints. Both facts — the colour depth and the width — are about
@@ -1147,7 +1163,7 @@ fn run() -> Result<()> {
             url_prefix,
         } => {
             if targets.is_empty() {
-                bail!("pass face ids or font file paths");
+                return Err(no_targets("css"));
             }
             for t in &expand_targets(targets)? {
                 for face in resolve_faces(&cli, t)? {
@@ -1232,7 +1248,7 @@ fn run() -> Result<()> {
             json,
         } => {
             if targets.is_empty() {
-                bail!("pass face ids or font file paths");
+                return Err(no_targets("check"));
             }
             let min_sev = match min.as_str() {
                 "info" => fontina_core::Severity::Info,
@@ -1499,7 +1515,7 @@ fn run() -> Result<()> {
             title,
         } => {
             if targets.is_empty() {
-                bail!("pass face ids or font file paths");
+                return Err(no_targets("specimen"));
             }
             let mut faces = Vec::new();
             for t in &expand_targets(targets)? {
