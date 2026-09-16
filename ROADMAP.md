@@ -58,6 +58,66 @@ ADR 0010 decided the browser shows structure and never draws type: "the resoluti
 
 - [x] [`0051`](https://github.com/oddurs/fontina/blob/main/cairn/items/0051-lay-the-html-specimen-out-like-a-printed-type-specimen.md) Lay the HTML specimen out like a printed type specimen <sup>feat · p1 · core</sup>
 
+## arrival — Arrival — the first five minutes
+
+`··········` 0% · 0 of 3 done
+
+The first thing fontina says to a new person is the word **error**, followed by
+
+### backlog
+
+- [ ] [`0080`](https://github.com/oddurs/fontina/blob/main/cairn/items/0080-fontina-on-its-own-does-the-obvious-thing.md) `fontina` on its own does the obvious thing <sup>feat · p0 · cli</sup>
+- [ ] [`0081`](https://github.com/oddurs/fontina/blob/main/cairn/items/0081-an-empty-index-is-a-state-not-a-table-with-no-rows.md) An empty index is a state, not a table with no rows <sup>feat · p1 · cli</sup>
+- [ ] [`0082`](https://github.com/oddurs/fontina/blob/main/cairn/items/0082-say-what-a-scan-found-not-what-it-did.md) Say what a scan found, not what it did <sup>feat · p1 · cli</sup>
+
+## one-verb — One verb — act on the thing, not on a sentence about it
+
+`··········` 0% · 0 of 3 done
+
+Thirty-four commands; twenty-five flags on `list` alone. That is a toolkit, and a
+
+### backlog
+
+- [ ] [`0083`](https://github.com/oddurs/fontina/blob/main/cairn/items/0083-a-spine-of-verbs-with-the-rest-reachable-rather-than-in-the-way.md) A spine of verbs, with the rest reachable rather than in the way <sup>feat · p0 · cli</sup>
+- [ ] [`0084`](https://github.com/oddurs/fontina/blob/main/cairn/items/0084-the-browser-shows-the-command-it-would-have-run.md) The browser shows the command it would have run <sup>feat · p0 · ui</sup>
+- [ ] [`0085`](https://github.com/oddurs/fontina/blob/main/cairn/items/0085-say-it-in-the-words-a-person-would-use.md) Say it in the words a person would use <sup>chore · p1 · cli</sup>
+
+## judgement — Judgement — the program helps you choose
+
+`··········` 0% · 0 of 3 done
+
+A font manager's actual job is not storage. It is helping somebody decide which
+
+### backlog
+
+- [ ] [`0086`](https://github.com/oddurs/fontina/blob/main/cairn/items/0086-one-command-for-is-this-the-right-one.md) One command for is this the right one <sup>feat · p0 · cli</sup>
+- [ ] [`0087`](https://github.com/oddurs/fontina/blob/main/cairn/items/0087-you-already-have-this-font-under-another-name.md) You already have this font under another name <sup>feat · p1 · core</sup>
+- [ ] [`0088`](https://github.com/oddurs/fontina/blob/main/cairn/items/0088-pin-faces-and-set-them-side-by-side.md) Pin faces and set them side by side <sup>feat · p2 · ui</sup>
+
+## the-shelf — The shelf — a library rather than a pile
+
+`··········` 0% · 0 of 3 done
+
+A thousand fonts on disk is not a library; it is a pile with a search box. The thing
+
+### backlog
+
+- [ ] [`0089`](https://github.com/oddurs/fontina/blob/main/cairn/items/0089-collections-you-assemble-by-acting-not-by-naming.md) Collections you assemble by acting, not by naming <sup>feat · p1 · cli</sup>
+- [ ] [`0090`](https://github.com/oddurs/fontina/blob/main/cairn/items/0090-a-collection-shows-what-is-in-it-not-how-many.md) A collection shows what is in it, not how many <sup>feat · p1 · cli</sup>
+- [ ] [`0091`](https://github.com/oddurs/fontina/blob/main/cairn/items/0091-a-shelf-that-opens-without-fontina.md) A shelf that opens without fontina <sup>feat · p2 · core</sup>
+
+## plain-sight — Plain sight — the part Apple would have hidden
+
+`··········` 0% · 0 of 3 done
+
+Everything above is the Apple half: decide the default, show one obvious action, get
+
+### backlog
+
+- [ ] [`0092`](https://github.com/oddurs/fontina/blob/main/cairn/items/0092-everything-fontina-did-and-how-to-undo-it.md) Everything fontina did, and how to undo it <sup>feat · p0 · cli</sup>
+- [ ] [`0093`](https://github.com/oddurs/fontina/blob/main/cairn/items/0093-freedom-is-a-column-not-a-filter.md) Freedom is a column, not a filter <sup>feat · p1 · cli</sup>
+- [ ] [`0094`](https://github.com/oddurs/fontina/blob/main/cairn/items/0094-the-product-rules-written-down-where-they-can-be-broken.md) The product rules, written down where they can be broken <sup>docs · p1 · workspace</sup>
+
 ## tui-speed — TUI 2 — Speed
 
 `##########` 100% · 5 of 5 done

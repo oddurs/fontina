@@ -110,6 +110,43 @@ harness or they stop being called budgets.
 Nothing here makes fontina do anything new with a font. It makes fontina something you
 can install, which after four milestones of features is the question worth asking.
 
+## The product programme
+
+Everything above is what fontina *does*. Running alongside it is a second programme about
+what it is *like to use*, and the evidence for it is one screen:
+
+```
+$ fontina
+error: 'fontina' requires a subcommand but one was not provided
+  [subcommands: scan, list, families, facets, tag, collection, source, activate, ...]
+```
+
+The word *error*, thirty-four nouns, and no opening move. Nothing there is a bug — every
+part is a reasonable default — and together they are a toolkit rather than a product.
+
+Five milestones, in the order somebody meets them.
+
+**Arrival** is the first five minutes. `fontina` on its own does the obvious thing; an
+empty index is a state with a plan rather than an error to report.
+
+**One verb** is acting on the thing rather than on a sentence about it: a spine through
+the thirty-four commands, the browser showing the command it would have run, and the
+words a person would use instead of the schema's.
+
+**Judgement** is the actual job — helping somebody choose. Comparison that does not lie,
+differences stated in the words of the difference, and *is this the right one* answered
+with evidence rather than deflected to a table.
+
+**The shelf** is a library rather than a pile: sets you assemble by acting, that show
+what is in them, and that open without this program.
+
+**Plain sight** is the half that keeps the rest honest. What fontina did and how to undo
+it, what a font lets you do, and where it came from — all legible without asking.
+
+The line all five are measured against: *decide the defaults, show the reasoning, never
+hide the lever.* A default may be chosen for you; a capability may not be taken away, and
+nothing the interface can do is unavailable to a script.
+
 ## Never
 
 Font editing. Format conversion or subsetting. Cloud synchronisation. Accounts.
