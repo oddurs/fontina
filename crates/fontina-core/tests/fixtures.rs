@@ -569,6 +569,91 @@ fn specimen_is_self_contained_html() {
     assert!(!linked.contains("<section class=\"compare\">"));
 }
 
+/// The comparison is matched on x-height, not on pixel size.
+///
+/// Two faces at 48px with different x-heights do not look the same size; the one with
+/// the larger x-height can read two steps of the scale bigger. A block whose whole
+/// purpose is comparison had been asking the reader to judge that difference.
+///
+/// Measured rather than asserted as a constant: the expected scale is computed from the
+/// two fonts' own metrics here, so this fails if the ratio is computed wrongly and not
+/// merely if Bricolage is revised.
+#[test]
+fn the_comparison_matches_x_heights() {
+    let (_, a) = load_file(&fixture("Amiri-Regular.ttf")).unwrap();
+    let (_, b) = load_file(&fixture("BricolageGrotesque[opsz,wdth,wght].ttf")).unwrap();
+    let faces = vec![a[0].clone(), b[0].clone()];
+
+    let html =
+        fontina_core::specimen::render(&faces, &fontina_core::specimen::SpecimenOptions::default())
+            .unwrap();
+
+    // The first face is the reference and is never scaled.
+    assert!(
+        html.contains("data-xscale=\"1.0000\""),
+        "the reference face should be at 1.0"
+    );
+
+    let want = fontina_core::typography::x_height_scale(&faces[0], &faces[1])
+        .expect("both fixtures report an x-height");
+    assert!(
+        html.contains(&format!("data-xscale=\"{want:.4}\"")),
+        "the second face should carry its own scale of {want:.4}:\n{}",
+        &html[..html.find("</section>").unwrap_or(2000).min(2000)]
+    );
+
+    // These two fonts genuinely differ, so the test is about something.
+    assert!(
+        (want - 1.0).abs() > 0.05,
+        "the fixtures should have visibly different x-heights, got {want}"
+    );
+
+    // And the reader is told, rather than the type being silently resized.
+    assert!(html.contains("class=\"cmp-scale\""), "the scale is shown");
+    assert!(
+        html.contains("id=\"matchx\"") && html.contains("checked"),
+        "the control exists and matching is the default"
+    );
+}
+
+/// An x-height nobody reported is not a zero, and the face is set at nominal size.
+///
+/// `Metrics::x_height` is `Option<i16>` and `metrics/x-height` is already a health
+/// check, so a font without one is a case this codebase has met. Scaling it by a guess
+/// would be inventing a measurement.
+#[test]
+fn a_face_with_no_x_height_is_shown_at_nominal_size_and_says_so() {
+    let (_, a) = load_file(&fixture("Amiri-Regular.ttf")).unwrap();
+    let mut silent = a[0].clone();
+    silent.names.family = "No X Height".into();
+    silent.metrics.x_height = None;
+    let faces = vec![a[0].clone(), silent];
+
+    let html =
+        fontina_core::specimen::render(&faces, &fontina_core::specimen::SpecimenOptions::default())
+            .unwrap();
+
+    assert!(
+        html.contains("no x-height reported"),
+        "the face should say why it was not scaled"
+    );
+    // Nominal, which is a scale of exactly one rather than zero or an infinity.
+    assert_eq!(
+        html.matches("data-xscale=\"1.0000\"").count(),
+        2,
+        "the reference and the unscalable face are both at 1.0"
+    );
+
+    // A zero is read the same way: some fonts write 0 for "not stated".
+    let mut zero = a[0].clone();
+    zero.metrics.x_height = Some(0);
+    assert_eq!(
+        fontina_core::typography::x_height_scale(&a[0], &zero),
+        None,
+        "a zero x-height is unknown, not a ratio"
+    );
+}
+
 /// A file name cannot close the specimen's `<style>` element.
 ///
 /// `--link` writes the font's path into a URL inside `<style>`, and an HTML parser ends
