@@ -9,7 +9,7 @@
 #   cairn check           validate every item (CI runs this)
 #   cairn agent           how a coding agent should use it
 
-format = 2
+format = 3
 
 [project]
 name = "fontina"
@@ -92,6 +92,8 @@ color = "gray"
 [[type]]
 name = "milestone"
 description = "a release, or whatever this project ships"
+groups = "one"
+inverse = "scheduled"
 
 # ─── Statuses ────────────────────────────────────────────────────────────────
 
@@ -161,15 +163,6 @@ description = "Where the change lands. `ui` is crates/fontina-cli/src/ui"
 name = "due"
 kind = "date"
 description = "when a milestone is meant to land"
-
-[[field]]
-name = "milestone"
-kind = "ref"
-target = "milestone"
-by = "key"
-rollup = true
-inverse = "scheduled"
-description = "what this ships in"
 
 # ─── Views ───────────────────────────────────────────────────────────────────
 

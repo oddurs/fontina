@@ -4,7 +4,7 @@
 
 ## tui-craft — TUI 1 — Craft
 
-`########··` 75% · 6 of 8 done
+`#######···` 67% · 6 of 9 done
 
 What the browser looks like. A font manager whose list is set in the fonts it lists, drawn with real glyphs, in a layout that holds at any size.
 
@@ -15,6 +15,10 @@ What the browser looks like. A font manager whose list is set in the fonts it li
 ### ready to start
 
 - [ ] [`0001`](https://github.com/oddurs/fontina/blob/main/cairn/items/0001-set-every-family-in-the-face-it-names.md) Set every family in the face it names <sup>feat · p0 · ui</sup>
+
+### in review
+
+- [ ] [`0074`](https://github.com/oddurs/fontina/blob/main/cairn/items/0074-one-colour-scheme-inherited-and-themable.md) One colour scheme, inherited and themable <sup>feat · p1 · cli</sup>
 
 ### done
 
