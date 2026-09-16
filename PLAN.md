@@ -255,6 +255,71 @@ The division, so it does not blur: if it explains a decision it belongs here; if
 piece of work someone will claim, it belongs in an item. The delivered milestones keep
 their pull-request lists as a record of what was actually built.
 
+There are two programmes and they answer different questions. The **engineering**
+milestones — `tui-craft`, `tui-speed`, `tui-depth`, `tui-discovery`, `integrity`,
+`specimen`, `m5-ship` — ask what the program does and how well. The **product**
+milestones — `arrival`, `one-verb`, `judgement`, `the-shelf`, `plain-sight` — ask what
+it is like to use. A program can be excellent at the first and unpleasant at the second,
+and this one currently is.
+
+### 5a. The product argument
+
+The evidence is one screen:
+
+```
+$ fontina
+error: 'fontina' requires a subcommand but one was not provided
+  [subcommands: scan, list, families, facets, tag, collection, source, activate, ...]
+```
+
+The word *error*, thirty-four nouns, and no opening move. Nothing there is a bug. Every
+part of it is a reasonable default, and together they are a toolkit rather than a
+product. Thirty-four commands; twenty-five flags on `list` alone.
+
+The question the product milestones answer is what this would be if somebody with
+Apple's product discipline designed it — within the restraint of a terminal, and without
+giving up a single thing the free software half of it stands for.
+
+**What that discipline actually is**, stripped of the styling it is usually confused
+with: know what the thing is *for*; design the first five minutes rather than leaving an
+empty room; have one obvious next action; choose defaults good enough that configuration
+is rare; act on the thing rather than on a sentence about the thing; use the words a
+person would use; keep depth present and out of the way; say what you did and let it be
+undone. None of that needs a pixel. All of it is available to a program made of text.
+
+**What the terminal adds** is not a limitation but a discipline of its own. There is no
+mouse, so direct manipulation means *select, then act*. There is no chrome, so the
+content is the interface. There is no animation worth having, so the pleasure has to
+come from precision — things lining up, numbers that agree, a screen that does not move
+when it has nothing to say.
+
+**What must survive all of it** is section 1, and one clause in particular. Apple's
+failure mode is the locked door: a beautiful default and no way past it. This project's
+answer is the line the product milestones are measured against —
+
+> Decide the defaults. Show the reasoning. Never hide the lever.
+
+Concretely: nothing the interface can do is unavailable to a script; no command runs
+that the person did not name; every action says what it did and how to undo it; facts,
+never adjectives; report, never enforce. `plain-sight` exists to hold that line, and
+0094 proposes writing it into `CLAUDE.md` beside the engineering rules so a reviewer can
+say a change breaks it.
+
+The five, in the order somebody meets them:
+
+| | |
+|---|---|
+| **`arrival`** | The first five minutes. `fontina` alone does the obvious thing; an empty index is a state with a plan rather than an error. |
+| **`one-verb`** | Act on the thing. A spine through thirty-four commands, the browser showing the command it would have run, and the words a person would use. |
+| **`judgement`** | The actual job: helping somebody choose. Comparison that does not lie, difference in the words of the difference, *is this the right one* answered with evidence. |
+| **`the-shelf`** | A library rather than a pile. Sets assembled by acting, showing what is in them, openable without this program. |
+| **`plain-sight`** | The half that keeps it honest. What it did and how to undo it; what a font lets you do; where it came from. |
+
+Two things this is **not**. It is not a rewrite: every command keeps its spelling, every
+old name stays working, and the work is grouping, naming and defaults rather than
+replacement. And it is not a graphical shell by another route — ADR 0006 deferred that
+and nothing here reopens it.
+
 
 ### M0 — Foundations (done, 2026-09-03)
 - Workspace, CI matrix (ubuntu/macos/windows), fixtures, `cargo-deny`, clippy, release
