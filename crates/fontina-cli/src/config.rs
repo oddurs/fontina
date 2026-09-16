@@ -31,6 +31,7 @@
 //! and so is a key nobody recognises — a typo that is silently ignored is a setting that
 //! silently does nothing.
 
+use crate::scheme::{Role, Scheme};
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -75,6 +76,9 @@ pub struct Config {
     pub scan: ScanConfig,
     #[serde(default)]
     pub preview: PreviewConfig,
+    /// What each role looks like. `colours` and `colors` are both accepted.
+    #[serde(default, alias = "colors")]
+    pub colours: ColourConfig,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -91,6 +95,64 @@ pub struct ScanConfig {
     pub sources: Option<Vec<String>>,
     /// Whether a bare `fontina scan` also walks the operating system's font directories.
     pub system: Option<bool>,
+}
+
+/// The six roles, each an optional override of the shipped scheme.
+///
+/// Absent means "leave it alone", which is what makes this inherit rather than replace:
+/// a file that sets `accent` and nothing else changes the accent and nothing else.
+/// Replacing the whole scheme would mean every file had to restate five colours it did
+/// not care about, and would silently freeze them at whatever they were the day it was
+/// written.
+///
+/// A value is `"cyan"`, `"bold"`, `"bold bright-yellow"` or `"none"`; see
+/// [`crate::scheme`] for the whole vocabulary and why it stops at sixteen colours.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ColourConfig {
+    pub head: Option<String>,
+    pub dim: Option<String>,
+    pub accent: Option<String>,
+    pub good: Option<String>,
+    pub warn: Option<String>,
+    pub bad: Option<String>,
+}
+
+impl ColourConfig {
+    /// What this file says, by role, in the order [`Role::ALL`] lists them.
+    fn written(&self) -> [(Role, Option<&String>); 6] {
+        [
+            (Role::Head, self.head.as_ref()),
+            (Role::Dim, self.dim.as_ref()),
+            (Role::Accent, self.accent.as_ref()),
+            (Role::Good, self.good.as_ref()),
+            (Role::Warn, self.warn.as_ref()),
+            (Role::Bad, self.bad.as_ref()),
+        ]
+    }
+
+    /// The shipped scheme with this file's overrides applied.
+    ///
+    /// # Errors
+    ///
+    /// Fails on a value that is not a colour, and on a scheme that would leave two
+    /// roles looking identical — naming the key, because the reader is holding a text
+    /// editor and the message is the whole of the documentation they have at that
+    /// moment.
+    pub fn scheme(&self) -> Result<Scheme> {
+        let mut scheme = Scheme::SHIPPED;
+        for (role, written) in self.written() {
+            let Some(value) = written else { continue };
+            let paint = value
+                .parse()
+                .with_context(|| format!("colours.{}: {value:?}", role.key()))?;
+            scheme = scheme.with(role, paint);
+        }
+        scheme
+            .check()
+            .context("the colours in this file cannot be told apart")?;
+        Ok(scheme)
+    }
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -228,7 +290,7 @@ impl Config {
                 source: SettingSource::Default,
             },
         };
-        vec![
+        let mut out = vec![
             db,
             setting(
                 "scan.sources",
@@ -269,7 +331,30 @@ impl Config {
                 self.preview.bg.clone(),
                 "(the terminal's background)".into(),
             ),
-        ]
+        ];
+        // The six roles, each printed as the value that would produce it — so what
+        // `fontina config` shows can be pasted straight back into the file.
+        //
+        // A file whose colours do not parse still lists here, showing what was written
+        // rather than what it resolved to. `fontina config` is the command somebody
+        // runs *because* something is wrong, and a diagnostic that refuses to print
+        // until the thing it diagnoses is fixed is no diagnostic at all.
+        let shipped = Scheme::SHIPPED;
+        for (role, written) in self.colours.written() {
+            out.push(match written {
+                Some(v) => Setting {
+                    key: role.setting_key(),
+                    value: v.clone(),
+                    source: SettingSource::File,
+                },
+                None => Setting {
+                    key: role.setting_key(),
+                    value: shipped.paint(role).name(),
+                    source: SettingSource::Default,
+                },
+            });
+        }
+        out
     }
 }
 
@@ -297,6 +382,40 @@ pub const EXAMPLE: &str = r##"# fontina configuration.
 # sources = ["~/Fonts", "~/Library/Fonts"]
 # Whether a bare `fontina scan` also walks the operating system's font directories.
 # system = false
+
+[colours]
+# What each role looks like, on the command line and in the browser alike. Spelled
+# `[colors]` too, if you prefer.
+#
+# Set one and the other five stay as they are; there is no need to restate a colour
+# you are happy with. NO_COLOR still turns all of it off — this says what colour
+# means, not whether to use any.
+#
+# A value is one of the sixteen terminal colours:
+#
+#   black  red  green  yellow  blue  magenta  cyan  white
+#   and each of those again as bright-black, bright-red, and so on
+#
+# optionally with `bold` or `reverse` — `bold cyan` — or the word `none`.
+#
+# Sixteen and no more, on purpose: these are the colours your terminal theme already
+# defines, so an accent of `cyan` is *your* cyan rather than one chosen here.
+#
+# Two roles that end up looking identical are an error rather than a surprise, because
+# colour here carries hierarchy and that only works when you can see it.
+
+# A column heading, a section title: the words that are not the answer.
+# head = "bold"
+# Present, and not what you are reading: labels, units, the directory part of a path.
+# dim = "bright-black"
+# The thing being pointed at: an id, a tag, the focused pane.
+# accent = "cyan"
+# Something that worked, or is free.
+# good = "green"
+# Something to notice but not to act on.
+# warn = "yellow"
+# Something that failed, or that is not free.
+# bad = "red"
 
 [preview]
 # Sample text for `fontina preview` and the browser.

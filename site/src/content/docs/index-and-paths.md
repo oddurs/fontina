@@ -101,6 +101,12 @@ preview.size       48                                            default
 preview.protocol   auto                                          default
 preview.fg         (the terminal's foreground)                   default
 preview.bg         (the terminal's background)                   default
+colours.head       bold                                          default
+colours.dim        bright-black                                  default
+colours.accent     bold magenta                                  config
+colours.good       green                                         default
+colours.warn       yellow                                        default
+colours.bad        red                                           default
 ```
 
 The last column is where each value came from, because a setting whose origin you
@@ -110,3 +116,47 @@ A missing file is not an error: with no file, fontina behaves exactly as it did
 before there was one. A file that exists and does not parse is an error naming the
 line, and so is a key nobody recognises, since a typo that is quietly ignored is a
 setting that quietly does nothing.
+
+### Colours
+
+`[colours]` — or `[colors]`, both are read — says what each of the six roles looks
+like, on the command line and in the browser alike. They share one scheme, so there
+is no second place to change.
+
+```toml
+[colours]
+accent = "bold magenta"
+dim = "blue"
+```
+
+Name a role and that role changes; the five you did not name keep what they had.
+There is no need to restate a colour you are happy with, and no way for a file to
+freeze the others at whatever they were the day it was written.
+
+A value is one of the sixteen terminal colours —
+
+```
+black  red  green  yellow  blue  magenta  cyan  white
+bright-black  bright-red  bright-green  bright-yellow
+bright-blue  bright-magenta  bright-cyan  bright-white
+```
+
+— optionally with `bold` or `reverse` (`bold cyan`, in either order), or the word
+`none`.
+
+Sixteen and no more, deliberately. These are the colours your terminal theme already
+defines, so an accent of `cyan` is *your* cyan; a hex value chosen here would be the
+one colour on the screen that ignores the theme you picked. It is also why there is
+no background setting: a role paints its own text, and the ground stays yours.
+
+The six roles are `head` (a column heading), `dim` (labels, units, the directory part
+of a path), `accent` (the thing being pointed at), `good`, `warn` and `bad`.
+
+Two things this will refuse. A value that is not a colour, naming what it would have
+taken. And a scheme where two roles end up looking identical — colour here carries
+hierarchy and never meaning, and that only works when you can see the hierarchy. A
+file that paints `good` and `bad` the same green is a mistake worth hearing about at
+startup rather than discovering in a table of health checks.
+
+`NO_COLOR` still turns all of it off. The scheme says what colour *means*, not whether
+to use any.

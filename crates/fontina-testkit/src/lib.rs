@@ -270,11 +270,21 @@ impl Cli {
     }
 
     /// The command, for a test that needs to spawn it or change it further.
+    ///
+    /// `with_env` is applied last, after the sandbox's own redirections, which is what
+    /// its documentation has always claimed and what it did not do: the pairs were
+    /// pushed onto `extra` and nothing ever read them. Two tests set `COLUMNS` through
+    /// it and had been running at whatever width the sandbox left them — which is to
+    /// say none, since the sandbox removes `COLUMNS` precisely so a developer's
+    /// terminal cannot reach a test.
     pub fn cmd(&self, args: &[&str]) -> Command {
         let mut c = Command::new(&self.binary);
         c.args(["--db", &self.sandbox.db.to_string_lossy()])
             .args(args);
         self.sandbox.env(&mut c);
+        for (key, value) in &self.extra {
+            c.env(key, value);
+        }
         c
     }
 

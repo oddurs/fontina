@@ -124,24 +124,12 @@ impl When {
     }
 }
 
-/// What each colour is *for*. Named by the job rather than by the hue, so that the one
-/// place that decides what "a warning" looks like is this file.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Role {
-    /// A column heading, a section title: the words that are not the answer.
-    Head,
-    /// Present, and not what you are reading. Labels, units, the directory part of a
-    /// path, a count at the end of a table.
-    Dim,
-    /// The thing being pointed at: an id, a tag, the number a command was run to find.
-    Accent,
-    /// Something that worked, or is free.
-    Good,
-    /// Something to notice but not to act on.
-    Warn,
-    /// Something that failed, or that is not free.
-    Bad,
-}
+/// What each colour is *for*, and what each one looks like.
+///
+/// Both live in [`crate::scheme`] now, because the browser needs the same answer and
+/// used to hold a second copy of it. Re-exported here so that every printer still says
+/// `term::Role`.
+pub use crate::scheme::{Role, Scheme};
 
 /// The terminal, resolved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -150,6 +138,9 @@ pub struct Term {
     /// Columns to print into, or `None` when there is no terminal to ask and nothing
     /// said otherwise — in which case a table is exactly as wide as its content.
     width: Option<usize>,
+    /// What each role looks like. The default is what the program shipped with, so a
+    /// reader who has configured nothing sees no change.
+    scheme: Scheme,
 }
 
 impl Default for Term {
@@ -169,13 +160,35 @@ impl Term {
         Term {
             depth: Depth::None,
             width: None,
+            scheme: Scheme::SHIPPED,
         }
     }
 
     /// A terminal with these two facts, for the tests.
     #[cfg(test)]
     pub const fn new(depth: Depth, width: Option<usize>) -> Term {
-        Term { depth, width }
+        Term {
+            depth,
+            width,
+            scheme: Scheme::SHIPPED,
+        }
+    }
+
+    /// The same terminal, painted by a different scheme.
+    ///
+    /// Separate from `detect` because the scheme comes from the configuration file and
+    /// the file is read after the terminal is: `detect` answers "what can this terminal
+    /// do", which nothing a person writes can change, and this answers "what should it
+    /// look like", which is entirely theirs.
+    #[must_use]
+    pub const fn with_scheme(mut self, scheme: Scheme) -> Term {
+        self.scheme = scheme;
+        self
+    }
+
+    /// The scheme in force, for `fontina config` to print back.
+    pub const fn scheme(&self) -> Scheme {
+        self.scheme
     }
 
     /// Ask the environment, once, for output going to `stdout`.
@@ -226,7 +239,14 @@ impl Term {
             })
             .flatten()
             .filter(|w| *w >= NARROWEST);
-        Term { depth, width }
+        // The scheme is not the terminal's to decide: `resolve` answers what this
+        // terminal can do, and `with_scheme` answers what the reader wants it to look
+        // like, once the configuration file has been read.
+        Term {
+            depth,
+            width,
+            scheme: Scheme::SHIPPED,
+        }
     }
 
     /// Columns to print into, when anything knows.
@@ -268,31 +288,29 @@ impl Term {
     /// The SGR parameters for a role, or the empty string for a terminal with no
     /// colour — which is what makes [`Painted`] print its text and nothing else.
     ///
-    /// Sixteen colours and no more, at every depth. The palette does not need the cube:
-    /// six roles map onto six of the original eight, they are the six a reader has
-    /// themed their terminal to look right, and a 24-bit grey chosen here would be the
-    /// one colour on the screen that ignores what they chose.
-    fn sgr(&self, role: Role) -> &'static str {
+    /// The literals that used to be here are [`Scheme::SHIPPED`] now. Sixteen colours
+    /// and no more, at every depth, and the reasoning is in `scheme`: they are the
+    /// sixteen the reader has already themed their terminal to look right.
+    ///
+    /// `Depth::None` outranks the scheme completely. A person who set `NO_COLOR` and a
+    /// person who wrote a `[colours]` table have both said what they want, and the one
+    /// who said "no colour" said it about all of it.
+    fn sgr(&self, role: Role) -> String {
         if self.depth == Depth::None {
-            return "";
+            return String::new();
         }
-        match role {
-            Role::Head => "1",
-            // Bright black rather than the faint attribute, which enough terminals
-            // ignore that it is a coin toss whether a label looks quieter or identical.
-            Role::Dim => "90",
-            Role::Accent => "36",
-            Role::Good => "32",
-            Role::Warn => "33",
-            Role::Bad => "31",
-        }
+        self.scheme.paint(role).sgr()
     }
 }
 
 /// A string and the escape that colours it. `Display` so it goes straight into a
 /// `write!` beside the columns it was measured against.
+///
+/// The escape is owned rather than `&'static str`: a scheme is read at run time, so
+/// there is no static string to borrow. It is at most `"1;7;96"` — seven bytes against
+/// the cell it wraps, built once per painted cell.
 pub struct Painted<'a> {
-    sgr: &'static str,
+    sgr: String,
     text: &'a str,
 }
 
@@ -405,16 +423,9 @@ mod tests {
     /// Every role is a different colour, and every one of them disappears together.
     #[test]
     fn the_roles_are_distinct_and_they_all_go_at_once() {
-        let roles = [
-            Role::Head,
-            Role::Dim,
-            Role::Accent,
-            Role::Good,
-            Role::Warn,
-            Role::Bad,
-        ];
+        let roles = Role::ALL;
         let on = Term::new(Depth::Ansi16, None);
-        let mut seen: Vec<&str> = roles.iter().map(|r| on.sgr(*r)).collect();
+        let mut seen: Vec<String> = roles.iter().map(|r| on.sgr(*r)).collect();
         seen.sort_unstable();
         seen.dedup();
         assert_eq!(seen.len(), roles.len(), "two roles share an escape");
