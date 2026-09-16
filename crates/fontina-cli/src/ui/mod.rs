@@ -4464,9 +4464,15 @@ mod tests {
             // emitted with a value it does not take lands there instead of erroring.
             // Matching only one of them is how this assertion goes quietly dead — the
             // browser opens on the family list, so `Command::List` alone never matched.
+            // `command` is an `Option` since a bare `fontina` became a legal thing to
+            // type; a filter line that named no subcommand at all would be a bug in the
+            // browser rather than a case to tolerate.
             let query = match &parsed.command {
-                Command::List(args) | Command::Families(args) => args.query.clone(),
-                _ => panic!("{line:?} names a subcommand this test cannot check for a query"),
+                Some(Command::List(args)) | Some(Command::Families(args)) => args.query.clone(),
+                Some(_) => {
+                    panic!("{line:?} names a subcommand this test cannot check for a query")
+                }
+                None => panic!("{line:?} names no subcommand at all"),
             };
             assert!(
                 query.is_none(),

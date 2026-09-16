@@ -22,15 +22,39 @@ fontina 0.0.1
 
 ## Indexing
 
+Run `fontina` on its own and it tells you where you stand. On a new install that is
+nothing yet, and it says where this machine keeps fonts and what to type:
+
+```
+$ fontina
+No fonts indexed yet.
+
+This machine keeps fonts in:
+  ~/Library/Fonts
+  /Library/Fonts
+  /System/Library/Fonts
+
+To index them:
+  fontina scan --system    the operating system's own directories
+  fontina scan ~/Fonts     a directory of your own
+```
+
+It suggests and never runs: nothing scans your disk until you ask it to.
+
 fontina keeps what it learns about your fonts in an index, a single SQLite file in
 the platform data directory (see [The index and paths](../index-and-paths/)). The
 index starts empty. Fill it by scanning:
 
 ```
-$ fontina scan --system            # the operating system's font directories
-$ fontina scan ~/Fonts             # and your own
-scanned 6 candidates in 0.03s: 6 parsed (6 faces), 0 unchanged, 0 removed, 0 failed
+$ fontina scan --system
+934 faces in 395 families · 321 free
+largest: JetBrainsMono Nerd Font 16 · Noto Sans 12 · Iosevka 9
+scanned 518 candidates in 14.07s: 517 parsed (934 faces), 0 unchanged, 0 removed, 1 failed
 ```
+
+The first scan leads with what you have; a rescan is just the ledger, because by then
+you know. Afterwards, `fontina` on its own is the shape of the library and the two or
+three things worth doing next.
 
 A scan walks the directories, parses every font file it finds, and records one
 *face* per font. A rescan is fast: files whose size and modification time have not
