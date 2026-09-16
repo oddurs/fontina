@@ -2,10 +2,10 @@
 id: 41
 title: Make the path-filtered checks able to block
 type: chore
-status: review
+status: done
 milestone: m5-ship
 created: 2026-09-06
-updated: 2026-09-07
+updated: 2026-09-15
 priority: p1
 effort: s
 crate: workspace
@@ -32,7 +32,7 @@ dependency is a pass, because the guarded paths were untouched.
 
 - [x] a gate job in each of the four workflows (#112)
 - [x] the gates have reported on at least one pull request (#183)
-- [ ] `perf`, `fuzz`, `linux`, `site`, `desktop` added to branch protection
+- [x] `perf`, `fuzz`, `linux`, `site`, `desktop` added to branch protection
 
 ## Notes
 
@@ -64,3 +64,7 @@ it meets the same bar as the rest and belongs in the same settings change.
 What is left is the settings change, which needs repository admin and is the maintainer's
 to make. The order in the note above still holds and is now satisfied: gates first, green
 runs observed, then protection.
+
+## 2026-09-15
+
+Shipped in #216, which moved the path filters off the triggers and onto a `changes` job so the gates report on every pull request. Verified on #217, which touches none of the guarded paths and got `desktop:pass fuzz:pass linux:pass perf:pass site:pass`.

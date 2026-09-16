@@ -2,7 +2,7 @@
 id: 74
 title: One colour scheme, inherited and themable
 type: feat
-status: review
+status: done
 milestone: tui-craft
 created: 2026-09-15
 updated: 2026-09-15

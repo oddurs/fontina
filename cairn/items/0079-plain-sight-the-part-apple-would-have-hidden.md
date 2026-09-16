@@ -6,7 +6,6 @@ type: milestone
 status: backlog
 created: 2026-09-15
 updated: 2026-09-15
-priority: p2
 ---
 
 Everything above is the Apple half: decide the default, show one obvious action, get

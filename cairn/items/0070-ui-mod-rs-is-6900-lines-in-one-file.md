@@ -3,9 +3,9 @@ id: 70
 title: ui/mod.rs is 6900 lines in one file
 type: chore
 status: backlog
-milestone: unfiled
+milestone: groundwork
 created: 2026-09-07
-updated: 2026-09-07
+updated: 2026-09-15
 priority: p3
 effort: l
 crate: ui
