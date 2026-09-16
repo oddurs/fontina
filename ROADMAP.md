@@ -4,7 +4,7 @@
 
 ## tui-craft — TUI 1 — Craft
 
-`#######···` 67% · 6 of 9 done
+`########··` 78% · 7 of 9 done
 
 What the browser looks like. A font manager whose list is set in the fonts it lists, drawn with real glyphs, in a layout that holds at any size.
 
@@ -16,10 +16,6 @@ What the browser looks like. A font manager whose list is set in the fonts it li
 
 - [ ] [`0001`](https://github.com/oddurs/fontina/blob/main/cairn/items/0001-set-every-family-in-the-face-it-names.md) Set every family in the face it names <sup>feat · p0 · ui</sup>
 
-### in review
-
-- [ ] [`0074`](https://github.com/oddurs/fontina/blob/main/cairn/items/0074-one-colour-scheme-inherited-and-themable.md) One colour scheme, inherited and themable <sup>feat · p1 · cli</sup>
-
 ### done
 
 - [x] [`0003`](https://github.com/oddurs/fontina/blob/main/cairn/items/0003-one-colour-scheme-three-colour-depths.md) One colour scheme, three colour depths <sup>feat · p1 · ui</sup>
@@ -28,10 +24,11 @@ What the browser looks like. A font manager whose list is set in the fonts it li
 - [x] [`0028`](https://github.com/oddurs/fontina/blob/main/cairn/items/0028-the-command-line-prints-in-one-colour-and-one-width.md) The command line prints in one colour and one width <sup>feat · p1 · cli</sup>
 - [x] [`0033`](https://github.com/oddurs/fontina/blob/main/cairn/items/0033-the-face-pane-is-thirteen-rows-in-the-order-they-were-written.md) The face pane is thirteen rows in the order they were written <sup>chore · p1 · ui</sup>
 - [x] [`0034`](https://github.com/oddurs/fontina/blob/main/cairn/items/0034-the-browser-looks-assembled-rather-than-designed.md) The browser looks assembled rather than designed <sup>chore · p1 · ui</sup>
+- [x] [`0074`](https://github.com/oddurs/fontina/blob/main/cairn/items/0074-one-colour-scheme-inherited-and-themable.md) One colour scheme, inherited and themable <sup>feat · p1 · cli</sup>
 
 ## specimen — The only place the type is drawn
 
-`#·········` 7% · 1 of 14 done
+`##········` 13% · 2 of 15 done
 
 ADR 0010 decided the browser shows structure and never draws type: "the resolution is
 
@@ -48,15 +45,16 @@ ADR 0010 decided the browser shows structure and never draws type: "the resoluti
 - [ ] [`0062`](https://github.com/oddurs/fontina/blob/main/cairn/items/0062-find-a-glyph-without-scrolling-for-it.md) Find a glyph without scrolling for it <sup>feat · p2 · core</sup>
 - [ ] [`0063`](https://github.com/oddurs/fontina/blob/main/cairn/items/0063-the-glyph-map-at-the-scale-of-a-cjk-font.md) The glyph map at the scale of a CJK font <sup>perf · p2 · core</sup>
 - [ ] [`0064`](https://github.com/oddurs/fontina/blob/main/cairn/items/0064-a-specimen-worth-printing.md) A specimen worth printing <sup>feat · p3 · core</sup>
+- [ ] [`0069`](https://github.com/oddurs/fontina/blob/main/cairn/items/0069-the-specimen-has-two-tests-for-ten-sections.md) The specimen has two tests for ten sections <sup>test · p2 · core</sup>
 
 ### ready to start
 
-- [ ] [`0052`](https://github.com/oddurs/fontina/blob/main/cairn/items/0052-compare-at-a-matched-x-height-not-a-matched-pixel-size.md) Compare at a matched x-height, not a matched pixel size <sup>feat · p0 · core</sup>
 - [ ] [`0053`](https://github.com/oddurs/fontina/blob/main/cairn/items/0053-the-measurements-the-browser-shows-the-specimen-shows-too.md) The measurements the browser shows, the specimen shows too <sup>feat · p0 · core</sup>
 
 ### done
 
 - [x] [`0051`](https://github.com/oddurs/fontina/blob/main/cairn/items/0051-lay-the-html-specimen-out-like-a-printed-type-specimen.md) Lay the HTML specimen out like a printed type specimen <sup>feat · p1 · core</sup>
+- [x] [`0052`](https://github.com/oddurs/fontina/blob/main/cairn/items/0052-compare-at-a-matched-x-height-not-a-matched-pixel-size.md) Compare at a matched x-height, not a matched pixel size <sup>feat · p0 · core</sup>
 
 ## arrival — Arrival — the first five minutes
 
@@ -72,9 +70,13 @@ The first thing fontina says to a new person is the word **error**, followed by
 
 ## one-verb — One verb — act on the thing, not on a sentence about it
 
-`··········` 0% · 0 of 3 done
+`··········` 0% · 0 of 4 done
 
 Thirty-four commands; twenty-five flags on `list` alone. That is a toolkit, and a
+
+### backlog
+
+- [ ] [`0031`](https://github.com/oddurs/fontina/blob/main/cairn/items/0031-variants-opens-with-the-family-you-are-already-looking-at.md) Variants opens with the family you are already looking at <sup>feat · p2 · cli</sup>
 
 ### in review
 
@@ -84,15 +86,16 @@ Thirty-four commands; twenty-five flags on `list` alone. That is a toolkit, and 
 
 ## judgement — Judgement — the program helps you choose
 
-`··········` 0% · 0 of 3 done
+`··········` 0% · 0 of 4 done
 
 A font manager's actual job is not storage. It is helping somebody decide which
 
 ### backlog
 
+- [ ] [`0013`](https://github.com/oddurs/fontina/blob/main/cairn/items/0013-pin-faces-and-set-them-side-by-side.md) Pin faces and set them side by side <sup>feat · p0 · ui</sup>
+- [ ] [`0030`](https://github.com/oddurs/fontina/blob/main/cairn/items/0030-duplicates-are-found-and-then-nothing-can-be-done-about-them.md) Duplicates are found and then nothing can be done about them <sup>feat · p1 · cli</sup>
 - [ ] [`0086`](https://github.com/oddurs/fontina/blob/main/cairn/items/0086-one-command-for-is-this-the-right-one.md) One command for is this the right one <sup>feat · p0 · cli</sup>
 - [ ] [`0087`](https://github.com/oddurs/fontina/blob/main/cairn/items/0087-you-already-have-this-font-under-another-name.md) You already have this font under another name <sup>feat · p1 · core</sup>
-- [ ] [`0088`](https://github.com/oddurs/fontina/blob/main/cairn/items/0088-pin-faces-and-set-them-side-by-side.md) Pin faces and set them side by side <sup>feat · p2 · ui</sup>
 
 ## the-shelf — The shelf — a library rather than a pile
 
@@ -108,15 +111,27 @@ A thousand fonts on disk is not a library; it is a pile with a search box. The t
 
 ## plain-sight — Plain sight — the part Apple would have hidden
 
-`··········` 0% · 0 of 3 done
+`··········` 0% · 0 of 4 done
 
 Everything above is the Apple half: decide the default, show one obvious action, get
 
 ### backlog
 
+- [ ] [`0042`](https://github.com/oddurs/fontina/blob/main/cairn/items/0042-two-thirds-of-the-published-json-fields-have-no-description.md) Two thirds of the published JSON fields have no description <sup>docs · p2 · workspace</sup>
 - [ ] [`0092`](https://github.com/oddurs/fontina/blob/main/cairn/items/0092-everything-fontina-did-and-how-to-undo-it.md) Everything fontina did, and how to undo it <sup>feat · p0 · cli</sup>
 - [ ] [`0093`](https://github.com/oddurs/fontina/blob/main/cairn/items/0093-freedom-is-a-column-not-a-filter.md) Freedom is a column, not a filter <sup>feat · p1 · cli</sup>
 - [ ] [`0094`](https://github.com/oddurs/fontina/blob/main/cairn/items/0094-the-product-rules-written-down-where-they-can-be-broken.md) The product rules, written down where they can be broken <sup>docs · p1 · workspace</sup>
+
+## groundwork — Groundwork — the parts that hold the rest up
+
+`··········` 0% · 0 of 2 done
+
+Work with no user-visible result that the rest of the roadmap stands on: the shape of the
+
+### backlog
+
+- [ ] [`0070`](https://github.com/oddurs/fontina/blob/main/cairn/items/0070-ui-mod-rs-is-6900-lines-in-one-file.md) ui/mod.rs is 6900 lines in one file <sup>chore · p3 · ui</sup>
+- [ ] [`0071`](https://github.com/oddurs/fontina/blob/main/cairn/items/0071-twenty-two-test-files-still-build-their-own-sandbox.md) Twenty-two test files still build their own sandbox <sup>chore · p3 · workspace</sup>
 
 ## tui-speed — TUI 2 — Speed
 
@@ -147,13 +162,12 @@ What you can do without leaving it. Multi-select, batch work, undo, a command pa
 
 ## tui-discovery — TUI 4 — Discovery
 
-`######····` 60% · 3 of 5 done
+`########··` 75% · 3 of 4 done
 
 Helping someone find the right face rather than the one they asked for: comparison, similarity, coverage against real text.
 
 ### backlog
 
-- [ ] [`0013`](https://github.com/oddurs/fontina/blob/main/cairn/items/0013-pin-faces-and-set-them-side-by-side.md) Pin faces and set them side by side <sup>feat · p0 · ui</sup>
 - [ ] [`0026`](https://github.com/oddurs/fontina/blob/main/cairn/items/0026-several-values-in-one-facet-in-the-browser-and-on-the-command-line.md) Several values in one facet, in the browser and on the command line <sup>feat · p1 · core</sup>
 
 ### done
@@ -164,9 +178,13 @@ Helping someone find the right face rather than the one they asked for: comparis
 
 ## integrity — Integrity — what the file claims against what it is
 
-`##########` 100% · 2 of 2 done
+`#######···` 67% · 2 of 3 done
 
 Every check today reads the metadata and asks whether it is sensible. None asks whether the file agrees with itself. The first tractable piece of PLAN.md §12's closing question: report the disagreement, never resolve it.
+
+### ready to start
+
+- [ ] [`0065`](https://github.com/oddurs/fontina/blob/main/cairn/items/0065-the-parse-fuzz-target-has-been-running-out-of-memory-on-main-since-112.md) The parse fuzz target has been running out of memory on main since #112 <sup>fix · p1 · core</sup>
 
 ### done
 
@@ -175,22 +193,9 @@ Every check today reads the metadata and asks whether it is sensible. None asks 
 
 ## unfiled — Found, not yet scheduled
 
-`######····` 53% · 8 of 15 done
+`##########` 100% · 8 of 8 done
 
 Real findings with no milestone. Triage moves them or drops them; nothing sits here by default.
-
-### backlog
-
-- [ ] [`0030`](https://github.com/oddurs/fontina/blob/main/cairn/items/0030-duplicates-are-found-and-then-nothing-can-be-done-about-them.md) Duplicates are found and then nothing can be done about them <sup>feat · p1 · cli</sup>
-- [ ] [`0031`](https://github.com/oddurs/fontina/blob/main/cairn/items/0031-variants-opens-with-the-family-you-are-already-looking-at.md) Variants opens with the family you are already looking at <sup>feat · p2 · cli</sup>
-- [ ] [`0042`](https://github.com/oddurs/fontina/blob/main/cairn/items/0042-two-thirds-of-the-published-json-fields-have-no-description.md) Two thirds of the published JSON fields have no description <sup>docs · p2 · workspace</sup>
-- [ ] [`0069`](https://github.com/oddurs/fontina/blob/main/cairn/items/0069-the-specimen-has-two-tests-for-ten-sections.md) The specimen has two tests for ten sections <sup>test · p2 · core</sup>
-- [ ] [`0070`](https://github.com/oddurs/fontina/blob/main/cairn/items/0070-ui-mod-rs-is-6900-lines-in-one-file.md) ui/mod.rs is 6900 lines in one file <sup>chore · p3 · ui</sup>
-- [ ] [`0071`](https://github.com/oddurs/fontina/blob/main/cairn/items/0071-twenty-two-test-files-still-build-their-own-sandbox.md) Twenty-two test files still build their own sandbox <sup>chore · p3 · workspace</sup>
-
-### ready to start
-
-- [ ] [`0065`](https://github.com/oddurs/fontina/blob/main/cairn/items/0065-the-parse-fuzz-target-has-been-running-out-of-memory-on-main-since-112.md) The parse fuzz target has been running out of memory on main since #112 <sup>fix · p1 · core</sup>
 
 ### done
 
@@ -205,7 +210,7 @@ Real findings with no milestone. Triage moves them or drops them; nothing sits h
 
 ## m5-ship — M5 — Ship
 
-`##········` 17% · 1 of 6 done
+`####······` 33% · 2 of 6 done
 
 Who can run it, rather than what else it can do. Package managers on every desktop, the two unmeasured budgets measured. PLAN.md §5.
 
@@ -222,11 +227,8 @@ Who can run it, rather than what else it can do. Package managers on every deskt
 
 - [ ] [`0022`](https://github.com/oddurs/fontina/blob/main/cairn/items/0022-ship-through-the-package-managers-people-actually-use.md) Ship through the package managers people actually use <sup>chore · p1 · workspace</sup>
 
-### in review
-
-- [ ] [`0041`](https://github.com/oddurs/fontina/blob/main/cairn/items/0041-make-the-path-filtered-checks-able-to-block.md) Make the path-filtered checks able to block <sup>chore · p1 · workspace</sup>
-
 ### done
 
+- [x] [`0041`](https://github.com/oddurs/fontina/blob/main/cairn/items/0041-make-the-path-filtered-checks-able-to-block.md) Make the path-filtered checks able to block <sup>chore · p1 · workspace</sup>
 - [x] [`0066`](https://github.com/oddurs/fontina/blob/main/cairn/items/0066-nothing-checks-that-macos-or-windows-can-actually-see-an-activated-font.md) Nothing checks that macOS or Windows can actually see an activated font <sup>test · p1 · platform</sup>
 

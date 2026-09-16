@@ -3,9 +3,9 @@ id: 30
 title: Duplicates are found and then nothing can be done about them
 type: feat
 status: backlog
-milestone: unfiled
+milestone: judgement
 created: 2026-09-05
-updated: 2026-09-05
+updated: 2026-09-15
 priority: p1
 effort: s
 crate: cli
@@ -50,3 +50,7 @@ its own argument before it is written.
 `Index::duplicates` groups by outline hash and by PostScript name and is fast
 (61 groups out of 1,998 faces in 14 ms). `DuplicateGroup` is in
 `schemas/cli-output.json`. This is a view and a decision, not a query.
+
+## 2026-09-15
+
+Filed under `judgement`: finding a duplicate and being unable to act on it is the gap between a report and a decision.

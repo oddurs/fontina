@@ -3,10 +3,9 @@ id: 75
 key: arrival
 title: Arrival — the first five minutes
 type: milestone
-status: backlog
+status: doing
 created: 2026-09-15
 updated: 2026-09-15
-priority: p2
 ---
 
 The first thing fontina says to a new person is the word **error**, followed by

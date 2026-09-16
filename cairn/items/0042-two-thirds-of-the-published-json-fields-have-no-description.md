@@ -3,9 +3,9 @@ id: 42
 title: Two thirds of the published JSON fields have no description
 type: docs
 status: backlog
-milestone: unfiled
+milestone: plain-sight
 created: 2026-09-07
-updated: 2026-09-07
+updated: 2026-09-15
 priority: p2
 effort: m
 crate: workspace
@@ -48,3 +48,7 @@ pull request number. This is the one that did not.
 
 Filed rather than fixed because a 222-field diff would be unreviewable and most of it
 would be restating the field name in a sentence.
+
+## 2026-09-15
+
+Filed under `plain-sight`: a published schema whose fields say nothing is data you can read and not understand.

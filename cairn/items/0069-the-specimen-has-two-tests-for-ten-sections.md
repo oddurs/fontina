@@ -3,9 +3,9 @@ id: 69
 title: The specimen has two tests for ten sections
 type: test
 status: backlog
-milestone: unfiled
+milestone: specimen
 created: 2026-09-07
-updated: 2026-09-07
+updated: 2026-09-15
 priority: p2
 effort: m
 crate: core
