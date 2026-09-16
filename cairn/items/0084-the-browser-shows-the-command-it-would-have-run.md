@@ -2,7 +2,7 @@
 id: 84
 title: The browser shows the command it would have run
 type: feat
-status: backlog
+status: review
 milestone: one-verb
 created: 2026-09-15
 updated: 2026-09-15
@@ -32,8 +32,8 @@ line rather than an alternative to it.
 
 ## Acceptance criteria
 
-- [ ] Every index-changing action shows its equivalent command.
-- [ ] The command shown, run in a shell, does the same thing — a test asserts this by
+- [x] Every index-changing action shows its equivalent command.
+- [x] The command shown, run in a shell, does the same thing — a test asserts this by
       running it rather than by comparing strings.
-- [ ] One key copies it.
-- [ ] Nothing is shown for a navigation that changes nothing.
+- [x] One key copies it.
+- [x] Nothing is shown for a navigation that changes nothing.

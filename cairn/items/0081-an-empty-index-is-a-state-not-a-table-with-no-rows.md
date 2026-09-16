@@ -2,7 +2,7 @@
 id: 81
 title: An empty index is a state, not a table with no rows
 type: feat
-status: backlog
+status: review
 milestone: arrival
 created: 2026-09-15
 updated: 2026-09-15
@@ -29,10 +29,10 @@ model.
 
 ## Acceptance criteria
 
-- [ ] No command prints an empty table with a header and no rows.
-- [ ] Each says what to do, naming the command.
-- [ ] Exit code is unchanged: an empty index is not a failure.
-- [ ] `--json` is unaffected; a machine gets `[]`, which is the true answer.
+- [x] No command prints an empty table with a header and no rows.
+- [x] Each says what to do, naming the command.
+- [x] Exit code is unchanged: an empty index is not a failure.
+- [x] `--json` is unaffected; a machine gets `[]`, which is the true answer.
 
 ## Notes
 

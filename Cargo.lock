@@ -699,6 +699,7 @@ name = "fontina-cli"
 version = "0.2.0"
 dependencies = [
  "anyhow",
+ "base64",
  "clap",
  "clap_complete",
  "clap_mangen",

@@ -64,7 +64,7 @@ ADR 0010 decided the browser shows structure and never draws type: "the resoluti
 
 The first thing fontina says to a new person is the word **error**, followed by
 
-### backlog
+### in review
 
 - [ ] [`0080`](https://github.com/oddurs/fontina/blob/main/cairn/items/0080-fontina-on-its-own-does-the-obvious-thing.md) `fontina` on its own does the obvious thing <sup>feat · p0 · cli</sup>
 - [ ] [`0081`](https://github.com/oddurs/fontina/blob/main/cairn/items/0081-an-empty-index-is-a-state-not-a-table-with-no-rows.md) An empty index is a state, not a table with no rows <sup>feat · p1 · cli</sup>
@@ -76,7 +76,7 @@ The first thing fontina says to a new person is the word **error**, followed by
 
 Thirty-four commands; twenty-five flags on `list` alone. That is a toolkit, and a
 
-### backlog
+### in review
 
 - [ ] [`0083`](https://github.com/oddurs/fontina/blob/main/cairn/items/0083-a-spine-of-verbs-with-the-rest-reachable-rather-than-in-the-way.md) A spine of verbs, with the rest reachable rather than in the way <sup>feat · p0 · cli</sup>
 - [ ] [`0084`](https://github.com/oddurs/fontina/blob/main/cairn/items/0084-the-browser-shows-the-command-it-would-have-run.md) The browser shows the command it would have run <sup>feat · p0 · ui</sup>
