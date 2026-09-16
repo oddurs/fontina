@@ -146,12 +146,10 @@ impl Measured {
 
 /// Measure one candidate against the target.
 pub fn measure(target: &FaceMetadata, face: &FaceMetadata, id: i64) -> Measured {
-    let x_em = |f: &FaceMetadata| {
-        f.metrics
-            .x_height
-            .filter(|x| *x > 0)
-            .map(|x| f32::from(x) / f32::from(f.metrics.units_per_em.max(1)))
-    };
+    // `typography::x_height_ratio`, not a closure here. The specimen needs the same
+    // number to normalise its comparison, and an x-height ratio computed two ways is two
+    // views of one font disagreeing.
+    let x_em = fontina_core::typography::x_height_ratio;
     let scripts_of = |f: &FaceMetadata| -> Vec<String> {
         f.coverage
             .scripts
