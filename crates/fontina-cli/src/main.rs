@@ -805,6 +805,45 @@ fn no_targets(command: &str) -> anyhow::Error {
     )
 }
 
+/// `n` of something, with the noun in the number it actually is.
+///
+/// The program said `1 face(s)` in twenty-four places. `(s)` is a program telling you it
+/// could not be bothered to look at the number it just printed, and this one prints a
+/// count after nearly every command.
+///
+/// Two words rather than a rule, because the rule is wrong often enough to matter here:
+/// `family` takes `families`, and guessing from the singular would have to know that.
+fn n_of(n: impl Count, one: &str, many: &str) -> String {
+    let n = n.count();
+    format!("{n} {}", if n == 1 { one } else { many })
+}
+
+/// The noun alone, for the few places where the count is printed separately.
+fn word(n: impl Count, one: &'static str, many: &'static str) -> &'static str {
+    if n.count() == 1 { one } else { many }
+}
+
+/// Anything this program counts: a `usize` from a length, an `i64` from a facet.
+///
+/// A trait rather than `impl Into<i64>` because `usize` does not implement it — on a
+/// 64-bit target the conversion can in principle lose, which for a length this program
+/// produced is a case that cannot arise but still has to be spelled.
+trait Count {
+    fn count(self) -> i64;
+}
+
+impl Count for usize {
+    fn count(self) -> i64 {
+        i64::try_from(self).unwrap_or(i64::MAX)
+    }
+}
+
+impl Count for i64 {
+    fn count(self) -> i64 {
+        self
+    }
+}
+
 fn run() -> Result<()> {
     let cli = Cli::parse();
     // Before anything prints. Both facts — the colour depth and the width — are about
@@ -894,10 +933,13 @@ fn run() -> Result<()> {
                 let t = term::term();
                 println!(
                     "{} {} {} {} {} {} {}",
-                    t.dim(&format!("scanned {} candidates in", report.candidates)),
+                    t.dim(&format!(
+                        "scanned {} in",
+                        n_of(report.candidates, "candidate", "candidates")
+                    )),
                     t.dim(&format!("{:.2}s:", started.elapsed().as_secs_f64())),
                     format_args!("{} parsed", report.parsed),
-                    t.dim(&format!("({} faces),", report.faces)),
+                    t.dim(&format!("({}),", n_of(report.faces, "face", "faces"))),
                     t.dim(&format!("{} unchanged,", report.unchanged)),
                     t.dim(&format!("{} removed,", report.removed)),
                     if report.failed.is_empty() {
@@ -919,8 +961,8 @@ fn run() -> Result<()> {
                     kinds.sort_unstable();
                     kinds.dedup();
                     println!(
-                        "skipped {} font(s) in {} this program does not read: {}",
-                        report.skipped.len(),
+                        "skipped {} in {} this program does not read: {}",
+                        n_of(report.skipped.len(), "font", "fonts"),
                         if kinds.len() == 1 {
                             "a format"
                         } else {
@@ -1020,7 +1062,7 @@ fn run() -> Result<()> {
                         t.dim(r.installed_path.as_deref().unwrap_or(&r.face.path))
                     );
                 }
-                println!("{}", t.dim(&format!("{} face(s)", records.len())));
+                println!("{}", t.dim(&n_of(records.len(), "face", "faces")));
             }
         }
         Command::Restore { json } => run_restore(&cli, *json)?,
@@ -1060,10 +1102,10 @@ fn run() -> Result<()> {
                         println!("{}", serde_json::to_string(ev).unwrap_or_default());
                     } else {
                         println!(
-                            "{} path(s): {} parsed ({} faces), {} unchanged, {} removed, {} failed",
-                            ev.paths.len(),
+                            "{}: {} parsed ({}), {} unchanged, {} removed, {} failed",
+                            n_of(ev.paths.len(), "path", "paths"),
                             ev.report.parsed,
-                            ev.report.faces,
+                            n_of(ev.report.faces, "face", "faces"),
                             ev.report.unchanged,
                             ev.report.removed,
                             ev.report.failed.len()
@@ -1097,8 +1139,8 @@ fn run() -> Result<()> {
             };
             if ids.len() > 1 {
                 eprintln!(
-                    "{target} matches {} faces; asking about the first ({id})",
-                    ids.len()
+                    "{target} matches {}; asking about the first ({id})",
+                    n_of(ids.len(), "face", "faces")
                 );
             }
             let related = index.related(id, *min)?;
@@ -1281,7 +1323,11 @@ fn run() -> Result<()> {
                         r.family,
                         t.dim(&r.subfamily),
                         t.dim(&format!("({}#{})", r.path, r.index)),
-                        t.dim(&format!("{} error(s), {} warning(s)", r.errors, r.warnings))
+                        t.dim(&format!(
+                            "{}, {}",
+                            n_of(r.errors, "error", "errors"),
+                            n_of(r.warnings, "warning", "warnings")
+                        ))
                     );
                     for f in &r.findings {
                         // The tag says what it is and the colour says how to find it,
@@ -1298,8 +1344,8 @@ fn run() -> Result<()> {
                 println!(
                     "{}",
                     t.dim(&format!(
-                        "{} face(s) checked, {failed} failed",
-                        reports.len()
+                        "{} checked, {failed} failed",
+                        n_of(reports.len(), "face", "faces")
                     ))
                 );
             }
@@ -1332,7 +1378,7 @@ fn run() -> Result<()> {
                     .len();
                 println!(
                     "{}",
-                    term::term().dim(&format!("{n} distinct character(s)"))
+                    term::term().dim(&n_of(n, "distinct character", "distinct characters"))
                 );
                 print_table(&faces);
             }
@@ -1474,7 +1520,7 @@ fn run() -> Result<()> {
                         "{}  {}  {}\n  {}",
                         t.head(spdx),
                         verdict(v.freedom),
-                        t.dim(&format!("({} face(s))", rs.len())),
+                        t.dim(&format!("({})", n_of(rs.len(), "face", "faces"))),
                         t.dim(v.reason)
                     );
                     for r in rs {
@@ -1538,9 +1584,9 @@ fn run() -> Result<()> {
                 std::fs::write(output, &html)
                     .with_context(|| format!("writing {}", output.display()))?;
                 eprintln!(
-                    "wrote {} ({} faces, {} KB)",
+                    "wrote {} ({}, {} KB)",
                     output.display(),
-                    faces.len(),
+                    n_of(faces.len(), "face", "faces"),
                     html.len() / 1024
                 );
             }
@@ -1904,7 +1950,7 @@ fn print_table(faces: &[FaceSummary]) {
             }
         );
     }
-    let _ = writeln!(out, "{}", t.dim(&format!("{} face(s)", faces.len())));
+    let _ = writeln!(out, "{}", t.dim(&n_of(faces.len(), "face", "faces")));
     // BufWriter swallows a failed flush in its destructor, and a closed pipe is the
     // ordinary way this ends; `die_on_broken_pipe` has already made that a signal.
     let _ = out.flush();
@@ -1986,7 +2032,7 @@ fn print_variants(index: &Index, target: i64, related: &[fontina_core::Related])
     println!(
         "{}",
         t.dim(&format!(
-            "{} face(s). `same` metrics means units per em, ascender, descender and \
+            "{}. `same` metrics means units per em, ascender, descender and \
              spacing all agree; high overlap with `differ` is two fonts that serve the \
              same languages, not two cuts of one typeface.",
             related.len()
@@ -2663,12 +2709,12 @@ fn run_tag(cli: &Cli, cmd: &TagCmd) -> Result<()> {
         TagCmd::Add { tag, targets } => {
             let ids = resolve_all_ids(&index, targets)?;
             let n = index.tag(&ids, tag)?;
-            println!("tagged {n} face(s) with {tag:?}");
+            println!("tagged {} with {tag:?}", n_of(n, "face", "faces"));
         }
         TagCmd::Remove { tag, targets } => {
             let ids = resolve_all_ids(&index, targets)?;
             let n = index.untag(&ids, tag)?;
-            println!("removed {tag:?} from {n} face(s)");
+            println!("removed {tag:?} from {}", n_of(n, "face", "faces"));
         }
         TagCmd::Rename { old, new } => {
             if !index.rename_tag(old, new)? {
@@ -2704,9 +2750,12 @@ fn run_tag(cli: &Cli, cmd: &TagCmd) -> Result<()> {
             // The report is printed either way; the status is what a script reads. One
             // font that could not be written is a skip in a successful run, but a run in
             // which everything failed and nothing was done is a failure: a read-only
-            // mount should not print `0 of 300 file(s) changed` and exit 0.
+            // mount should not print `0 of 300 files changed` and exit 0.
             if failures > 0 && report.changes.is_empty() {
-                bail!("nothing was synced: {failures} file(s) could not be");
+                bail!(
+                    "nothing was synced: {} could not be",
+                    n_of(failures, "file", "files")
+                );
             }
         }
     }
@@ -2974,13 +3023,17 @@ fn print_tag_sync(report: &TagSyncReport) {
     }
     if report.dry_run {
         println!(
-            "{} of {} file(s) would change in {}; nothing was written",
-            report.changed, report.files, side
+            "{} of {} would change in {}; nothing was written",
+            report.changed,
+            n_of(report.files, "file", "files"),
+            side
         );
     } else {
         println!(
-            "{} of {} file(s) changed in {}",
-            report.changed, report.files, side
+            "{} of {} changed in {}",
+            report.changed,
+            n_of(report.files, "file", "files"),
+            side
         );
     }
 }
@@ -3019,12 +3072,12 @@ fn run_collection(cli: &Cli, cmd: &CollectionCmd) -> Result<()> {
         CollectionCmd::Add { name, targets } => {
             let ids = resolve_all_ids(&index, targets)?;
             let n = index.add_to_collection(name, &ids)?;
-            println!("added {n} face(s) to {name:?}");
+            println!("added {} to {name:?}", n_of(n, "face", "faces"));
         }
         CollectionCmd::Remove { name, targets } => {
             let ids = resolve_all_ids(&index, targets)?;
             let n = index.remove_from_collection(name, &ids)?;
-            println!("removed {n} face(s) from {name:?}");
+            println!("removed {} from {name:?}", n_of(n, "face", "faces"));
         }
         CollectionCmd::Show { name, json } => {
             let faces = index.collection_faces(name)?;
@@ -3047,10 +3100,10 @@ fn run_collection(cli: &Cli, cmd: &CollectionCmd) -> Result<()> {
                     println!("{}", serde_json::to_string_pretty(&report)?);
                 } else {
                     eprintln!(
-                        "wrote {} ({} faces, {} files, {} KB)",
+                        "wrote {} ({}, {}, {} KB)",
                         report.dir,
-                        report.faces,
-                        report.files,
+                        n_of(report.faces, "face", "faces"),
+                        n_of(report.files, "file", "files"),
                         report.bytes / 1024
                     );
                 }
@@ -3062,7 +3115,11 @@ fn run_collection(cli: &Cli, cmd: &CollectionCmd) -> Result<()> {
             } else {
                 std::fs::write(output, text.as_bytes())
                     .with_context(|| format!("writing {}", output.display()))?;
-                eprintln!("wrote {} ({} faces)", output.display(), export.faces.len());
+                eprintln!(
+                    "wrote {} ({})",
+                    output.display(),
+                    n_of(export.faces.len(), "face", "faces")
+                );
             }
         }
         CollectionCmd::Import {
@@ -3110,8 +3167,8 @@ fn run_collection(cli: &Cli, cmd: &CollectionCmd) -> Result<()> {
                 let escaped = export.resolve_paths(&base);
                 if escaped > 0 {
                     eprintln!(
-                        "warning: {escaped} path(s) in this bundle point outside it and were \
-                         left alone"
+                        "warning: {} in this bundle point outside it and were left alone",
+                        n_of(escaped, "path", "paths")
                     );
                 }
             }
@@ -3120,9 +3177,9 @@ fn run_collection(cli: &Cli, cmd: &CollectionCmd) -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {
                 println!(
-                    "imported {:?}: {} face(s) matched, {} missing, {} tag(s) applied",
+                    "imported {:?}: {} matched, {} missing, {} applied",
                     report.collection,
-                    report.matched,
+                    n_of(report.matched, "face", "faces"),
                     report.missing.len(),
                     report.tags_applied
                 );
@@ -3193,10 +3250,10 @@ fn run_source(cli: &Cli, cmd: &SourceCmd) -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(&source)?);
             } else {
                 println!(
-                    "added {}: {} parsed ({} faces), {} unchanged, {} failed{}",
+                    "added {}: {} parsed ({}), {} unchanged, {} failed{}",
                     source.path,
                     report.parsed,
-                    report.faces,
+                    n_of(report.faces, "face", "faces"),
                     report.unchanged,
                     report.failed.len(),
                     if source.watch { ", watched" } else { "" }
@@ -3300,7 +3357,11 @@ fn print_families(families: &[fontina_core::Family]) {
             t.dim(&fontina_core::unicode::fit(&scripts[i], w_scr)),
         );
     }
-    let _ = writeln!(out, "{}", t.dim(&format!("{} family(ies)", families.len())));
+    let _ = writeln!(
+        out,
+        "{}",
+        t.dim(&n_of(families.len(), "family", "families"))
+    );
     let _ = out.flush();
 }
 
@@ -3337,9 +3398,9 @@ fn print_facets(f: &fontina_core::Facets) {
     println!(
         "{} {} {} {} {}",
         f.faces,
-        t.dim("face(s) in"),
+        t.dim(&format!("{} in", word(f.faces, "face", "faces"))),
         f.families,
-        t.dim("family(ies)"),
+        t.dim(word(f.families, "family", "families")),
         t.dim("· counts are faces")
     );
     // A facet on a real library runs past any terminal — 163 scripts, 96 languages — so
@@ -3520,7 +3581,10 @@ fn print_conflicts(conflicts: &[fontina_core::Conflict]) {
     }
     eprintln!(
         "{} {}",
-        t.warn(&format!("{} conflict(s);", conflicts.len())),
+        t.warn(&format!(
+            "{};",
+            n_of(conflicts.len(), "conflict", "conflicts")
+        )),
         t.dim("pass --replace to deactivate the ones fontina manages")
     );
 }
@@ -3811,8 +3875,8 @@ fn run_restore(cli: &Cli, json: bool) -> Result<()> {
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
         println!(
-            "restored {} activation(s), {} reinstalled, {} failed",
-            report.restored,
+            "restored {}, {} reinstalled, {} failed",
+            n_of(report.restored, "activation", "activations"),
             report.reinstalled,
             report.failed.len()
         );
@@ -3934,7 +3998,7 @@ fn note_what_is_embedded(faces: &[fontina_core::FaceMetadata]) {
         return;
     }
     eprintln!(
-        "note: {nonfree} of {} face(s) are under a licence that does not grant \
+        "note: {nonfree} of {} are under a licence that does not grant \
          redistribution, and this specimen embeds the font files; `--link` references \
          them instead",
         faces.len()
@@ -4042,8 +4106,9 @@ fn run_preview(cli: &Cli, args: &PreviewArgs) -> Result<()> {
                 // a font prints for text it does not cover, and it looks like a
                 // rendering fault rather than an answer.
                 format!(
-                    ", {} of {} glyph(s) not in this font",
-                    bitmap.missing, bitmap.glyphs
+                    ", {} of {} not in this font",
+                    bitmap.missing,
+                    n_of(bitmap.glyphs, "glyph", "glyphs")
                 )
             } else {
                 String::new()

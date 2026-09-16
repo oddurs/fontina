@@ -118,7 +118,9 @@ else
     no "scan $fixtures"
     cat "$root/scan.out"
 fi
-if "$fontina" list | grep -q "face(s)"; then ok "list prints faces"; else no "list prints faces"; fi
+# `faces?` rather than the literal `face(s)`: the program used to print the parenthesised
+# form whatever the number was, and this assertion is what held it there.
+if "$fontina" list | grep -qE "[0-9]+ faces?$"; then ok "list prints faces"; else no "list prints faces"; fi
 if "$fontina" list --json | grep -q '"family"'; then ok "list --json"; else no "list --json"; fi
 if "$fontina" list --script Arab | grep -qi amiri; then ok "list --script Arab finds Amiri"; else no "list --script Arab finds Amiri"; fi
 check "facets" "$fontina" facets
