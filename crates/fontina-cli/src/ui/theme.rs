@@ -23,7 +23,19 @@
 //!
 //! Colour carries hierarchy. It never carries meaning on its own — the same rule the web
 //! side follows — which is why every distinction here survives its own absence.
+//!
+//! # Where the colours come from
+//!
+//! Not from here. This file used to name them — `Color::Cyan` for the accent, and so on
+//! — while `term::sgr` named the same six for the command line, in different words, with
+//! nothing keeping the two in step. [`crate::scheme`] holds the decision now and this
+//! turns it into ratatui styles. A reader who themes `accent` themes both.
+//!
+//! What stays here is the browser's own structure: a cursor is reversed and a title is
+//! bold because of what they *are*, on any palette, and neither is in the scheme because
+//! neither is a colour anybody should have to choose.
 
+use crate::scheme::{Role, Scheme};
 use ratatui::style::{Color, Modifier, Style};
 
 /// What the terminal can show. Resolved for the whole process in [`crate::term`]; the
@@ -34,18 +46,58 @@ pub use crate::term::Depth;
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Theme {
     depth: Depth,
+    scheme: Scheme,
 }
 
 impl Theme {
+    /// The shipped scheme at this depth.
+    ///
+    /// Only the tests build one this way now — the browser goes through
+    /// [`Theme::with_scheme`] so that it cannot end up painting a different scheme from
+    /// the command line in the same process.
+    #[cfg(test)]
     pub fn new(depth: Depth) -> Self {
-        Theme { depth }
+        Theme {
+            depth,
+            scheme: Scheme::SHIPPED,
+        }
+    }
+
+    /// This depth, painted by a reader's scheme.
+    pub fn with_scheme(depth: Depth, scheme: Scheme) -> Self {
+        Theme { depth, scheme }
+    }
+
+    /// One role, as a ratatui style.
+    ///
+    /// `Depth::None` outranks the scheme: somebody who set `NO_COLOR` said it about all
+    /// of it. What survives is the modifiers, which is what keeps every role
+    /// distinguishable when none of them has a colour.
+    fn role(&self, role: Role) -> Style {
+        let paint = self.scheme.paint(role);
+        let mut style = Style::default();
+        if paint.bold {
+            style = style.add_modifier(Modifier::BOLD);
+        }
+        if paint.reverse {
+            style = style.add_modifier(Modifier::REVERSED);
+        }
+        match (self.depth, paint.colour) {
+            (Depth::None, _) | (_, None) => style,
+            (_, Some(c)) => style.fg(ansi(c)),
+        }
     }
 
     /// The pane you are in, the sheet that is open, the thing being pointed at.
+    ///
+    /// Bold when there is no colour, because a focused pane border that looks exactly
+    /// like an unfocused one is the browser's single most important distinction gone.
+    /// That is the rule stated in the module docs, applied: a role whose colour is
+    /// taken away has to keep saying what it said.
     pub fn accent(&self) -> Style {
         match self.depth {
             Depth::None => Style::default().add_modifier(Modifier::BOLD),
-            _ => Style::default().fg(Color::Cyan),
+            _ => self.role(Role::Accent),
         }
     }
 
@@ -58,9 +110,9 @@ impl Theme {
     /// and on a light theme it is the one cell on the screen that looks like a mistake.
     pub fn cursor(&self) -> Style {
         let base = Style::default().add_modifier(Modifier::REVERSED);
-        match self.depth {
-            Depth::None => base,
-            _ => base.fg(Color::Cyan),
+        match (self.depth, self.scheme.paint(Role::Accent).colour) {
+            (Depth::None, _) | (_, None) => base,
+            (_, Some(c)) => base.fg(ansi(c)),
         }
     }
 
@@ -90,34 +142,58 @@ impl Theme {
     /// modifier that means "quieter" the way a grey does — `DIM` is unsupported often
     /// enough to be a coin toss — and a label in italics is louder than one in nothing.
     pub fn dim(&self) -> Style {
-        match self.depth {
-            Depth::None => Style::default(),
-            _ => Style::default().fg(Color::DarkGray),
-        }
+        self.role(Role::Dim)
     }
 
     /// Something the reader should notice but need not act on.
     pub fn warn(&self) -> Style {
         match self.depth {
+            // Bold with no colour: a warning that looks like every other row is not a
+            // warning.
             Depth::None => Style::default().add_modifier(Modifier::BOLD),
-            _ => Style::default().fg(Color::Yellow),
+            _ => self.role(Role::Warn),
         }
     }
 
     /// Something that failed.
     pub fn bad(&self) -> Style {
         match self.depth {
+            // Bold with no colour: a warning that looks like every other row is not a
+            // warning.
             Depth::None => Style::default().add_modifier(Modifier::BOLD),
-            _ => Style::default().fg(Color::Red),
+            _ => self.role(Role::Bad),
         }
     }
 
     /// Something that worked: an activation, a free licence.
     pub fn good(&self) -> Style {
-        match self.depth {
-            Depth::None => Style::default(),
-            _ => Style::default().fg(Color::Green),
-        }
+        self.role(Role::Good)
+    }
+}
+
+/// One of the sixteen, as ratatui spells it.
+///
+/// `DarkGray` is ratatui's name for bright black, which is the one place the two
+/// vocabularies disagree.
+fn ansi(c: crate::scheme::Ansi) -> Color {
+    use crate::scheme::Ansi;
+    match c {
+        Ansi::Black => Color::Black,
+        Ansi::Red => Color::Red,
+        Ansi::Green => Color::Green,
+        Ansi::Yellow => Color::Yellow,
+        Ansi::Blue => Color::Blue,
+        Ansi::Magenta => Color::Magenta,
+        Ansi::Cyan => Color::Cyan,
+        Ansi::White => Color::Gray,
+        Ansi::BrightBlack => Color::DarkGray,
+        Ansi::BrightRed => Color::LightRed,
+        Ansi::BrightGreen => Color::LightGreen,
+        Ansi::BrightYellow => Color::LightYellow,
+        Ansi::BrightBlue => Color::LightBlue,
+        Ansi::BrightMagenta => Color::LightMagenta,
+        Ansi::BrightCyan => Color::LightCyan,
+        Ansi::BrightWhite => Color::White,
     }
 }
 

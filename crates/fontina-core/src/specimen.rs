@@ -162,6 +162,12 @@ fn bar(h: &mut String, title: &str, text: &str) {
     )
     .ok();
     h.push_str("<label class=\"field\"><span>Size</span><input id=\"size\" type=\"range\" min=\"8\" max=\"200\" value=\"48\"><output id=\"sizeout\">48<i>px</i></output></label>");
+    // Checked by default, because matching x-height is the honest comparison and the
+    // one somebody opening a specimen of several faces is asking for.
+    h.push_str(
+        "<label class=\"field check\"><input id=\"matchx\" type=\"checkbox\" checked>\
+         <span>Match x-height</span></label>",
+    );
     h.push_str("<button type=\"button\" id=\"print\">Print</button>");
     h.push_str("</div>\n</header>\n");
 }
@@ -182,16 +188,44 @@ fn index(h: &mut String, faces: &[FaceMetadata]) {
     h.push_str("</nav>\n");
 }
 
-/// Every face setting the same words at the same size, on a shared baseline grid. It goes
-/// first because it is the question a reader with several fonts open actually has.
+/// Every face setting the same words, on a shared baseline grid. It goes first because
+/// it is the question a reader with several fonts open actually has.
+///
+/// Matched on x-height rather than on pixel size, and that is the whole point of the
+/// block. Two faces at 48px with different x-heights do not look the same size — one can
+/// read two steps of the scale larger — so setting them at a common `font-size` and
+/// calling it side by side asks the reader to judge a difference nobody chose. The
+/// project already knew this: `ui/pairing.rs` ranks pairings on x-height at a common
+/// size, and the one view that exists to compare was the one ignoring it.
+///
+/// The first face is the reference and every other is scaled to it. The scale is printed
+/// beside the name, because type that has been silently resized is type the reader
+/// cannot reason about — and `Match size` in the bar turns all of it off, for somebody
+/// who wants the nominal sizes after all.
+///
+/// A face that reports no x-height is set at nominal size and says so. Scaling it by a
+/// guess would be inventing a measurement.
 fn compare(h: &mut String, faces: &[FaceMetadata], text: &str) {
     h.push_str("<section class=\"compare\">\n<h2>Side by side</h2>\n");
+    let reference = &faces[0];
     for (i, f) in faces.iter().enumerate() {
+        let scale = crate::typography::x_height_scale(reference, f);
+        // The note earns its place only when it says something: the reference is 1.00 by
+        // construction, and a face that matches it needs no explanation either.
+        let note = match scale {
+            None => "<i class=\"cmp-scale\">nominal size, no x-height reported</i>".to_string(),
+            Some(x) if (x - 1.0).abs() < 0.005 => String::new(),
+            Some(x) => format!("<i class=\"cmp-scale\">&times;{x:.2}</i>"),
+        };
         write!(
             h,
-            "<div class=\"cmp\"><a class=\"cmp-name\" href=\"#face{i}\">{}<i>{}</i></a><div class=\"sample type js-text js-size\" style=\"font-family:'uf{i}'\" data-face=\"{i}\">{}</div></div>",
+            "<div class=\"cmp\"><div class=\"cmp-head\">\
+             <a class=\"cmp-name\" href=\"#face{i}\">{}<i>{}</i></a>{note}</div>\
+             <div class=\"sample type js-text js-size\" style=\"font-family:'uf{i}'\" \
+             data-face=\"{i}\" data-xscale=\"{:.4}\">{}</div></div>",
             esc(&f.names.family),
             esc(&f.names.subfamily),
+            scale.unwrap_or(1.0),
             esc(text)
         )
         .ok();
@@ -456,6 +490,9 @@ output i{font-style:normal;color:var(--ink-2);font-size:.85em;margin-left:.15em}
 .compare h2{margin:0 0 12px;font-size:12px;font-weight:600;color:var(--mark)}
 .cmp{display:grid;grid-template-columns:var(--rail) minmax(0,1fr);gap:var(--gap);align-items:baseline;padding:14px 0;border-top:1px solid var(--guide)}
 .cmp-name{color:var(--ink);text-decoration:none;font-size:12.5px;line-height:1.45}
+.cmp-head{min-width:0}
+.cmp-scale{display:block;font-style:normal;color:var(--ink-2);font-size:11px;margin-top:.25em}
+.field.check{flex-direction:row;align-items:center;gap:5px}
 .cmp-name i{font-style:normal;display:block;color:var(--ink-2)}
 .cmp-name:hover{color:var(--mark)}
 .sample{font-size:48px;line-height:1.15;white-space:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin}
@@ -560,10 +597,21 @@ const JS: &str = r#"
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const textInput = $('#text'), sizeInput = $('#size'), sizeOut = $('#sizeout');
+const matchX = $('#matchx');
 
 // Every element that sets the reader's words, and every element the size slider drives.
 function applyText(){ const t = textInput.value; $$('.js-text').forEach(el => { el.textContent = t; }); }
-function applySize(){ const s = sizeInput.value; sizeOut.firstChild.nodeValue = s; $$('.js-size').forEach(el => { el.style.fontSize = s + 'px'; }); }
+// The slider sets the *reference* size; each sample is multiplied by the factor that
+// matches its x-height to the first face's. Without the checkbox every sample takes
+// the slider's value directly, which is the comparison that lies.
+function applySize(){
+  const s = parseFloat(sizeInput.value);
+  sizeOut.firstChild.nodeValue = sizeInput.value;
+  $$('.js-size').forEach(el => {
+    const x = matchX && matchX.checked ? parseFloat(el.dataset.xscale || '1') : 1;
+    el.style.fontSize = (s * (isFinite(x) && x > 0 ? x : 1)) + 'px';
+  });
+}
 function initSize(){
   const el = $('.js-size');
   if (el) { const px = Math.round(parseFloat(getComputedStyle(el).fontSize)); if (px > 0) sizeInput.value = px; }
@@ -572,6 +620,7 @@ function initSize(){
 
 textInput.addEventListener('input', applyText);
 sizeInput.addEventListener('input', applySize);
+if (matchX) matchX.addEventListener('change', applySize);
 $('#print').addEventListener('click', () => window.print());
 initSize();
 

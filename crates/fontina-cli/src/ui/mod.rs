@@ -882,8 +882,13 @@ impl App {
     /// `TERM` and `NO_COLOR` the machine running the tests happens to have. Both the
     /// panes hold the answer, because two panes drawn at two depths would be one screen
     /// in two palettes.
+    ///
+    /// The scheme comes from `term`, which `main` resolved from the configuration file
+    /// before anything drew. The browser does not read the file itself: one process,
+    /// one scheme, and a browser whose accent differed from the command line's would be
+    /// the drift this was built to remove.
     fn use_depth(&mut self, depth: theme::Depth) {
-        self.theme = theme::Theme::new(depth);
+        self.theme = theme::Theme::with_scheme(depth, crate::term::term().scheme());
     }
 
     // ----- events -----
