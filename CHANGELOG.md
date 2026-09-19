@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.3.0](https://github.com/oddurs/fontina/compare/v0.2.0...v0.3.0) (2026-09-19)
+
+
+### Features
+
+* **cli:** one colour scheme, inherited, and themable ([#230](https://github.com/oddurs/fontina/issues/230)) ([c2a6be5](https://github.com/oddurs/fontina/commit/c2a6be590ed104b1b76552a71c67706422da812a))
+* **cli:** one verb — act on the thing, not on a sentence about it ([#237](https://github.com/oddurs/fontina/issues/237)) ([e079e48](https://github.com/oddurs/fontina/commit/e079e4830bb6b458a6ef5afd11c95d7e34f12a1a))
+* **core:** compare at a matched x-height, not a matched pixel size ([#234](https://github.com/oddurs/fontina/issues/234)) ([cb3a647](https://github.com/oddurs/fontina/commit/cb3a647b4882390778e95e85a7a896046f266ff2))
+
+
+### Bug Fixes
+
+* **cli:** an error that says what is missing should say how to supply it ([#233](https://github.com/oddurs/fontina/issues/233)) ([4ac2213](https://github.com/oddurs/fontina/commit/4ac22134e5fd481ea2284427f18e8ef6faa69a08))
+* **cli:** one face is a face ([#232](https://github.com/oddurs/fontina/issues/232)) ([df8e59c](https://github.com/oddurs/fontina/commit/df8e59cae7f60fcdf6df7c0766e7110af6828c9e))
+* **cli:** the command line spent its script columns on things that are not scripts ([#228](https://github.com/oddurs/fontina/issues/228)) ([a743c04](https://github.com/oddurs/fontina/commit/a743c045b955babfca8b64d432f54d5f9ec71073))
+
 ## [0.2.0](https://github.com/oddurs/fontina/compare/v0.1.1...v0.2.0) (2026-09-14)
 
 
