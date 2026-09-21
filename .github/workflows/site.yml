@@ -63,10 +63,10 @@ jobs:
     if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # page footers show the last commit date of their source
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -86,7 +86,7 @@ jobs:
       # upload-pages-artifact drops every dot-directory, which loses .well-known/security.txt,
       # so the artifact is packed by hand. deploy-pages only needs it named github-pages.
       - run: tar --dereference --hard-dereference -cf "$RUNNER_TEMP/artifact.tar" -C site/dist .
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: github-pages
           path: ${{ runner.temp }}/artifact.tar
@@ -106,7 +106,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
   # The check branch protection can require. Everything above is path-filtered, so on a
   # pull request that touches none of those paths GitHub creates no run at all and reports
