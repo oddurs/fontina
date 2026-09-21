@@ -28,7 +28,7 @@ fontina-core = { path = "crates/fontina-core" }
 fontina-platform = { path = "crates/fontina-platform" }
 
 skrifa = "0.46"
-read-fonts = "0.43"
+read-fonts = "0.44"
 woff2-patched = "0.4"
 flate2 = "1"
 blake3 = "1"
