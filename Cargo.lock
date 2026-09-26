@@ -696,7 +696,7 @@ dependencies = [
 
 [[package]]
 name = "fontina-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "base64",
@@ -720,7 +720,7 @@ dependencies = [
 
 [[package]]
 name = "fontina-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ab_glyph_rasterizer",
  "base64",
@@ -748,7 +748,7 @@ dependencies = [
 
 [[package]]
 name = "fontina-platform"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "blake3",
  "core-foundation",
@@ -764,7 +764,7 @@ dependencies = [
 
 [[package]]
 name = "fontina-testkit"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
