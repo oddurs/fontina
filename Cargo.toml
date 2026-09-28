@@ -27,7 +27,7 @@ categories = ["command-line-utilities", "text-processing", "multimedia"]
 fontina-core = { path = "crates/fontina-core" }
 fontina-platform = { path = "crates/fontina-platform" }
 
-skrifa = "0.46"
+skrifa = "0.47"
 read-fonts = "0.43"
 woff2-patched = "0.4"
 flate2 = "1"
