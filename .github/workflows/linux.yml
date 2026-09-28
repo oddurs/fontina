@@ -92,7 +92,7 @@ jobs:
       # Static, so one binary runs on every distribution in the matrix, including the
       # musl one, and the matrix measures the distribution rather than the toolchain.
       - run: cargo build --release --locked -p fontina-cli --target x86_64-unknown-linux-musl
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: fontina-musl
           path: target/x86_64-unknown-linux-musl/release/fontina
@@ -109,7 +109,7 @@ jobs:
         name: [debian, ubuntu, fedora, arch, alpine, bare]
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: fontina-musl
           path: .
@@ -131,7 +131,7 @@ jobs:
       # builds and what a maintainer builds on a laptop are the same package. The build
       # runs the same two commands release.yml runs, over the same two manifests.
       - run: scripts/test-packages --build-only
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: fontina-packages
           path: |
@@ -150,7 +150,7 @@ jobs:
         name: [debian, ubuntu, fedora]
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: fontina-packages
           path: dist
