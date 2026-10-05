@@ -57,7 +57,7 @@ clap_mangen = "0.3"
 fontina-testkit = { path = "../fontina-testkit" }
 rusqlite.workspace = true
 insta.workspace = true
-jsonschema = { version = "0.57", default-features = false }
+jsonschema = { version = "0.58", default-features = false }
 
 # `cargo deb` and `cargo generate-rpm` (run in the release workflow after
 # `fontina completions` and `fontina man --out-dir` have filled target/pkg/).
