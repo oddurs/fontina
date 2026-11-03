@@ -47,7 +47,7 @@ jobs:
   # So the workflow now runs on every pull request and the *jobs* are what is filtered.
   # The expensive ones skip, the gate still reports, and branch protection can require it.
   changes:
-    name: changes
+    name: desktop changes
     runs-on: ubuntu-latest
     outputs:
       relevant: ${{ steps.check.outputs.relevant }}

@@ -28,7 +28,7 @@ jobs:
   # `push` keeps its filter: a push to main that touches nothing here has nothing to
   # deploy, and no gate is required of it.
   changes:
-    name: changes
+    name: site changes
     runs-on: ubuntu-latest
     outputs:
       relevant: ${{ steps.check.outputs.relevant }}
