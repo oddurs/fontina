@@ -124,7 +124,7 @@ jobs:
       # A crash is only useful if the bytes that caused it survive the runner.
       - name: upload the crashing input
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fuzz-artifacts-${{ matrix.target }}-${{ github.run_id }}
           path: |
